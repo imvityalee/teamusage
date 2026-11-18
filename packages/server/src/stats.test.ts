@@ -273,6 +273,7 @@ describe("agent and model filters", () => {
       { agent: "gemini", model: "g", tokens: 5 },
       { agent: "codex", model: "other", tokens: 2 },
     ],
+    accounts: [{ key: "unknown", tokens: 178 }],
   };
 
   test("no filters: available lists everything in range, sorted by tokens", () => {
@@ -366,6 +367,7 @@ describe("agent and model filters", () => {
         { agent: "claude", model: "sonnet", tokens: 20 },
         { agent: "claude", model: "opus", tokens: 10 },
       ],
+      accounts: [{ key: "unknown", tokens: 70 }],
     });
     const none = getStats(db, { ...Q, memberId: ann, agents: ["gemini"] });
     expect(none.totals.tokens).toBe(0);
@@ -377,8 +379,9 @@ describe("agent and model filters", () => {
     expect(getStats(db, { from: "2026-11-04", to: "2026-11-04" }).available).toEqual({
       agents: ["codex"],
       models: [{ agent: "codex", model: "other", tokens: 2 }, { agent: "codex", model: "gpt", tokens: 1 }],
+      accounts: [{ key: "unknown", tokens: 3 }],
     });
-    expect(getStats(db, { from: "2026-12-01", to: "2026-12-02", agents: ["claude"] }).available).toEqual({ agents: [], models: [] });
+    expect(getStats(db, { from: "2026-12-01", to: "2026-12-02", agents: ["claude"] }).available).toEqual({ agents: [], models: [], accounts: [] });
   });
 
   test("names with quotes, percent signs and __proto__ are plain data", () => {
@@ -419,10 +422,10 @@ describe("agent and model filters", () => {
     const orig = db.prepare.bind(db);
     (db as unknown as { prepare: unknown }).prepare = (sql: string) => { n++; return orig(sql); };
     getStats(db, { ...Q, agents: ["claude", "codex"], models: [{ agent: "claude", model: "opus" }] });
-    expect(n).toBe(5);
+    expect(n).toBe(7);
     n = 0;
-    getStats(db, { ...Q, memberId: 1, agents: ["claude"] });
-    expect(n).toBe(6);
+    getStats(db, { ...Q, memberId: 1, agents: ["claude"], accounts: ["personal", "team:D", "unknown"] });
+    expect(n).toBe(8);
     // More members, agents and models do not add queries.
     for (let i = 0; i < 5; i++) {
       const id = String(i + 5).repeat(32);
@@ -431,7 +434,7 @@ describe("agent and model filters", () => {
     }
     n = 0;
     getStats(db, Q);
-    expect(n).toBe(5);
+    expect(n).toBe(7);
   });
 });
 
@@ -513,5 +516,105 @@ describe("members byAgent", () => {
     upsertUsage(db, { memberId: r.memberId, machineId: M1 }, [rec("2026-11-02", "a", "m", 1), rec("2026-11-03", "a", "m", 1)]);
     db.prepare("update usage set total = 1e308").run();
     expect(getStats(db, Q).members[0]?.byAgent).toEqual({ a: Number.MAX_VALUE });
+  });
+});
+
+describe("account filter, available accounts and members byAccount", () => {
+  const MB = "b".repeat(32);
+  /** One day. Member A: claude/team:D 100, claude/personal 40, codex (no label) 10. Member B: claude (no label) 5. */
+  function seedAccounts(): { db: Db; a: number; b: number } {
+    const db = openDb(":memory:");
+    const a = registerMachine(db, { name: "A", email: "a@x.com", machineId: M1, machineLabel: "l" });
+    const b = registerMachine(db, { name: "B", email: "b@x.com", machineId: MB, machineLabel: "l" });
+    upsertUsage(db, { memberId: a.memberId, machineId: M1 }, [
+      rec("2026-11-02", "claude", "opus", 100, { account: { kind: "team", org: "D" } }),
+      rec("2026-11-02", "claude", "sonnet", 40, { account: { kind: "personal" } }),
+      rec("2026-11-02", "codex", "gpt", 10),
+    ]);
+    upsertUsage(db, { memberId: b.memberId, machineId: MB }, [rec("2026-11-02", "claude", "opus", 5)]);
+    return { db, a: a.memberId, b: b.memberId };
+  }
+  const allAccounts = [
+    { key: "team:D", tokens: 100 },
+    { key: "personal", tokens: 40 },
+    { key: "unknown", tokens: 15 },
+  ];
+  const byAccount = (s: ReturnType<typeof getStats>) => s.members.map((m) => [m.name, m.byAccount]);
+
+  test("no filter: each member's tokens by account and every account in range", () => {
+    const { db } = seedAccounts();
+    const s = getStats(db, Q);
+    expect(byAccount(s)).toEqual([
+      ["A", { "team:D": 100, personal: 40, unknown: 10 }],
+      ["B", { unknown: 5 }],
+    ]);
+    expect(s.available.accounts).toEqual(allAccounts);
+  });
+
+  test("an account filter applies to totals and members; available accounts ignore it", () => {
+    const { db } = seedAccounts();
+    const s = getStats(db, { ...Q, accounts: ["personal"] });
+    expect(s.totals.tokens).toBe(40);
+    expect(s.members.map((m) => [m.name, m.tokens])).toEqual([["A", 40], ["B", 0]]);
+    expect(byAccount(s)).toEqual([["A", { personal: 40 }], ["B", {}]]);
+    expect(s.models.map((m) => [m.agent, m.model, m.total])).toEqual([["claude", "sonnet", 40]]);
+    expect(s.available.accounts).toEqual(allAccounts);
+    expect(getStats(db, { ...Q, accounts: ["team:D", "personal"] }).totals.tokens).toBe(140);
+  });
+
+  test("unknown is the null label and combines with the agent filter", () => {
+    const { db } = seedAccounts();
+    expect(getStats(db, { ...Q, accounts: ["unknown"] }).totals.tokens).toBe(15);
+    expect(getStats(db, { ...Q, accounts: ["unknown"], agents: ["claude"] }).totals.tokens).toBe(5);
+  });
+
+  test("available accounts respect the member and ignore agent and model filters", () => {
+    const { db, a } = seedAccounts();
+    const s = getStats(db, { ...Q, memberId: a, agents: ["codex"], models: [{ agent: "codex", model: "gpt" }], accounts: ["api"] });
+    expect(s.totals.tokens).toBe(0);
+    expect(s.available.accounts).toEqual([
+      { key: "team:D", tokens: 100 },
+      { key: "personal", tokens: 40 },
+      { key: "unknown", tokens: 10 },
+    ]);
+  });
+
+  test("team: with an empty org matches a team row with no org, not team:D", () => {
+    const { db, a } = seedAccounts();
+    upsertUsage(db, { memberId: a, machineId: M1 }, [rec("2026-11-03", "claude", "opus", 7, { account: { kind: "team" } })]);
+    const s = getStats(db, { ...Q, accounts: ["team:"] });
+    expect(s.totals.tokens).toBe(7);
+    expect(byAccount(s)).toEqual([["A", { "team:": 7 }], ["B", {}]]);
+    expect(getStats(db, { ...Q, accounts: ["team:D"] }).totals.tokens).toBe(100);
+    expect(getStats(db, { ...Q, accounts: ["enterprise:D"] }).totals.tokens).toBe(0);
+    expect(getStats(db, Q).available.accounts).toContainEqual({ key: "team:", tokens: 7 });
+  });
+
+  test("an org named __proto__ is an ordinary own property; quotes and percent signs are data", () => {
+    const db = openDb(":memory:");
+    const r = registerMachine(db, { name: "Cy", email: "cy@x.com", machineId: M1, machineLabel: "l" });
+    upsertUsage(db, { memberId: r.memberId, machineId: M1 }, [
+      rec("2026-11-02", "claude", "opus", 5, { account: { kind: "team", org: "__proto__" } }),
+      rec("2026-11-02", "claude", "sonnet", 7, { account: { kind: "team", org: "a'b%" } }),
+    ]);
+    const by = getStats(db, Q).members[0]?.byAccount as Record<string, number>;
+    expect(Object.keys(by).sort()).toEqual(["team:__proto__", "team:a'b%"]);
+    expect(Object.getOwnPropertyDescriptor(by, "team:__proto__")?.value).toBe(5);
+    expect(Object.getPrototypeOf(by)).toBe(Object.prototype);
+    expect(getStats(db, { ...Q, accounts: ["team:__proto__"] }).totals.tokens).toBe(5);
+    expect(getStats(db, { ...Q, accounts: ["team:a'b%"] }).totals.tokens).toBe(7);
+    expect(getStats(db, { ...Q, accounts: ["team:%"] }).totals.tokens).toBe(0);
+  });
+
+  test("an empty org and a missing org are the same account", () => {
+    const db = openDb(":memory:");
+    const r = registerMachine(db, { name: "Cy", email: "cy@x.com", machineId: M1, machineLabel: "l" });
+    upsertUsage(db, { memberId: r.memberId, machineId: M1 }, [
+      rec("2026-11-02", "claude", "opus", 5, { account: { kind: "team", org: "" } }),
+      rec("2026-11-02", "claude", "sonnet", 7, { account: { kind: "team" } }),
+    ]);
+    const s = getStats(db, Q);
+    expect(s.members[0]?.byAccount).toEqual({ "team:": 12 });
+    expect(s.available.accounts).toEqual([{ key: "team:", tokens: 12 }]);
   });
 });

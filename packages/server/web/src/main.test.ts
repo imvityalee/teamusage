@@ -552,6 +552,7 @@ describe("filters", () => {
           { agent: "claude", model: "claude-sonnet-4-5", tokens: 30_000 },
           { agent: "claude", model: "claude-opus-4-1", tokens: 25_000 },
         ],
+        accounts: [],
       },
     };
   }

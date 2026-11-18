@@ -193,6 +193,7 @@ describe("fetchStats cleans the filter lists", () => {
         { agent: "claude", model: "m1", tokens: 10 },
         { agent: "codex", model: "m4", tokens: Number.MAX_VALUE },
       ],
+      accounts: [],
     });
   });
 });

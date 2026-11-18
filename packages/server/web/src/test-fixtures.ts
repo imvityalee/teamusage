@@ -37,12 +37,14 @@ export function statsFixture(names: FixtureNames = PLAIN): Stats {
     {
       id: 1, name: names.name, email: names.email, tokens: 40_000, costUsd: 9, machines: 2, lastSyncAt: "2026-11-18T12:00:00.000Z",
       byAgent: Object.fromEntries([["claude", 35_000], ["codex", 4_500], [names.agent, 500]]) as Record<string, number>,
+      byAccount: {},
     },
     {
       id: 2, name: "Bao Nguyen", email: "bao@example.com", tokens: 20_500, costUsd: 3.5, machines: 1, lastSyncAt: "2026-11-10T12:00:00.000Z",
       byAgent: { claude: 20_000, codex: 500 },
+      byAccount: {},
     },
-    { id: 3, name: "Carla Mendes", email: "carla@example.com", tokens: 0, costUsd: 0, machines: 1, lastSyncAt: null, byAgent: {} },
+    { id: 3, name: "Carla Mendes", email: "carla@example.com", tokens: 0, costUsd: 0, machines: 1, lastSyncAt: null, byAgent: {}, byAccount: {} },
   ];
   return {
     from: "2026-11-09",
@@ -64,6 +66,7 @@ export function statsFixture(names: FixtureNames = PLAIN): Stats {
         { agent: "codex", model: "gpt-5-codex", tokens: 5_000 },
         { agent: names.agent, model: names.model, tokens: 500 },
       ],
+      accounts: [],
     },
   };
 }

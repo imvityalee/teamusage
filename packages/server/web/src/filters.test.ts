@@ -4,6 +4,7 @@ import {
   agentTotals,
   availableTotal,
   canFilterModel,
+  cleanAvailable,
   equalFilters,
   isActive,
   MAX_AGENTS,
@@ -25,6 +26,7 @@ const available: Stats["available"] = {
     { agent: "claude", model: "sonnet-4-6", tokens: 20 },
     { agent: "x", model: "a:b", tokens: 1 },
   ],
+  accounts: [],
 };
 
 describe("toQuery", () => {
@@ -74,12 +76,12 @@ describe("prune", () => {
   });
 
   test("an empty available clears everything; nothing selected stays nothing", () => {
-    expect(prune({ agents: ["claude"], models: [{ agent: "claude", model: "opus-4-7" }] }, { agents: [], models: [] })).toEqual(NO_FILTERS);
+    expect(prune({ agents: ["claude"], models: [{ agent: "claude", model: "opus-4-7" }] }, { agents: [], models: [], accounts: [] })).toEqual(NO_FILTERS);
     expect(prune(NO_FILTERS, available)).toEqual(NO_FILTERS);
   });
 
   test("ids that look like object keys are compared as plain strings", () => {
-    const odd: Stats["available"] = { agents: ["__proto__"], models: [{ agent: "__proto__", model: "constructor", tokens: 1 }] };
+    const odd: Stats["available"] = { agents: ["__proto__"], models: [{ agent: "__proto__", model: "constructor", tokens: 1 }], accounts: [] };
     const f: Filters = { agents: ["__proto__", "constructor"], models: [{ agent: "__proto__", model: "constructor" }, { agent: "toString", model: "x" }] };
     expect(prune(f, odd)).toEqual({ agents: ["__proto__"], models: [{ agent: "__proto__", model: "constructor" }] });
   });
@@ -159,7 +161,7 @@ describe("totals from available", () => {
   test("per agent and overall, without a request", () => {
     expect([...agentTotals(available)]).toEqual([["claude", 70], ["codex", 30], ["x", 1]]);
     expect(availableTotal(available)).toBe(101);
-    expect(availableTotal({ agents: [], models: [] })).toBe(0);
+    expect(availableTotal({ agents: [], models: [], accounts: [] })).toBe(0);
   });
 
   test("ids like __proto__ are plain keys and broken numbers count as zero", () => {
@@ -170,14 +172,48 @@ describe("totals from available", () => {
         { agent: "constructor", model: "b", tokens: Number.NaN },
         { agent: "__proto__", model: "c", tokens: "5" as unknown as number },
       ],
+      accounts: [],
     };
     expect([...agentTotals(odd)]).toEqual([["__proto__", 2], ["constructor", 0]]);
     expect(availableTotal(odd)).toBe(2);
   });
 
   test("never Infinity", () => {
-    const big = { agents: ["a"], models: [{ agent: "a", model: "m", tokens: Number.MAX_VALUE }, { agent: "a", model: "n", tokens: Number.MAX_VALUE }] };
+    const big = { agents: ["a"], models: [{ agent: "a", model: "m", tokens: Number.MAX_VALUE }, { agent: "a", model: "n", tokens: Number.MAX_VALUE }], accounts: [] };
     expect(availableTotal(big)).toBe(Number.MAX_VALUE);
     expect(agentTotals(big).get("a")).toBe(Number.MAX_VALUE);
+  });
+});
+
+describe("cleanAvailable accounts", () => {
+  test("keeps valid account entries and drops malformed ones", () => {
+    const raw = {
+      agents: ["claude"],
+      models: [],
+      accounts: [
+        { key: "team:D", tokens: 100 },
+        { key: "team:__proto__", tokens: 3 },
+        { key: "unknown", tokens: 0 },
+        { key: "boss", tokens: 5 },
+        { key: "personal", tokens: -1 },
+        { key: "api", tokens: Number.NaN },
+        { key: "api", tokens: "5" },
+        { key: 7, tokens: 5 },
+        { key: "team:a\nb", tokens: 5 },
+        null,
+        "personal",
+      ],
+    };
+    expect(cleanAvailable(raw).accounts).toEqual([
+      { key: "team:D", tokens: 100 },
+      { key: "team:__proto__", tokens: 3 },
+      { key: "unknown", tokens: 0 },
+    ]);
+  });
+
+  test("a missing or non-array accounts list is empty", () => {
+    expect(cleanAvailable({ agents: [], models: [] }).accounts).toEqual([]);
+    expect(cleanAvailable({ agents: [], models: [], accounts: { key: "api", tokens: 1 } }).accounts).toEqual([]);
+    expect(cleanAvailable(null).accounts).toEqual([]);
   });
 });

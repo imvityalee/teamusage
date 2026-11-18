@@ -1,4 +1,4 @@
-import type { Stats } from "@teamusage/shared";
+import { parseAccountKey, type Stats } from "@teamusage/shared";
 
 /**
  * The agent and model filters. They live only in memory: they are never stored and never put in the URL, and
@@ -112,11 +112,11 @@ export function toggleModel(f: Filters, ref: ModelRef): Toggled {
 
 /**
  * The filter lists from an answer, keeping only well-formed entries: agent ids that are strings, and models with a
- * string agent and model and a finite, non-negative total. Anything else is dropped, so a `null` cannot make `prune`
- * throw and no total can show as NaN.
+ * string agent and model and a finite, non-negative total, and accounts with a well-formed key and such a total.
+ * Anything else is dropped, so a `null` cannot make `prune` throw and no total can show as NaN.
  */
 export function cleanAvailable(raw: unknown): Stats["available"] {
-  const r = (typeof raw === "object" && raw !== null ? raw : {}) as { agents?: unknown; models?: unknown };
+  const r = (typeof raw === "object" && raw !== null ? raw : {}) as { agents?: unknown; models?: unknown; accounts?: unknown };
   const agents = Array.isArray(r.agents) ? r.agents.filter((a): a is string => typeof a === "string") : [];
   const models = (Array.isArray(r.models) ? r.models : []).flatMap((m: unknown) => {
     if (typeof m !== "object" || m === null) return [];
@@ -124,7 +124,15 @@ export function cleanAvailable(raw: unknown): Stats["available"] {
     if (typeof agent !== "string" || typeof model !== "string" || typeof n !== "number" || !Number.isFinite(n) || n < 0) return [];
     return [{ agent, model, tokens: n }];
   });
-  return { agents, models };
+  // Same rules for accounts; the key must also be a well-formed account key.
+  const accounts = (Array.isArray(r.accounts) ? r.accounts : []).flatMap((a: unknown) => {
+    if (typeof a !== "object" || a === null) return [];
+    const { key, tokens: n } = a as { key?: unknown; tokens?: unknown };
+    if (typeof key !== "string" || parseAccountKey(key) === undefined) return [];
+    if (typeof n !== "number" || !Number.isFinite(n) || n < 0) return [];
+    return [{ key, tokens: n }];
+  });
+  return { agents, models, accounts };
 }
 
 /**
@@ -147,7 +155,7 @@ export function withSelection(available: Stats["available"], f: Filters): Stats[
     models.push({ agent: m.agent, model: m.model, tokens: 0 });
     index.set(m.agent, (index.get(m.agent) ?? new Set<string>()).add(m.model));
   }
-  return { agents, models };
+  return { agents, models, accounts: available.accounts };
 }
 
 const tokens = (n: unknown): number => (typeof n === "number" && Number.isFinite(n) && n > 0 ? n : 0);

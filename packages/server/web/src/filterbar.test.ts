@@ -190,6 +190,7 @@ describe("hostile agent ids and model names", () => {
       { agent: "claude", model: "<img src=x onerror=alert(1)>", tokens: 10 },
       ...HOSTILE_IDS.map((id, i) => ({ agent: id, model: `m${i}"><script>alert(1)</script>`, tokens: 5 })),
     ],
+    accounts: [],
   });
   const plainAvailable = (): Stats["available"] => ({
     agents: ["claude", ...HOSTILE_IDS.map((_, i) => `plain${i}`)],
@@ -197,6 +198,7 @@ describe("hostile agent ids and model names", () => {
       { agent: "claude", model: "plain-model", tokens: 10 },
       ...HOSTILE_IDS.map((_, i) => ({ agent: `plain${i}`, model: `m${i}`, tokens: 5 })),
     ],
+    accounts: [],
   });
 
   test("create exactly the elements plain ids do, show literal text and load only fixed images", () => {
@@ -259,7 +261,7 @@ describe("chips", () => {
 
 describe("edge cases", () => {
   test("a model of an agent whose id has a colon is listed but cannot be ticked", () => {
-    const available: Stats["available"] = { agents: ["x:a"], models: [{ agent: "x:a", model: "b", tokens: 3 }] };
+    const available: Stats["available"] = { agents: ["x:a"], models: [{ agent: "x:a", model: "b", tokens: 3 }], accounts: [] };
     const root = controls(model({ open: "models", available }));
     const box = rowsOf(root)[0]?.querySelector("input") as HTMLInputElement;
     expect(box.disabled).toBe(true);
@@ -271,6 +273,7 @@ describe("edge cases", () => {
     const available = (n: number): Stats["available"] => ({
       agents: many(n + 1),
       models: many(n + 1).map((a) => ({ agent: a, model: "m", tokens: 1 })),
+      accounts: [],
     });
     const label = (n: number) =>
       text(
@@ -283,7 +286,7 @@ describe("edge cases", () => {
   });
 
   test("nothing in the period: the popovers say so instead of an empty box", () => {
-    const empty: Stats["available"] = { agents: [], models: [] };
+    const empty: Stats["available"] = { agents: [], models: [], accounts: [] };
     expect(text(controls(model({ open: "agents", available: empty })).querySelector(".pop-empty"))).toBe("Nothing in this period");
     const models = controls(model({ open: "models", available: empty }));
     expect(text(models.querySelector(".pop-empty"))).toBe("Nothing in this period");
@@ -295,7 +298,7 @@ describe("edge cases", () => {
   });
 
   test("a selection this member does not have stays listed, ticked, with a zero total, so it can be unticked", () => {
-    const memberAvailable: Stats["available"] = { agents: ["claude"], models: [{ agent: "claude", model: "claude-opus-4-1", tokens: 7 }] };
+    const memberAvailable: Stats["available"] = { agents: ["claude"], models: [{ agent: "claude", model: "claude-opus-4-1", tokens: 7 }], accounts: [] };
     const filters: Filters = { agents: ["claude", "codex"], models: [{ agent: "codex", model: "gpt-5-codex" }] };
     const agents = controls(model({ open: "agents", available: memberAvailable, filters }));
     expect(rowsOf(agents).map((r) => [text(r.querySelector(".pop-name")), text(r.querySelector(".pop-num")), (r.querySelector("input") as HTMLInputElement).checked])).toEqual([

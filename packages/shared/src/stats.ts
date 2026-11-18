@@ -13,15 +13,22 @@ export interface Stats {
     lastSyncAt: string | null;
     /** Tokens by agent id for this member, with the same range and filters as `tokens`; empty when none. */
     byAgent: Record<string, number>;
+    /** Tokens by account key (`accountKey`) for this member, with the same range and filters as `tokens`; empty when none. */
+    byAccount: Record<string, number>;
   }[]; // sorted by tokens desc
   /** Present only when a single member was requested: that member's machines, most recently synced first. */
   machines?: { label: string; lastSyncAt: string | null }[];
   /**
-   * Everything present in the date range (and for the member, when one is requested), IGNORING the agent and
-   * model filters, sorted by total tokens descending. It feeds the filter controls. `tokens` is that model's
-   * total in the range; an agent's total, and the unfiltered total, are sums of these.
+   * Everything present in the date range (and for the member, when one is requested), IGNORING the agent,
+   * model and account filters, sorted by total tokens descending. It feeds the filter controls. `tokens` is that
+   * model's (or account's) total in the range; an agent's total, and the unfiltered total, are sums of these.
+   * Account keys are `accountKey` values; `unknown` covers every row without a label, non-Claude rows included.
    */
-  available: { agents: string[]; models: { agent: string; model: string; tokens: number }[] };
+  available: {
+    agents: string[];
+    models: { agent: string; model: string; tokens: number }[];
+    accounts: { key: string; tokens: number }[];
+  };
   models: {
     agent: string;
     model: string;

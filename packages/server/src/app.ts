@@ -2,7 +2,15 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { getCookie, setCookie } from "hono/cookie";
-import { APP_NAME, MAX_AGENT_CHARS, MAX_MODEL_CHARS, NAME_CONTROL_CHARS, validateBatch } from "@teamusage/shared";
+import {
+  APP_NAME,
+  MAX_ACCOUNTS,
+  MAX_AGENT_CHARS,
+  MAX_MODEL_CHARS,
+  NAME_CONTROL_CHARS,
+  parseAccountKey,
+  validateBatch,
+} from "@teamusage/shared";
 import { authenticate, createSession, hasSession, registerMachine, upsertUsage, type Db } from "./db.js";
 import { createLimiter } from "./limiter.js";
 import { getStats, memberExists } from "./stats.js";
@@ -28,12 +36,18 @@ function safeEqual(a: string, b: string): boolean {
 /** One well-formed name: 1..max characters, no control characters. */
 const validName = (v: string, max: number): boolean => v.length > 0 && v.length <= max && !NAME_CONTROL_CHARS.test(v);
 
-/** Parses repeated `agent` and `model` (`<agent>:<model>`, split on the first colon). Undefined when malformed. */
+/**
+ * Parses repeated `agent`, `model` (`<agent>:<model>`, split on the first colon) and `account` (an account key,
+ * see parseAccountKey). Undefined when malformed.
+ */
 function parseFilters(
   agentValues: string[] = [],
   modelValues: string[] = [],
-): { agents: string[]; models: { agent: string; model: string }[] } | undefined {
+  accountValues: string[] = [],
+): { agents: string[]; models: { agent: string; model: string }[]; accounts: string[] } | undefined {
   if (agentValues.length > MAX_AGENT_FILTERS || modelValues.length > MAX_MODEL_FILTERS) return undefined;
+  if (accountValues.length > MAX_ACCOUNTS) return undefined;
+  if (!accountValues.every((k) => parseAccountKey(k) !== undefined)) return undefined;
   if (!agentValues.every((a) => validName(a, MAX_AGENT_CHARS))) return undefined;
   const models = new Map<string, { agent: string; model: string }>();
   for (const v of modelValues) {
@@ -44,7 +58,7 @@ function parseFilters(
     if (!validName(agent, MAX_AGENT_CHARS) || !validName(model, MAX_MODEL_CHARS)) return undefined;
     models.set(v, { agent, model });
   }
-  return { agents: [...new Set(agentValues)], models: [...models.values()] };
+  return { agents: [...new Set(agentValues)], models: [...models.values()], accounts: [...new Set(accountValues)] };
 }
 
 const fail = (c: Context, status: 400 | 401 | 403 | 404 | 409 | 413 | 429 | 500, error: string) => c.json({ error }, status);
@@ -211,7 +225,7 @@ export function createApp(
 
     const { from, to, member } = c.req.query();
     // Repeated parameters are ambiguous, so they are rejected rather than resolved by position.
-    // Only `agent` and `model` are lists and may repeat.
+    // Only `agent`, `model` and `account` are lists and may repeat.
     const repeated = ["from", "to", "member"].some((k) => (c.req.queries(k)?.length ?? 0) > 1);
     if (repeated) return fail(c, 400, "invalid query");
     const f = parseDate(from);
@@ -219,7 +233,7 @@ export function createApp(
     if (f === undefined || t === undefined || f > t || (t - f) / 86_400_000 + 1 > MAX_RANGE_DAYS) {
       return fail(c, 400, "invalid date range");
     }
-    const filters = parseFilters(c.req.queries("agent"), c.req.queries("model"));
+    const filters = parseFilters(c.req.queries("agent"), c.req.queries("model"), c.req.queries("account"));
     if (!filters) return fail(c, 400, "invalid query");
     const range = { from: from as string, to: to as string, ...filters };
     if (member === undefined) return c.json(getStats(db, range));

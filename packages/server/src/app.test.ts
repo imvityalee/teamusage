@@ -413,8 +413,9 @@ describe("GET /api/stats", () => {
     const text = JSON.stringify(body);
     for (const secret of [token, MID, MID2, "mbp"]) expect(text).not.toContain(secret);
     expect(Object.keys((body.members as object[])[0] as object).sort()).toEqual([
-      "byAgent", "costUsd", "email", "id", "lastSyncAt", "machines", "name", "tokens",
+      "byAccount", "byAgent", "costUsd", "email", "id", "lastSyncAt", "machines", "name", "tokens",
     ]);
+    expect(Object.keys(body.available as object).sort()).toEqual(["accounts", "agents", "models"]);
     expect(memberId).toBeGreaterThan(0);
   });
 
@@ -811,5 +812,83 @@ describe("agent and model filters", () => {
   test("filters do not bypass authentication", async () => {
     await seedUsage();
     expect((await getStatsReq(`${RANGE}&agent=claude`, {})).status).toBe(401);
+  });
+});
+
+describe("account filter", () => {
+  const seedAccounts = async () => {
+    const ann = await register();
+    const up = await post(
+      "/api/usage",
+      {
+        records: [
+          record({ model: "opus", total: 100, input: 91, account: { kind: "team", org: "D" } }),
+          record({ model: "sonnet", total: 40, input: 31, account: { kind: "personal" } }),
+          record({ model: "haiku", total: 13, input: 4, account: { kind: "team", org: "a:b" } }),
+          record({ agent: "codex", model: "gpt", total: 10 }),
+        ],
+      },
+      bearer(ann.token),
+    );
+    expect(up.status).toBe(200);
+    return { cookie: { Cookie: sessionCookie(await login()) } };
+  };
+  type Body = { totals: { tokens: number }; available: { accounts: { key: string; tokens: number }[] }; members: { byAccount: Record<string, number> }[] };
+  const stats = async (qs: string, headers: Record<string, string>) => {
+    const res = await getStatsReq(`${RANGE}${qs}`, headers);
+    return { res, body: (await res.json()) as Body };
+  };
+
+  test("repeated account parameters are alternatives; available accounts and byAccount are returned", async () => {
+    const { cookie } = await seedAccounts();
+    const r = await stats("&account=personal&account=team:D", cookie);
+    expect(r.res.status).toBe(200);
+    expect(r.body.totals.tokens).toBe(140);
+    expect(r.body.members[0]?.byAccount).toEqual({ "team:D": 100, personal: 40 });
+    expect(r.body.available.accounts).toEqual([
+      { key: "team:D", tokens: 100 },
+      { key: "personal", tokens: 40 },
+      { key: "team:a:b", tokens: 13 },
+      { key: "unknown", tokens: 10 },
+    ]);
+    expect((await stats("&account=unknown", cookie)).body.totals.tokens).toBe(10);
+    expect((await stats("&account=personal&account=personal", cookie)).body.totals.tokens).toBe(40);
+  });
+
+  test("an org containing a colon splits on the first colon", async () => {
+    const { cookie } = await seedAccounts();
+    expect((await stats("&account=team:a:b", cookie)).body.totals.tokens).toBe(13);
+    expect((await stats("&account=team:a", cookie)).body.totals.tokens).toBe(0);
+  });
+
+  test("malformed or too many account values are 400 invalid query and never echoed", async () => {
+    const { cookie } = await seedAccounts();
+    const many = (n: number) => Array.from({ length: n }, (_, i) => `&account=team:o${i}`).join("");
+    const bad = [
+      many(51),
+      "&account=boss",
+      "&account=",
+      "&account=Personal",
+      "&account=unknown:x",
+      "&account=personal:x",
+      "&account=org:x",
+      "&account=:x",
+      "&account=team:a%0Ab",
+      `&account=team:${"o".repeat(101)}`,
+    ];
+    for (const qs of bad) {
+      const res = await getStatsReq(`${RANGE}${qs}`, cookie);
+      expect(res.status, qs.slice(0, 40)).toBe(400);
+      expect(await res.json(), qs.slice(0, 40)).toEqual({ error: "invalid query" });
+    }
+    expect((await getStatsReq(`${RANGE}${many(50)}`, cookie)).status).toBe(200);
+    expect((await getStatsReq(`${RANGE}&account=team:${"o".repeat(100)}&account=enterprise:&account=api`, cookie)).status).toBe(200);
+  });
+
+  test("account values are validated before the member lookup and do not bypass authentication", async () => {
+    const { cookie } = await seedAccounts();
+    expect((await getStatsReq(`${RANGE}&member=999999&account=boss`, cookie)).status).toBe(400);
+    expect((await getStatsReq(`${RANGE}&member=999999&account=personal`, cookie)).status).toBe(404);
+    expect((await getStatsReq(`${RANGE}&account=personal`, {})).status).toBe(401);
   });
 });
