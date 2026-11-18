@@ -22,7 +22,7 @@ export function getStats(db: Db, q: { from: string; to: string; memberId?: numbe
 
   const memberRows = db
     .prepare(
-      `select m.name as name, m.email as email,
+      `select m.id as id, m.name as name, m.email as email,
          (select coalesce(total(u.total), 0) from usage u
             where u.member_id = m.id and u.date between @from and @to) as tokens,
          (select coalesce(sum(u.cost_usd), 0) from usage u
@@ -33,7 +33,7 @@ export function getStats(db: Db, q: { from: string; to: string; memberId?: numbe
        where (@memberId is null or m.id = @memberId)
        order by tokens desc, m.name, m.id`,
     )
-    .all(p) as { name: string; email: string; tokens: number; cost: number; machines: number; lastSyncAt: string | null }[];
+    .all(p) as { id: number; name: string; email: string; tokens: number; cost: number; machines: number; lastSyncAt: string | null }[];
 
   const modelRows = db
     .prepare(
@@ -73,6 +73,20 @@ export function getStats(db: Db, q: { from: string; to: string; memberId?: numbe
     byAgent: Object.fromEntries(agents) as Record<string, number>,
   }));
 
+  // Machines are exposed by label and last sync only, never by id. Never-synced last; ties by label then id.
+  const machines =
+    memberId === null
+      ? undefined
+      : (
+          db
+            .prepare(
+              `select label, last_sync_at as lastSyncAt from machines
+               where member_id = @memberId
+               order by (last_sync_at is null), last_sync_at desc, label, id`,
+            )
+            .all({ memberId }) as { label: string; lastSyncAt: string | null }[]
+        ).map((x) => ({ label: x.label, lastSyncAt: x.lastSyncAt }));
+
   return {
     from: q.from,
     to: q.to,
@@ -84,6 +98,7 @@ export function getStats(db: Db, q: { from: string; to: string; memberId?: numbe
     },
     daily,
     members: memberRows.map((m) => ({
+      id: m.id,
       name: m.name,
       email: m.email,
       tokens: finite(m.tokens),
@@ -91,6 +106,7 @@ export function getStats(db: Db, q: { from: string; to: string; memberId?: numbe
       machines: m.machines,
       lastSyncAt: m.lastSyncAt,
     })),
+    ...(machines ? { machines } : {}),
     models: modelRows.map((m) => ({
       agent: m.agent,
       model: m.model,
@@ -103,4 +119,8 @@ export function getStats(db: Db, q: { from: string; to: string; memberId?: numbe
       unpriced: m.unpriced > 0,
     })),
   };
+}
+
+export function memberExists(db: Db, memberId: number): boolean {
+  return db.prepare("select 1 from members where id = ?").get(memberId) !== undefined;
 }

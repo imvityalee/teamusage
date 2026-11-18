@@ -413,7 +413,7 @@ describe("GET /api/stats", () => {
     const text = JSON.stringify(body);
     for (const secret of [token, MID, MID2, "mbp"]) expect(text).not.toContain(secret);
     expect(Object.keys((body.members as object[])[0] as object).sort()).toEqual([
-      "costUsd", "email", "lastSyncAt", "machines", "name", "tokens",
+      "costUsd", "email", "id", "lastSyncAt", "machines", "name", "tokens",
     ]);
     expect(memberId).toBeGreaterThan(0);
   });
@@ -435,7 +435,64 @@ describe("GET /api/stats", () => {
     const cookie = sessionCookie(await login());
     expect((await getStatsReq(`${RANGE}&member=me`, { Cookie: cookie })).status).toBe(400);
     const { token } = await register();
-    expect((await getStatsReq(`${RANGE}&member=1`, bearer(token))).status).toBe(400);
+  });
+
+  test("member=me includes machines by label and last sync only", async () => {
+    const { token } = await register();
+    await post("/api/usage", { records: [record()] }, bearer(token));
+    const res = await getStatsReq(`${RANGE}&member=me`, bearer(token));
+    const body = (await res.json()) as { machines: { label: string; lastSyncAt: string | null }[] };
+    expect(body.machines).toHaveLength(1);
+    expect(Object.keys(body.machines[0] as object).sort()).toEqual(["label", "lastSyncAt"]);
+    expect(body.machines[0]?.label).toBe("mbp");
+    expect(body.machines[0]?.lastSyncAt).not.toBeNull();
+    const text = JSON.stringify(body);
+    for (const secret of [token, MID]) expect(text).not.toContain(secret);
+  });
+
+  test("member=<id> works with a session, any token and demo mode, and leaks no secrets", async () => {
+    const ann = await register();
+    const bob = await register({ email: "bob@example.com", name: "Bob", machineId: MID2, machineLabel: "box" });
+    await post("/api/usage", { records: [record({ total: 10 })] }, bearer(ann.token));
+    await post("/api/usage", { records: [record({ output: 91, total: 99 })] }, bearer(bob.token));
+    const cookie = { Cookie: sessionCookie(await login()) };
+    const demoApp = createApp(db, { inviteCode: () => INVITE, demo: true });
+    const hashes = (db.prepare("select token_hash as h from machines").all() as { h: string }[]).map((r) => r.h);
+    const responses = [
+      await getStatsReq(`${RANGE}&member=${bob.memberId}`, cookie),
+      await getStatsReq(`${RANGE}&member=${bob.memberId}`, bearer(ann.token)), // another member's id
+      await demoApp.request(`/api/stats?${RANGE}&member=${bob.memberId}`),
+    ];
+    for (const res of responses) {
+      expect(res.status).toBe(200);
+      expect(res.headers.get("Cache-Control")).toBe("no-store");
+      const text = await res.text();
+      const body = JSON.parse(text) as {
+        totals: { tokens: number; memberCount: number };
+        members: { id: number; name: string }[];
+        machines: { label: string }[];
+      };
+      expect(body.totals).toMatchObject({ tokens: 99, memberCount: 1 });
+      expect(body.members.map((m) => [m.id, m.name])).toEqual([[bob.memberId, "Bob"]]);
+      expect(body.machines.map((m) => m.label)).toEqual(["box"]);
+      for (const secret of [ann.token, bob.token, MID, MID2, ...hashes]) expect(text).not.toContain(secret);
+    }
+  });
+
+  test("a well-formed member id that does not exist is 404", async () => {
+    const cookie = { Cookie: sessionCookie(await login()) };
+    const res = await getStatsReq(`${RANGE}&member=999999`, cookie);
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "member not found" });
+  });
+
+  test("malformed member values are 400 invalid query and never echoed", async () => {
+    const cookie = { Cookie: sessionCookie(await login()) };
+    for (const v of ["0", "-1", "01", "1.5", "abc", "1%20or%201%3D1", "12345678901", "", "9007199254740993", "ME"]) {
+      const res = await getStatsReq(`${RANGE}&member=${v}`, cookie);
+      expect(res.status, v).toBe(400);
+      expect(await res.json(), v).toEqual({ error: "invalid query" });
+    }
   });
 
   test("bad dates are 400 with a fixed message", async () => {

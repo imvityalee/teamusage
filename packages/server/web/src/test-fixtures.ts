@@ -26,9 +26,9 @@ export function statsFixture(names: FixtureNames = PLAIN): Stats {
     totals: { tokens: 60_500, costUsd: 12.5, activeMembers: 2, memberCount: 3 },
     daily,
     members: [
-      { name: names.name, email: names.email, tokens: 40_000, costUsd: 9, machines: 2, lastSyncAt: "2026-11-18T12:00:00.000Z" },
-      { name: "Bao Nguyen", email: "bao@example.com", tokens: 20_500, costUsd: 3.5, machines: 1, lastSyncAt: "2026-11-10T12:00:00.000Z" },
-      { name: "Carla Mendes", email: "carla@example.com", tokens: 0, costUsd: 0, machines: 1, lastSyncAt: null },
+      { id: 1, name: names.name, email: names.email, tokens: 40_000, costUsd: 9, machines: 2, lastSyncAt: "2026-11-18T12:00:00.000Z" },
+      { id: 2, name: "Bao Nguyen", email: "bao@example.com", tokens: 20_500, costUsd: 3.5, machines: 1, lastSyncAt: "2026-11-10T12:00:00.000Z" },
+      { id: 3, name: "Carla Mendes", email: "carla@example.com", tokens: 0, costUsd: 0, machines: 1, lastSyncAt: null },
     ],
     models: [
       { agent: "claude", model: "claude-sonnet-4-5", input: 100, output: 50, cacheCreate: 200, cacheRead: 29_650, total: 30_000, costUsd: 8, unpriced: false },

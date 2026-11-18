@@ -5,7 +5,7 @@ import { getCookie, setCookie } from "hono/cookie";
 import { APP_NAME, validateBatch } from "@teamusage/shared";
 import { authenticate, createSession, hasSession, registerMachine, upsertUsage, type Db } from "./db.js";
 import { createLimiter } from "./limiter.js";
-import { getStats } from "./stats.js";
+import { getStats, memberExists } from "./stats.js";
 
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
 const MACHINE_ID = /^[a-f0-9]{32}$/;
@@ -76,6 +76,8 @@ function errorTrace(err: unknown): string {
   const code = typeof err === "object" && err !== null ? (err as { code?: unknown }).code : undefined;
   return typeof code === "string" && /^[A-Z0-9_]{1,40}$/.test(code) ? `${name} ${code}` : name;
 }
+
+const MEMBER_ID = /^[1-9][0-9]{0,9}$/;
 
 export function createApp(
   db: Db,
@@ -192,10 +194,18 @@ export function createApp(
     if (f === undefined || t === undefined || f > t || (t - f) / 86_400_000 + 1 > MAX_RANGE_DAYS) {
       return fail(c, 400, "invalid date range");
     }
-    if (member === undefined) return c.json(getStats(db, { from: from as string, to: to as string }));
-    // `me` is the token's member; a cookie or demo session has no member of its own.
-    if (member !== "me" || !who || opts.demo) return fail(c, 400, "invalid member");
-    return c.json(getStats(db, { from: from as string, to: to as string, memberId: who.memberId }));
+    const range = { from: from as string, to: to as string };
+    if (member === undefined) return c.json(getStats(db, range));
+    if (member === "me") {
+      // `me` is the token's member; a cookie or demo session has no member of its own.
+      if (!who || opts.demo) return fail(c, 400, "invalid member");
+      return c.json(getStats(db, { ...range, memberId: who.memberId }));
+    }
+    if (!MEMBER_ID.test(member)) return fail(c, 400, "invalid query");
+    const memberId = Number(member);
+    if (!Number.isSafeInteger(memberId)) return fail(c, 400, "invalid query");
+    if (!memberExists(db, memberId)) return fail(c, 404, "member not found");
+    return c.json(getStats(db, { ...range, memberId }));
   });
 
   return app;

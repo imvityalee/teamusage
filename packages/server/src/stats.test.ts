@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { openDb, registerMachine, upsertUsage, type Db } from "./db.js";
-import { getStats } from "./stats.js";
+import { getStats, memberExists } from "./stats.js";
 
 const M1 = "1".repeat(32);
 const M2 = "2".repeat(32);
@@ -188,5 +188,54 @@ describe("getStats storage-layer overflow guard", () => {
     expect(s.models[0]).toMatchObject({ input: 3339, output: 2, cacheCreate: 2, cacheRead: 2, total: 3345 });
     expect(s.daily.find((d) => d.date === "2026-11-03")?.byAgent).toEqual({ claude: 2345 });
     expect(Number.isInteger(s.totals.tokens)).toBe(true);
+  });
+});
+
+describe("member ids and machines", () => {
+  test("every members entry carries its id, and machines is absent without memberId", () => {
+    const { db, ann, bob } = seed();
+    const s = getStats(db, Q);
+    expect(s.members.map((m) => [m.name, m.id])).toEqual([["Bob", bob], ["Ann", ann]]);
+    expect("machines" in s).toBe(false);
+  });
+
+  test("memberId returns only that member's machines, most recent sync first, never-synced last", () => {
+    const { db, ann, bob } = seed();
+    db.prepare("update machines set last_sync_at = ? where id = ?").run("2026-11-05T00:00:00.000Z", M1);
+    db.prepare("update machines set last_sync_at = ? where id = ?").run("2026-11-06T00:00:00.000Z", M2);
+    registerMachine(db, { name: "Ann", email: "ann@x.com", machineId: "4".repeat(32), machineLabel: "never" });
+    const s = getStats(db, { ...Q, memberId: ann });
+    expect(s.machines).toEqual([
+      { label: "desk", lastSyncAt: "2026-11-06T00:00:00.000Z" },
+      { label: "mbp", lastSyncAt: "2026-11-05T00:00:00.000Z" },
+      { label: "never", lastSyncAt: null },
+    ]);
+    expect(JSON.stringify(s)).not.toContain(M1);
+    expect(getStats(db, { ...Q, memberId: bob }).machines?.map((m) => m.label)).toEqual(["box"]);
+  });
+
+  test("ties on last sync break by label then id", () => {
+    const db = openDb(":memory:");
+    const at = "2026-11-05T00:00:00.000Z";
+    const a = registerMachine(db, { name: "Cy", email: "cy@x.com", machineId: M3, machineLabel: "b" });
+    registerMachine(db, { name: "Cy", email: "cy@x.com", machineId: M2, machineLabel: "b" });
+    registerMachine(db, { name: "Cy", email: "cy@x.com", machineId: M1, machineLabel: "a" });
+    db.prepare("update machines set last_sync_at = ?").run(at);
+    const s = getStats(db, { ...Q, memberId: a.memberId });
+    expect(s.machines?.map((m) => m.label)).toEqual(["a", "b", "b"]);
+  });
+
+  test("a member with no usage in range has zero totals, no models and still their machines", () => {
+    const { db, ann } = seed();
+    const s = getStats(db, { from: "2026-12-01", to: "2026-12-03", memberId: ann });
+    expect(s.totals).toEqual({ tokens: 0, costUsd: 0, activeMembers: 0, memberCount: 1 });
+    expect(s.models).toEqual([]);
+    expect(s.machines?.map((m) => m.label).sort()).toEqual(["desk", "mbp"]);
+  });
+
+  test("memberExists", () => {
+    const { db, ann } = seed();
+    expect(memberExists(db, ann)).toBe(true);
+    expect(memberExists(db, 999999)).toBe(false);
   });
 });

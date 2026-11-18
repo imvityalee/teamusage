@@ -4,6 +4,7 @@ export interface Stats {
   totals: { tokens: number; costUsd: number; activeMembers: number; memberCount: number };
   daily: { date: string; byAgent: Record<string, number> }[]; // every day in range, zeros included
   members: {
+    id: number;
     name: string;
     email: string;
     tokens: number;
@@ -11,6 +12,8 @@ export interface Stats {
     machines: number;
     lastSyncAt: string | null;
   }[]; // sorted by tokens desc
+  /** Present only when a single member was requested: that member's machines, most recently synced first. */
+  machines?: { label: string; lastSyncAt: string | null }[];
   models: {
     agent: string;
     model: string;
