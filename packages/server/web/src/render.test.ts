@@ -179,7 +179,7 @@ describe("members table", () => {
     const root = render();
     expect(root.querySelector("#members thead")?.textContent).toContain("Agent mix");
     expect(root.querySelector(".mix-note")?.textContent).toBe(
-      "The bar's length shows each member's share of the team's tokens; its colours show which agents they used.",
+      "The bar's length compares each member with the most active member; its colours show which agents they used.",
     );
   });
 

@@ -52,7 +52,13 @@ export function longDate(iso: string, locale: string): string {
   return calendarDate(iso).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" });
 }
 
-export { agentName } from "./agents.js";
+/** "21 Aug – 18 Nov 2026" in one year, "18 Nov 2025 – 3 Feb 2026" across years; month names follow the locale. */
+export function rangeText(from: string, to: string, locale: string): string {
+  const start = calendarDate(from);
+  const sameYear = start.getFullYear() === calendarDate(to).getFullYear();
+  const first = sameYear ? start.toLocaleDateString(locale, { day: "numeric", month: "short" }) : longDate(from, locale);
+  return `${first} – ${longDate(to, locale)}`;
+}
 
 const LETTER = /\p{L}/u;
 

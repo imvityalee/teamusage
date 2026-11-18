@@ -1,7 +1,6 @@
 import { Window } from "happy-dom";
 import { describe, expect, test } from "vitest";
-import { agentIcon, agentLogo, agentStyle, badgeLetters, LOGO_PATHS, OTHER_SERIES, SERIES, SERIES_CLASS, seriesOf } from "./agents.js";
-import { agentName } from "./format.js";
+import { agentIcon, agentName, agentLogo, agentStyle, badgeLetters, LOGO_PATHS, OTHER_SERIES, SERIES, SERIES_CLASS, seriesOf } from "./agents.js";
 import { HOSTILE_IDS } from "./test-fixtures.js";
 
 const doc = () => new Window().document as unknown as Document;

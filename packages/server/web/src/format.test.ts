@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
-import { agentName, compact, daysSince, full, initials, localIsoDate, shortDate, usd } from "./format.js";
+import { compact, daysSince, full, initials, localIsoDate, rangeText, shortDate, usd } from "./format.js";
+import { agentName } from "./agents.js";
 
 describe("full", () => {
   test("groups thousands", () => {
@@ -83,5 +84,18 @@ describe("initials", () => {
 
   test("always one or two characters", () => {
     for (const name of ["ß ß", "ﬁ x", "𝒜lpha 𝔅eta", "a".repeat(500)]) expect([...initials(name)].length).toBeLessThanOrEqual(2);
+  });
+});
+
+describe("rangeText", () => {
+  test("same year: day and month for both ends, the year once at the end", () => {
+    expect(rangeText("2026-08-21", "2026-11-18", "en-GB")).toBe("21 Aug – 18 Nov 2026");
+  });
+  test("different years: both ends carry their year", () => {
+    expect(rangeText("2025-11-18", "2026-02-03", "en-GB")).toBe("18 Nov 2025 – 3 Feb 2026");
+  });
+  test("Russian uses Russian month abbreviations", () => {
+    expect(rangeText("2026-08-21", "2026-11-18", "ru-RU")).toBe("21 авг. – 18 нояб. 2026 г.");
+    expect(rangeText("2025-11-18", "2026-02-03", "ru-RU")).toBe("18 нояб. 2025 г. – 3 февр. 2026 г.");
   });
 });

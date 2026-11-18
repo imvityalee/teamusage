@@ -14,8 +14,8 @@ import {
   type Filters,
   type Toggled,
 } from "./filters.js";
-import { localIsoDate, longDate } from "./format.js";
-import { loadLang, locale, pickLang, saveLang, t, type Lang, type MessageKey } from "./i18n.js";
+import { localIsoDate, rangeText } from "./format.js";
+import { loadLang, pickLang, saveLang, t, type Lang, type MessageKey } from "./i18n.js";
 import {
   applyMemberSearch,
   applyStaticText,
@@ -204,7 +204,7 @@ function paint(): void {
   for (const b of ui.lang.querySelectorAll<HTMLElement>("button[data-lang]")) {
     b.setAttribute("aria-pressed", String(b.dataset.lang === lang));
   }
-  ui.sub.textContent = state.from && state.to ? `${longDate(state.from, locale(lang))} – ${longDate(state.to, locale(lang))}` : "";
+  ui.sub.textContent = state.from && state.to ? rangeText(state.from, state.to, lang === "ru" ? "ru-RU" : "en-GB") : "";
   showMessage(ui.rangeMsg, state.rangeMsg);
   showMessage(ui.statusText, state.status);
   ui.status.hidden = state.status === null;
@@ -212,6 +212,7 @@ function paint(): void {
   ui.login.hidden = state.view !== "login";
   ui.stats.hidden = state.view === "login";
   ui.filterbar.hidden = state.view === "login";
+  ui.pageHead.hidden = state.view === "login";
   paintFilters();
   const { shown } = state;
   if (shown === null) return;
@@ -229,7 +230,7 @@ function paint(): void {
         renderMember(document, shown.stats, shown.id, lang, today(), { filters: shown.filters, teamTokens: teamTokensFor(shown.stats) }),
       );
       const name = shown.stats.members.find((m) => m.id === shown.id)?.name;
-      if (name !== undefined) document.title = t(lang, "memberTitle", { name });
+      if (name !== undefined && state.view === "stats") document.title = t(lang, "memberTitle", { name });
       break;
     }
     case "notFound":

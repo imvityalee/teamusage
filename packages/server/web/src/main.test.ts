@@ -106,6 +106,28 @@ describe("login", () => {
     expect(doc.documentElement.outerHTML).not.toContain(code);
   });
 
+  test("a 401 on a member page leaves no member name in the visible page or the title", async () => {
+    await boot(json(statsFixture()));
+    replies.push(json(memberStatsFixture()));
+    $('#members a[href="#/member/1"]').click();
+    await flush();
+    expect($("#member-heading").textContent).toBe("Alice Archer");
+    replies.push(unauthorized());
+    $('#range button[data-days="30"]').click();
+    await flush();
+    expect($("#login").hidden).toBe(false);
+    expect($("#page-head").hidden).toBe(true);
+    expect(doc.title).not.toContain("Alice Archer");
+    expect($("#stats").hidden).toBe(true);
+  });
+
+  test("the date range reads like 21 Aug – 18 Nov 2026", async () => {
+    await boot(json(statsFixture()));
+    const r = range(90);
+    expect($("#sub").textContent).toMatch(/^\d{1,2} \w{3} – \d{1,2} \w{3}( \d{4})?/);
+    expect(r.from < r.to).toBe(true);
+  });
+
   test("a wrong code and too many attempts are explained", async () => {
     await boot(unauthorized());
     replies.push(json({ error: "invalid invite code" }, 403));

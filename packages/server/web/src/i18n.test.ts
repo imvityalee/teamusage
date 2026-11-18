@@ -159,7 +159,8 @@ describe("more design strings", () => {
     expect(t("ru", "syncedToday")).toBe("Отправлено сегодня");
     expect(t("ru", "neverSynced")).toBe("Ещё не отправлялось");
     expect(t("ru", "notCounted")).toBe("Использование на этом устройстве с тех пор ещё не учтено");
-    expect(t("en", "mixNote")).toBe("The bar's length shows each member's share of the team's tokens; its colours show which agents they used.");
+    expect(t("en", "mixNote")).toBe("The bar's length compares each member with the most active member; its colours show which agents they used.");
+    expect(t("ru", "mixNote")).toBe("Длина полосы сравнивает участника с самым активным; цвета показывают, какими агентами он пользовался.");
     expect(t("en", "otherAgents")).toBe("Other agents");
     expect(t("ru", "otherAgents")).toBe("Другие агенты");
   });
