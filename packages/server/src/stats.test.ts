@@ -413,15 +413,105 @@ describe("agent and model filters", () => {
     expect(t).toBe(Number.MAX_VALUE);
   });
 
-  test("a filter run issues a bounded number of queries", () => {
+  test("a filter run issues a bounded number of queries, never one per member, agent or model", () => {
     const { db } = seedFilters();
     let n = 0;
     const orig = db.prepare.bind(db);
     (db as unknown as { prepare: unknown }).prepare = (sql: string) => { n++; return orig(sql); };
     getStats(db, { ...Q, agents: ["claude", "codex"], models: [{ agent: "claude", model: "opus" }] });
-    expect(n).toBe(4);
+    expect(n).toBe(5);
     n = 0;
     getStats(db, { ...Q, memberId: 1, agents: ["claude"] });
+    expect(n).toBe(6);
+    // More members, agents and models do not add queries.
+    for (let i = 0; i < 5; i++) {
+      const id = String(i + 5).repeat(32);
+      const r = registerMachine(db, { name: `M${i}`, email: `m${i}@x.com`, machineId: id, machineLabel: "l" });
+      upsertUsage(db, { memberId: r.memberId, machineId: id }, [rec("2026-11-02", `agent${i}`, `model${i}`, 3)]);
+    }
+    n = 0;
+    getStats(db, Q);
     expect(n).toBe(5);
+  });
+});
+
+describe("members byAgent", () => {
+  const M4 = "4".repeat(32);
+  /** The same data as the filter tests: Ann claude/opus 10, claude/sonnet 20, codex/gpt 40; Bob claude/opus 100, gemini/g 5, codex/gpt 1, codex/other 2. */
+  function seedMix(): { db: Db; ann: number; bob: number; cy: number } {
+    const db = openDb(":memory:");
+    const a = registerMachine(db, { name: "Ann", email: "ann@x.com", machineId: M1, machineLabel: "mbp" });
+    const a2 = registerMachine(db, { name: "Ann", email: "ann@x.com", machineId: M4, machineLabel: "desk" });
+    const b = registerMachine(db, { name: "Bob", email: "bob@x.com", machineId: M3, machineLabel: "box" });
+    const c = registerMachine(db, { name: "Cy", email: "cy@x.com", machineId: M2, machineLabel: "idle" });
+    upsertUsage(db, { memberId: a.memberId, machineId: M1 }, [
+      rec("2026-11-02", "claude", "opus", 6),
+      rec("2026-11-02", "claude", "sonnet", 20),
+      rec("2026-11-03", "codex", "gpt", 40),
+    ]);
+    // A second machine of Ann's: summed with the first.
+    upsertUsage(db, { memberId: a2.memberId, machineId: M4 }, [rec("2026-11-05", "claude", "opus", 4)]);
+    upsertUsage(db, { memberId: b.memberId, machineId: M3 }, [
+      rec("2026-11-02", "claude", "opus", 100),
+      rec("2026-11-03", "gemini", "g", 5),
+      rec("2026-11-04", "codex", "gpt", 1),
+      rec("2026-11-04", "codex", "other", 2),
+      rec("2026-10-01", "claude", "opus", 1000), // outside range
+    ]);
+    return { db, ann: a.memberId, bob: b.memberId, cy: c.memberId };
+  }
+  const mix = (s: ReturnType<typeof getStats>) => s.members.map((m) => [m.name, m.byAgent]);
+
+  test("each member's tokens by agent in the range, summed over machines; a member without usage has an empty object", () => {
+    const { db } = seedMix();
+    expect(mix(getStats(db, Q))).toEqual([
+      ["Bob", { claude: 100, gemini: 5, codex: 3 }],
+      ["Ann", { claude: 30, codex: 40 }],
+      ["Cy", {}],
+    ]);
+    // byAgent always adds up to the member's tokens.
+    for (const m of getStats(db, Q).members) expect(Object.values(m.byAgent).reduce((a, n) => a + n, 0)).toBe(m.tokens);
+  });
+
+  test("respects the agent filter, the model filter and both together", () => {
+    const { db } = seedMix();
+    expect(mix(getStats(db, { ...Q, agents: ["codex"] }))).toEqual([["Ann", { codex: 40 }], ["Bob", { codex: 3 }], ["Cy", {}]]);
+    expect(mix(getStats(db, { ...Q, models: [{ agent: "claude", model: "opus" }, { agent: "gemini", model: "g" }] }))).toEqual([
+      ["Bob", { claude: 100, gemini: 5 }],
+      ["Ann", { claude: 10 }],
+      ["Cy", {}],
+    ]);
+    expect(mix(getStats(db, { ...Q, agents: ["claude"], models: [{ agent: "claude", model: "sonnet" }, { agent: "codex", model: "gpt" }] }))).toEqual([
+      ["Ann", { claude: 20 }],
+      ["Bob", {}],
+      ["Cy", {}],
+    ]);
+    expect(mix(getStats(db, { ...Q, agents: ["nobody"] }))).toEqual([["Ann", {}], ["Bob", {}], ["Cy", {}]]);
+  });
+
+  test("respects the range and the member", () => {
+    const { db, ann, cy } = seedMix();
+    expect(mix(getStats(db, { from: "2026-11-04", to: "2026-11-05" }))).toEqual([["Ann", { claude: 4 }], ["Bob", { codex: 3 }], ["Cy", {}]]);
+    expect(mix(getStats(db, { ...Q, memberId: ann, agents: ["claude"] }))).toEqual([["Ann", { claude: 30 }]]);
+    expect(mix(getStats(db, { ...Q, memberId: cy }))).toEqual([["Cy", {}]]);
+  });
+
+  test("agent ids like __proto__ are ordinary own properties", () => {
+    const db = openDb(":memory:");
+    const r = registerMachine(db, { name: "Cy", email: "cy@x.com", machineId: M1, machineLabel: "l" });
+    upsertUsage(db, { memberId: r.memberId, machineId: M1 }, [rec("2026-11-02", "__proto__", "m", 5), rec("2026-11-02", "constructor", "m", 7)]);
+    const by = getStats(db, Q).members[0]?.byAgent as Record<string, number>;
+    expect(Object.keys(by).sort()).toEqual(["__proto__", "constructor"]);
+    expect(Object.getOwnPropertyDescriptor(by, "__proto__")?.value).toBe(5);
+    expect(Object.getPrototypeOf(by)).toBe(Object.prototype);
+    expect(JSON.parse(JSON.stringify(by))).toEqual(by);
+  });
+
+  test("sums beyond the integer range stay finite", () => {
+    const db = openDb(":memory:");
+    const r = registerMachine(db, { name: "Cy", email: "cy@x.com", machineId: M1, machineLabel: "l" });
+    upsertUsage(db, { memberId: r.memberId, machineId: M1 }, [rec("2026-11-02", "a", "m", 1), rec("2026-11-03", "a", "m", 1)]);
+    db.prepare("update usage set total = 1e308").run();
+    expect(getStats(db, Q).members[0]?.byAgent).toEqual({ a: Number.MAX_VALUE });
   });
 });

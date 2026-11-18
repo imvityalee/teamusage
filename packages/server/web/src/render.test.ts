@@ -29,7 +29,10 @@ function codexOnly(): Stats {
     ...s,
     totals: { tokens: 5_000, costUsd: 1.5, activeMembers: 2, memberCount: 3 },
     daily: s.daily.map((d) => ({ date: d.date, byAgent: { codex: 500 } })),
-    members: s.members.map((m, i) => ({ ...m, tokens: [4_500, 500, 0][i] ?? 0, costUsd: 0, byAgent: i < 2 ? { codex: [4_500, 500][i] } : {} })),
+    members: s.members.map((m, i): Stats["members"][number] => {
+      const codex = [4_500, 500, 0][i] ?? 0;
+      return { ...m, tokens: codex, costUsd: 0, byAgent: codex > 0 ? { codex } : {} };
+    }),
     models: s.models.filter((m) => m.agent === "codex"),
   };
 }

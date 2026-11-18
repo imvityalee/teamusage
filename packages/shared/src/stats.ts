@@ -11,6 +11,8 @@ export interface Stats {
     costUsd: number;
     machines: number;
     lastSyncAt: string | null;
+    /** Tokens by agent id for this member, with the same range and filters as `tokens`; empty when none. */
+    byAgent: Record<string, number>;
   }[]; // sorted by tokens desc
   /** Present only when a single member was requested: that member's machines, most recently synced first. */
   machines?: { label: string; lastSyncAt: string | null }[];

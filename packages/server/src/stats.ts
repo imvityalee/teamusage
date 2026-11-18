@@ -92,6 +92,22 @@ export function getStats(
     )
     .all(p) as { date: string; agent: string; total: number }[];
 
+  // Each member's tokens by agent, with the same range, member and filters: one grouped query for every member.
+  const mixRows = db
+    .prepare(
+      `select member_id as memberId, agent, total(total) as total
+       from usage u
+       where date between @from and @to and (@memberId is null or member_id = @memberId) and ${filter.sql}
+       group by member_id, agent`,
+    )
+    .all(p) as { memberId: number; agent: string; total: number }[];
+  const mixes = new Map<number, Map<string, number>>();
+  for (const r of mixRows) {
+    const mix = mixes.get(r.memberId) ?? new Map<string, number>();
+    mix.set(r.agent, finite(r.total));
+    mixes.set(r.memberId, mix);
+  }
+
   // Filter controls: the same range and member, but never the agent/model filters. One query for both lists.
   const availRows = db
     .prepare(
@@ -150,6 +166,8 @@ export function getStats(
       costUsd: round6(m.cost),
       machines: m.machines,
       lastSyncAt: m.lastSyncAt,
+      // Agent ids are data: fromEntries makes `__proto__` an ordinary own property.
+      byAgent: Object.fromEntries(mixes.get(m.id) ?? []) as Record<string, number>,
     })),
     ...(machines ? { machines } : {}),
     available,

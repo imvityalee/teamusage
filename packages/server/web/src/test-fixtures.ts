@@ -21,12 +21,6 @@ export const HOSTILE_IDS = [
   "Claude",
 ];
 
-/**
- * A members entry with `byAgent`, each member's tokens by agent, as a server with the agent-mix addition sends it.
- * The shared Stats type does not have the field yet; the dashboard reads it when present.
- */
-type MemberWithMix = Stats["members"][number] & { byAgent: Record<string, number> };
-
 const PLAIN: FixtureNames = { name: "Alice Archer", email: "alice@example.com", agent: "aider", model: "some-model" };
 
 /** Ten days ending 2026-11-18, two members, three agents. `names` replaces the first member and the third agent. */
@@ -39,7 +33,7 @@ export function statsFixture(names: FixtureNames = PLAIN): Stats {
       [names.agent, i % 2 === 0 ? 100 : 0],
     ]) as Record<string, number>,
   }));
-  const members: MemberWithMix[] = [
+  const members: Stats["members"] = [
     {
       id: 1, name: names.name, email: names.email, tokens: 40_000, costUsd: 9, machines: 2, lastSyncAt: "2026-11-18T12:00:00.000Z",
       byAgent: Object.fromEntries([["claude", 35_000], ["codex", 4_500], [names.agent, 500]]) as Record<string, number>,

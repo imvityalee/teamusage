@@ -522,7 +522,7 @@ describe("filters", () => {
       ...base,
       totals: { tokens, costUsd: matches ? 11 : 0, activeMembers: matches ? 1 : 0, memberCount: 1 },
       daily,
-      members: base.members.map((m) => ({ ...m, tokens, costUsd: matches ? 11 : 0, byAgent: matches ? { claude: tokens } : {} })),
+      members: base.members.map((m): Stats["members"][number] => ({ ...m, tokens, costUsd: matches ? 11 : 0, byAgent: matches ? { claude: tokens } : {} })),
       models: matches ? base.models.filter((m) => m.agent === "claude") : [],
       available: {
         agents: ["claude"],
