@@ -473,6 +473,11 @@ teamusage status                  # shows "Scheduled sync: installed" or "not in
 - **macOS:** a LaunchAgent at `~/Library/LaunchAgents/com.teamusage.sync.plist` (mode 0644), loaded with
   `launchctl`. `schedule remove` unloads it and deletes the file.
 - **Linux:** one line in your crontab, tagged `# teamusage`. `schedule remove` deletes only that line.
+- **Plugin users:** the job runs outside Claude Code, so it cannot see the plugin's settings. Run
+  `teamusage setup` once with the same server address, name and email before `schedule install`;
+  otherwise every scheduled run only logs `teamusage is not set up` in `sync.log`. If Claude Code is the
+  only place you work, you do not need the job: the plugin's session hooks already send every agent
+  ccusage finds on the machine, Codex included.
 - **Windows is not supported yet.** `schedule install` says so and changes nothing.
 - The job holds only the path of Node, the path of the installed client, `sync` and `--quiet`. Your name,
   email, server and invite code are never written into it; it reads the config file like any other sync.
