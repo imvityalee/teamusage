@@ -108,20 +108,27 @@ The backup contains the invite code and everyone's names, emails and machine nam
 as the server itself.
 
 **Back up.** Stop the container first. The database keeps its most recent writes in a companion file
-until it is closed, so a copy taken while the server is running can miss rows. The dated name is made
-by your own shell, before Docker runs, and the archive is created readable by you only.
+until it is closed, so a copy taken while the server is running can miss rows. The dated name and your
+user and group ids come from your own shell, before Docker runs. The archive is created private
+(mode 600) and then handed to you, so you can read and copy it without `sudo`, on Linux and on macOS.
 
 ```sh
 f=teamusage-backup-$(date +%F).tar.gz
+uid=$(id -u); gid=$(id -g)
 docker stop teamusage
 docker run --rm -v teamusage-data:/data -v "$PWD":/backup node:22-slim \
-  sh -c 'umask 077 && tar -czf "/backup/$1" -C /data .' sh "$f" ;
+  sh -c 'umask 077 && tar -czf "/backup/$1" -C /data . && chown "$2:$3" "/backup/$1"' sh "$f" "$uid" "$gid" ;
 docker start teamusage
 ```
 
 The `;` makes `docker start teamusage` run even if the copy fails, so a failed copy cannot leave the
-server stopped. In a script, do not use `set -e` or `&&` between these steps for the same reason, and
-check afterwards that the file exists.
+server stopped. In a script, do not use `set -e` or `&&` between these steps for the same reason.
+Because a failed copy passes silently, always check the archive:
+
+```sh
+ls -l "$f"                      # the file exists and is not empty
+tar -tzf "$f" | grep teamusage.sqlite   # prints ./teamusage.sqlite
+```
 
 The dashboard is unavailable for those few seconds. Nothing is lost: each member's machine sends the
 same days again on its next sync. To do this on a schedule, put the commands in a script and run it
@@ -142,23 +149,30 @@ docker run --rm -v teamusage-data:/data -v "$PWD":/backup node:22-slim \
 
 Then start the container exactly as in [Run it for your team](#run-it-for-your-team).
 
-To restore on the same server, first remove the old container and its volume, then run the same steps:
+**Restoring on the same server is destructive. Do the steps in this order.**
 
-```sh
-docker rm -f teamusage
-docker volume rm teamusage-data
-```
+1. Make a backup as above and check it: the archive exists, is not empty, and `tar -tzf "$f"` lists
+   `./teamusage.sqlite`.
+2. Only then remove the old container and volume. `docker volume rm` permanently deletes the current
+   database and cannot be undone.
+
+   ```sh
+   docker rm -f teamusage
+   docker volume rm teamusage-data
+   ```
+
+3. Create the volume and restore as on a new server (the commands above), then start the container.
 
 Members, tokens and usage history come with the file. The invite code comes with it only when the server
 generated it. If you pinned it with `TEAMUSAGE_INVITE_CODE`, pass the same variable to the new server.
 
 - **If the server keeps the same address,** nobody on the team has to do anything.
-- **If the address changes,** a saved token is tied to the address it was issued for, and the client
-  sends nothing until the change is confirmed. Members who use the command-line client run
-  `teamusage setup` with the new address. Members who use the Claude Code plugin change the Server URL
-  in the plugin's settings (`/plugin configure teamusage@teamusage`) and then run `teamusage setup` in a
-  terminal to confirm the change; until then their syncs send nothing. Setup registers again, so it asks
-  for the invite code.
+- **If the address changes,** a saved token is tied to the address it was issued for, so after the
+  change the client sends nothing and says to run `teamusage setup`. Everyone runs `teamusage setup`
+  once in a terminal and enters the new address (or passes `--server`); it registers again, so it asks
+  for the invite code. `teamusage setup` does not read the Claude Code plugin's settings, and a config
+  file saved by an earlier `setup` overrides them. So plugin users also change the Server URL in the
+  plugin's settings (`/plugin configure teamusage@teamusage`), so that both agree.
 
 Restore a backup somewhere once before you rely on it: a backup that has never been restored is not
 yet proven.
