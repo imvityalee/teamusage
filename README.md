@@ -6,6 +6,8 @@ The server shows one dashboard for the whole team: tokens and estimated cost by 
 
 It is built for teams that want these numbers without handing them to a third party. You host the server,
 you hold the data, and the data sent is small and fixed (see [Exactly what is sent](#exactly-what-is-sent)).
+Only work that runs on a person's own machine can be counted; cloud sessions cannot (see
+[What is counted and what is not](#what-is-counted-and-what-is-not)).
 
 ## Try it in two commands
 
@@ -261,6 +263,57 @@ the plugin is not set up, they point you to `/plugin configure teamusage@teamusa
 `claude plugin uninstall teamusage@teamusage` in a terminal. This stops automatic sending from this
 machine. It does not delete anything on the server: your usage stays there until an operator runs
 `remove-member` or `remove-machine`. The saved token stays in the client's config file until you delete it.
+
+## What is counted and what is not
+
+teamusage counts work that runs **on your own machine**, because that is where the usage logs are. Work
+that runs on a provider's servers leaves no log on your machine and cannot be counted.
+
+| How you work | Counted? |
+| --- | --- |
+| Claude Code in the terminal | Yes |
+| Claude Code in the Claude desktop app, working in a folder on your machine | Yes |
+| Claude Code in VS Code or JetBrains | Yes (it runs the same local Claude Code) |
+| Scripts using the Claude Agent SDK on your machine | Yes |
+| Codex, Gemini CLI, OpenCode, Copilot CLI and the other agents ccusage supports, run locally | Yes |
+| Claude Code on the web (claude.ai/code) or any other session that runs in the cloud | **No** |
+| Ordinary chat in the Claude app or on claude.ai | **No** |
+
+If your team wants complete numbers:
+
+- **Run coding sessions locally**: the terminal, the desktop app working on a local folder, or an IDE
+  extension. Avoid cloud sessions for work that should be counted.
+- **Use the machine where teamusage is set up.** Usage on a machine without it is not sent.
+- **Let it sync at least once a month.** Claude Code deletes its local logs after 30 days by default, and
+  usage that was never sent before then is lost. The plugin's hooks and the
+  [scheduled sync](#scheduled-sync) take care of this.
+
+All Claude Code sessions appear together under "Claude Code"; the dashboard does not separate the
+terminal from the desktop app.
+
+### Что учитывается, а что нет
+
+teamusage считает только ту работу, которая выполняется **на вашем компьютере**: журналы использования
+хранятся именно там. Сессии, которые выполняются на серверах провайдера, не оставляют журналов на
+компьютере, и посчитать их нельзя.
+
+| Как вы работаете | Учитывается? |
+| --- | --- |
+| Claude Code в терминале | Да |
+| Claude Code в приложении Claude для компьютера, в локальной папке | Да |
+| Claude Code в VS Code или JetBrains | Да |
+| Скрипты на Claude Agent SDK на вашем компьютере | Да |
+| Codex, Gemini CLI, OpenCode, Copilot CLI и другие агенты, запущенные локально | Да |
+| Claude Code в браузере (claude.ai/code) и любые облачные сессии | **Нет** |
+| Обычный чат в приложении Claude или на claude.ai | **Нет** |
+
+Чтобы статистика была полной:
+
+- **Запускайте сессии локально**: в терминале, в приложении для компьютера с локальной папкой или в
+  расширении для IDE. Не используйте облачные сессии для работы, которую нужно учитывать.
+- **Работайте на компьютере, где настроен teamusage.** С других компьютеров данные не отправляются.
+- **Синхронизация должна проходить хотя бы раз в месяц.** Claude Code по умолчанию удаляет локальные
+  журналы через 30 дней. Хуки плагина и синхронизация по расписанию делают это автоматически.
 
 ## Exactly what is sent
 
