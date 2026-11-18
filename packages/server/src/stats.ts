@@ -107,7 +107,7 @@ export function getStats(
     agents: [...agentTotals].sort((a, b) => b[1] - a[1] || cmp(a[0], b[0])).map(([a]) => a),
     models: [...availRows]
       .sort((a, b) => finite(b.total) - finite(a.total) || cmp(a.agent, b.agent) || cmp(a.model, b.model))
-      .map((r) => ({ agent: r.agent, model: r.model })),
+      .map((r) => ({ agent: r.agent, model: r.model, tokens: finite(r.total) })),
   };
 
   // Agent ids are data: a Map plus fromEntries makes `__proto__` an ordinary own property.

@@ -267,11 +267,11 @@ describe("agent and model filters", () => {
   const fullAvailable = {
     agents: ["claude", "codex", "gemini"],
     models: [
-      { agent: "claude", model: "opus" },
-      { agent: "codex", model: "gpt" },
-      { agent: "claude", model: "sonnet" },
-      { agent: "gemini", model: "g" },
-      { agent: "codex", model: "other" },
+      { agent: "claude", model: "opus", tokens: 110 },
+      { agent: "codex", model: "gpt", tokens: 41 },
+      { agent: "claude", model: "sonnet", tokens: 20 },
+      { agent: "gemini", model: "g", tokens: 5 },
+      { agent: "codex", model: "other", tokens: 2 },
     ],
   };
 
@@ -362,9 +362,9 @@ describe("agent and model filters", () => {
     expect(s.available).toEqual({
       agents: ["codex", "claude"],
       models: [
-        { agent: "codex", model: "gpt" },
-        { agent: "claude", model: "sonnet" },
-        { agent: "claude", model: "opus" },
+        { agent: "codex", model: "gpt", tokens: 40 },
+        { agent: "claude", model: "sonnet", tokens: 20 },
+        { agent: "claude", model: "opus", tokens: 10 },
       ],
     });
     const none = getStats(db, { ...Q, memberId: ann, agents: ["gemini"] });
@@ -376,7 +376,7 @@ describe("agent and model filters", () => {
     const { db } = seedFilters();
     expect(getStats(db, { from: "2026-11-04", to: "2026-11-04" }).available).toEqual({
       agents: ["codex"],
-      models: [{ agent: "codex", model: "other" }, { agent: "codex", model: "gpt" }],
+      models: [{ agent: "codex", model: "other", tokens: 2 }, { agent: "codex", model: "gpt", tokens: 1 }],
     });
     expect(getStats(db, { from: "2026-12-01", to: "2026-12-02", agents: ["claude"] }).available).toEqual({ agents: [], models: [] });
   });
@@ -388,7 +388,29 @@ describe("agent and model filters", () => {
     const s = getStats(db, { ...Q, models: [{ agent: "__proto__", model: "a'b%" }] });
     expect(s.totals.tokens).toBe(5);
     expect(s.available.agents).toEqual(["x", "__proto__"]);
+    expect(s.available.models).toEqual([
+      { agent: "x", model: "y", tokens: 7 },
+      { agent: "__proto__", model: "a'b%", tokens: 5 },
+    ]);
     expect(getStats(db, { ...Q, agents: ["%"] }).totals.tokens).toBe(0);
+  });
+
+  test("available model totals ignore the filters, sum every machine and clamp non-finite values", () => {
+    const { db } = seedFilters();
+    const filtered = getStats(db, { ...Q, agents: ["gemini"], models: [{ agent: "gemini", model: "g" }] });
+    expect(filtered.totals.tokens).toBe(5);
+    // Sum of every model's tokens is the unfiltered total for the range (178), so the page needs no extra request.
+    expect(filtered.available.models.reduce((n, m) => n + m.tokens, 0)).toBe(178);
+    expect(getStats(db, Q).totals.tokens).toBe(178);
+    const huge = openDb(":memory:");
+    const r = registerMachine(huge, { name: "Cy", email: "cy@x.com", machineId: M1, machineLabel: "l" });
+    upsertUsage(huge, { memberId: r.memberId, machineId: M1 }, [rec("2026-11-02", "a", "m", 1)]);
+    huge.prepare("update usage set total = 1e308").run();
+    upsertUsage(huge, { memberId: r.memberId, machineId: M1 }, [rec("2026-11-03", "a", "m", 1)]);
+    huge.prepare("update usage set total = 1e308").run();
+    const t = getStats(huge, Q).available.models[0]?.tokens;
+    expect(Number.isFinite(t)).toBe(true);
+    expect(t).toBe(Number.MAX_VALUE);
   });
 
   test("a filter run issues a bounded number of queries", () => {

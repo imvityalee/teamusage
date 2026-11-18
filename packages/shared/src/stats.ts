@@ -16,9 +16,10 @@ export interface Stats {
   machines?: { label: string; lastSyncAt: string | null }[];
   /**
    * Everything present in the date range (and for the member, when one is requested), IGNORING the agent and
-   * model filters, sorted by total tokens descending. It feeds the filter controls.
+   * model filters, sorted by total tokens descending. It feeds the filter controls. `tokens` is that model's
+   * total in the range; an agent's total, and the unfiltered total, are sums of these.
    */
-  available: { agents: string[]; models: { agent: string; model: string }[] };
+  available: { agents: string[]; models: { agent: string; model: string; tokens: number }[] };
   models: {
     agent: string;
     model: string;

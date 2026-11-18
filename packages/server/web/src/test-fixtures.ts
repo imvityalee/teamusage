@@ -39,10 +39,10 @@ export function statsFixture(names: FixtureNames = PLAIN): Stats {
     available: {
       agents: ["claude", "codex", names.agent],
       models: [
-        { agent: "claude", model: "claude-sonnet-4-5" },
-        { agent: "codex", model: "gpt-5-codex" },
-        { agent: "claude", model: "claude-opus-4-1" },
-        { agent: names.agent, model: names.model },
+        { agent: "claude", model: "claude-sonnet-4-5", tokens: 30_000 },
+        { agent: "claude", model: "claude-opus-4-1", tokens: 25_000 },
+        { agent: "codex", model: "gpt-5-codex", tokens: 5_000 },
+        { agent: names.agent, model: names.model, tokens: 500 },
       ],
     },
   };
