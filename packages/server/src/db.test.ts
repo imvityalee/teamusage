@@ -1,4 +1,8 @@
 import { createHash } from "node:crypto";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import Database from "better-sqlite3";
 import { beforeEach, describe, expect, test } from "vitest";
 import type { UsageRecord } from "@teamusage/shared";
 import {
@@ -151,6 +155,87 @@ describe("usage", () => {
     upsertUsage(db, { memberId: a.memberId, machineId: "m1" }, [rec()]);
     upsertUsage(db, { memberId: b.memberId, machineId: "m2" }, [rec()]);
     expect(count("usage")).toBe(2);
+  });
+});
+
+describe("account label", () => {
+  const setup = () => {
+    const { memberId } = registerMachine(db, reg("m1"));
+    return { memberId, machineId: "m1" };
+  };
+  const base = { date: "2026-11-17", agent: "claude" as const, model: "x" };
+  const label = (): { account_kind: string | null; account_org: string | null; total: number } =>
+    db.prepare("select account_kind, account_org, total from usage").get() as {
+      account_kind: string | null;
+      account_org: string | null;
+      total: number;
+    };
+
+  test("stores label", () => {
+    upsertUsage(db, setup(), [rec({ ...base, total: 100, account: { kind: "team", org: "D" } })]);
+    expect(label()).toMatchObject({ account_kind: "team", account_org: "D" });
+  });
+
+  test("keeps label when total unchanged", () => {
+    const who = setup();
+    upsertUsage(db, who, [rec({ ...base, total: 100, account: { kind: "team", org: "D" } })]);
+    upsertUsage(db, who, [rec({ ...base, total: 100, account: { kind: "personal" } })]);
+    expect(label()).toMatchObject({ account_kind: "team", account_org: "D" });
+  });
+
+  test("relabels when total grows", () => {
+    const who = setup();
+    upsertUsage(db, who, [rec({ ...base, total: 100, account: { kind: "team", org: "D" } })]);
+    upsertUsage(db, who, [rec({ ...base, total: 150, account: { kind: "personal" } })]);
+    expect(label()).toMatchObject({ account_kind: "personal", account_org: null, total: 150 });
+  });
+
+  test("null never clears", () => {
+    const who = setup();
+    upsertUsage(db, who, [rec({ ...base, total: 100, account: { kind: "team", org: "D" } })]);
+    upsertUsage(db, who, [rec({ ...base, total: 200 })]);
+    expect(label()).toMatchObject({ account_kind: "team", account_org: "D", total: 200 });
+  });
+
+  test("fills a missing label", () => {
+    const who = setup();
+    upsertUsage(db, who, [rec({ ...base, total: 100 })]);
+    expect(label().account_kind).toBeNull();
+    upsertUsage(db, who, [rec({ ...base, total: 100, account: { kind: "api" } })]);
+    expect(label()).toMatchObject({ account_kind: "api", account_org: null });
+  });
+
+  test("lower total changes nothing", () => {
+    const who = setup();
+    upsertUsage(db, who, [rec({ ...base, total: 100, account: { kind: "team", org: "D" } })]);
+    upsertUsage(db, who, [rec({ ...base, total: 50, account: { kind: "personal" } })]);
+    expect(label()).toMatchObject({ account_kind: "team", account_org: "D", total: 100 });
+  });
+
+  test("adds columns to an old database", () => {
+    const dir = mkdtempSync(join(tmpdir(), "tu-"));
+    const file = join(dir, "old.db");
+    const old = new Database(file);
+    old.exec(`
+      create table members (id integer primary key autoincrement, email text not null unique, name text not null, created_at text not null);
+      create table machines (id text primary key, member_id integer not null references members(id) on delete cascade, label text not null, token_hash text not null unique, created_at text not null, last_sync_at text);
+      create table usage (member_id integer not null, machine_id text not null, date text not null, agent text not null, model text not null,
+        input integer not null, output integer not null, cache_create integer not null, cache_read integer not null, total integer not null,
+        cost_usd real not null, unpriced integer not null, primary key (machine_id, date, agent, model));
+      insert into usage values (1, 'm1', '2026-11-17', 'claude', 'x', 1, 0, 0, 0, 1, 0, 0);
+    `);
+    old.close();
+    openDb(file).close();
+    const again = openDb(file);
+    const cols = (again.prepare("pragma table_info(usage)").all() as { name: string }[]).map((c) => c.name);
+    expect(cols).toContain("account_kind");
+    expect(cols).toContain("account_org");
+    expect(again.prepare("select account_kind, account_org from usage").get()).toEqual({
+      account_kind: null,
+      account_org: null,
+    });
+    again.close();
+    rmSync(dir, { recursive: true });
   });
 });
 

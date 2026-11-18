@@ -47,6 +47,11 @@ export function openDb(path: string): Db {
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
   db.exec(SCHEMA);
+  // Databases created by 0.1/0.2 lack the account label columns; add them in place.
+  const have = new Set((db.prepare("pragma table_info(usage)").all() as { name: string }[]).map((c) => c.name));
+  for (const col of ["account_kind", "account_org"]) {
+    if (!have.has(col)) db.exec(`alter table usage add column ${col} text`);
+  }
   return db;
 }
 
@@ -128,14 +133,20 @@ export function upsertUsage(
   who: { memberId: number; machineId: string },
   records: UsageRecord[],
 ): { stored: number; kept: number } {
+  // The label changes only when tokens grew (or none is stored yet); a record without a label never clears one.
+  // Kind and org share one condition and are set in the same statement, so they change together.
+  const TAKE_LABEL =
+    "excluded.account_kind is not null and (excluded.total > usage.total or usage.account_kind is null)";
   // A day's usage only grows, so a lower incoming total means local logs were pruned: keep the stored row.
   const stmt = db.prepare(`
-    insert into usage (member_id, machine_id, date, agent, model, input, output, cache_create, cache_read, total, cost_usd, unpriced)
-    values (@memberId, @machineId, @date, @agent, @model, @input, @output, @cacheCreate, @cacheRead, @total, @costUsd, @unpriced)
+    insert into usage (member_id, machine_id, date, agent, model, input, output, cache_create, cache_read, total, cost_usd, unpriced, account_kind, account_org)
+    values (@memberId, @machineId, @date, @agent, @model, @input, @output, @cacheCreate, @cacheRead, @total, @costUsd, @unpriced, @accountKind, @accountOrg)
     on conflict (machine_id, date, agent, model) do update set
       member_id = excluded.member_id, input = excluded.input, output = excluded.output,
       cache_create = excluded.cache_create, cache_read = excluded.cache_read, total = excluded.total,
-      cost_usd = excluded.cost_usd, unpriced = excluded.unpriced
+      cost_usd = excluded.cost_usd, unpriced = excluded.unpriced,
+      account_org = case when ${TAKE_LABEL} then excluded.account_org else usage.account_org end,
+      account_kind = case when ${TAKE_LABEL} then excluded.account_kind else usage.account_kind end
     where excluded.total >= usage.total`);
   return db.transaction(() => {
     let stored = 0;
@@ -154,6 +165,8 @@ export function upsertUsage(
         total: r.total,
         costUsd: r.costUsd,
         unpriced: r.unpriced ? 1 : 0,
+        accountKind: r.account?.kind ?? null,
+        accountOrg: r.account?.org ?? null,
       });
       if (res.changes > 0) stored++;
       else kept++;
