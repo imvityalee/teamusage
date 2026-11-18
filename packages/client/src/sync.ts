@@ -85,7 +85,8 @@ export function shouldSkip(throttleMs: number, now: Date, readAttempt: () => str
   return age >= 0 && age < throttleMs;
 }
 
-function writeLastAttempt(): void {
+/** Records that a sync attempt starts now; best effort. */
+export function writeLastAttempt(): void {
   try {
     const file = path.join(ensureConfigDir(), "last-attempt");
     writeFileSync(file, `${new Date().toISOString()}\n`, { mode: 0o600 });

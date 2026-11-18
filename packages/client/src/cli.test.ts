@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi, type MockInstance } from "vitest";
 import type { UsageRecord } from "@teamusage/shared";
 import { main } from "./cli.js";
-import { configPath } from "./config.js";
+import { configPath, saveConfig } from "./config.js";
 import { lastAttemptPath, parseThrottle, type Deps } from "./sync.js";
 import { countRows, startServer, type TestServer } from "./test-server.js";
 
@@ -336,6 +336,50 @@ describe("sync --throttle", () => {
     expect(existsSync(lastAttemptPath())).toBe(true);
     expect(await main(["sync", "--quiet", "--detach", "--throttle", "4h"], deps())).toBe(0);
     expect(spawned.calls).toHaveLength(0);
+  });
+
+  test("a not-set-up machine starts the window too", async () => {
+    const empty = deps({ TEAMUSAGE_SERVER_URL: "", TEAMUSAGE_INVITE_CODE: "", TEAMUSAGE_NAME: "", TEAMUSAGE_EMAIL: "" });
+    expect(await main(["sync", "--quiet", "--throttle", "4h"], empty)).toBe(0);
+    expect(existsSync(lastAttemptPath())).toBe(true);
+    expect(await main(["sync", "--quiet", "--detach", "--throttle", "4h"], empty)).toBe(0);
+    expect(spawned.calls).toHaveLength(0);
+  });
+
+  test("a token bound elsewhere starts the window too", async () => {
+    saveConfig({
+      serverUrl: srv.url, name: "Ann", email: "ann@example.com", token: "t",
+      tokenServerUrl: "https://other.example.com", tokenEmail: "ann@example.com",
+    });
+    expect(await main(["sync", "--quiet", "--throttle", "4h"], deps())).toBe(0);
+    expect(existsSync(lastAttemptPath())).toBe(true);
+    expect(await main(["sync", "--quiet", "--detach", "--throttle", "4h"], deps())).toBe(0);
+    expect(spawned.calls).toHaveLength(0);
+  });
+
+  test("the parent records the attempt before detaching, so a second hook skips", async () => {
+    expect(await main(["sync", "--quiet", "--detach", "--throttle", "4h"], deps())).toBe(0);
+    expect(spawned.calls).toHaveLength(1);
+    expect(existsSync(lastAttemptPath())).toBe(true);
+    expect(await main(["sync", "--quiet", "--detach", "--throttle", "4h"], deps())).toBe(0);
+    expect(spawned.calls).toHaveLength(1);
+  });
+
+  test("a throttle skip and a dry run write no attempt time", async () => {
+    writeAttempt(ago(60_000));
+    const before = readFileSync(lastAttemptPath(), "utf8");
+    await main(["sync", "--quiet", "--detach", "--throttle", "4h"], deps());
+    expect(readFileSync(lastAttemptPath(), "utf8")).toBe(before);
+    rmSync(lastAttemptPath());
+    await main(["sync", "--dry-run", "--detach", "--throttle", "4h"], deps());
+    expect(existsSync(lastAttemptPath())).toBe(false);
+  });
+
+  test("a lock-skipped sync does not write the attempt time", async () => {
+    mkdirSync(path.dirname(lastAttemptPath()), { recursive: true });
+    writeFileSync(path.join(path.dirname(lastAttemptPath()), "sync.lock"), "other");
+    expect(await main(["sync", "--quiet"], deps())).toBe(0);
+    expect(existsSync(lastAttemptPath())).toBe(false);
   });
 
   test("a manual sync ignores the throttle", async () => {

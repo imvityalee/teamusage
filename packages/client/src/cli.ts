@@ -11,7 +11,7 @@ import type { Stats } from "@teamusage/shared";
 import { ApiError } from "./api.js";
 import { defaults as mcpDefaults, COST_NOTE, loadStats, startMcp, RANGES, type Range } from "./mcp.js";
 import { clean } from "./text.js";
-import { errorMessage, getStatus, parseThrottle, readLastAttempt, setup, shouldSkip, sync, type Deps } from "./sync.js";
+import { errorMessage, getStatus, parseThrottle, readLastAttempt, setup, shouldSkip, sync, writeLastAttempt, type Deps } from "./sync.js";
 import { codexDeps, registerCodex, type CodexDeps } from "./codex.js";
 import { installSchedule, removeSchedule, ScheduleError, scheduleStatus, type ScheduleDeps } from "./schedule.js";
 
@@ -242,6 +242,8 @@ async function runSync(args: string[], deps: Partial<Deps>): Promise<number> {
       }
       // Checked before detaching, so nothing is spawned when the window has not passed. A dry run never skips.
       if (!values["dry-run"] && shouldSkip(ms, new Date(), readLastAttempt)) return 0;
+      // The window starts here, before anything can fail (config, token, lock) and before the child exists.
+      if (!values["dry-run"]) writeLastAttempt();
     }
     if (values.detach && !values["dry-run"]) {
       const child = spawn(process.execPath, [fileURLToPath(import.meta.url), "sync", "--quiet"], {
