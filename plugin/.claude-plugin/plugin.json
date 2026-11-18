@@ -1,0 +1,44 @@
+{
+  "name": "teamusage",
+  "version": "0.1.0",
+  "description": "Sends this machine's coding-agent token counts to your team's self-hosted teamusage server after each session, and adds skills and MCP tools to send and view usage",
+  "author": {
+    "name": "imvityalee"
+  },
+  "repository": "https://github.com/imvityalee/teamusage",
+  "license": "MIT",
+  "keywords": ["usage", "tokens", "team", "mcp"],
+  "userConfig": {
+    "server_url": {
+      "type": "string",
+      "title": "Server URL",
+      "description": "Address of your team's teamusage server, for example https://usage.example.com. Plain http is accepted only for localhost unless you allow insecure HTTP below.",
+      "required": true
+    },
+    "invite_code": {
+      "type": "string",
+      "title": "Invite code",
+      "description": "The team's invite code from whoever runs the server. Stored in the system's secure credential store, not in settings.json.",
+      "required": true,
+      "sensitive": true
+    },
+    "name": {
+      "type": "string",
+      "title": "Your name",
+      "description": "Your name as the team dashboard shows it.",
+      "required": true
+    },
+    "email": {
+      "type": "string",
+      "title": "Your email",
+      "description": "Your email. It identifies you on the server; the same email on several machines counts as one person.",
+      "required": true
+    },
+    "allow_insecure_http": {
+      "type": "boolean",
+      "title": "Allow insecure HTTP",
+      "description": "Allow a plain http:// server on a non-local address. The invite code and token are then sent unencrypted and can be read on the network. Leave this off and use HTTPS.",
+      "default": false
+    }
+  }
+}

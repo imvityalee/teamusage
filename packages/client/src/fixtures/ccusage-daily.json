@@ -1,0 +1,54 @@
+{
+  "daily": [
+    {
+      "period": "2026-01-02",
+      "agent": "all",
+      "agents": [
+        {
+          "agent": "claude",
+          "inputTokens": 500,
+          "outputTokens": 100,
+          "cacheCreationTokens": 25,
+          "cacheReadTokens": 35,
+          "totalTokens": 660,
+          "totalCost": 0.03,
+          "modelsUsed": ["model-a", "model-b"],
+          "modelBreakdowns": [
+            { "modelName": "model-a", "inputTokens": 400, "outputTokens": 80, "cacheCreationTokens": 20, "cacheCreation1hTokens": 10, "cacheReadTokens": 30, "cost": 0.0212345678 },
+            { "modelName": "model-b", "inputTokens": 100, "outputTokens": 20, "cacheCreationTokens": 5, "cacheReadTokens": 5, "cost": 0.01 }
+          ]
+        },
+        {
+          "agent": "codex",
+          "inputTokens": 300,
+          "outputTokens": 50,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 10,
+          "totalTokens": 360,
+          "totalCost": 0,
+          "modelsUsed": ["model-c"],
+          "modelBreakdowns": [
+            { "modelName": "model-c", "inputTokens": 300, "outputTokens": 50, "cacheCreationTokens": 0, "cacheReadTokens": 10, "cost": 0, "missingPricing": true }
+          ]
+        }
+      ],
+      "totalTokens": 1020,
+      "totalCost": 0.03
+    },
+    {
+      "period": "2026-01-03",
+      "agent": "all",
+      "agents": [
+        {
+          "agent": "claude",
+          "totalTokens": 70,
+          "totalCost": 0.005,
+          "modelBreakdowns": [
+            { "modelName": "model-a", "inputTokens": 50, "outputTokens": 10, "cacheCreationTokens": 4, "cacheReadTokens": 6, "cost": 0.005 }
+          ]
+        }
+      ]
+    }
+  ],
+  "totals": { "inputTokens": 850, "outputTokens": 160, "cacheCreationTokens": 29, "cacheReadTokens": 51, "totalCost": 0.035, "totalTokens": 1090 }
+}

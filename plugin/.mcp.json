@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "teamusage": {
+      "command": "npx",
+      "args": ["-y", "teamusage@0.1.0", "mcp"],
+      "env": {
+        "TEAMUSAGE_SERVER_URL": "${user_config.server_url}",
+        "TEAMUSAGE_INVITE_CODE": "${user_config.invite_code}",
+        "TEAMUSAGE_NAME": "${user_config.name}",
+        "TEAMUSAGE_EMAIL": "${user_config.email}",
+        "TEAMUSAGE_ALLOW_INSECURE_HTTP": "${user_config.allow_insecure_http}"
+      }
+    }
+  }
+}

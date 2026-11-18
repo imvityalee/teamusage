@@ -1,0 +1,22 @@
+# Keep the build context small and free of anything private.
+.git
+.gitignore
+.superpowers
+.claude
+docs
+**/node_modules
+**/dist
+**/.env
+**/.env.*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.db
+*.log
+.DS_Store
+coverage
+**/*.tsbuildinfo
+README.md
+LICENSE
+packages/server/Dockerfile
+.dockerignore

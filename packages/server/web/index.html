@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>teamusage</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="./style.css">
+<script type="module" src="./src/main.ts"></script>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1 class="brand">teamusage <small id="sub"></small></h1>
+    <div class="controls">
+      <div class="seg" id="range" role="group" data-i18n-label="period">
+        <button type="button" data-days="30" data-i18n="r30" aria-pressed="false"></button><button type="button" data-days="90" data-i18n="r90" aria-pressed="true"></button><button type="button" data-days="180" data-i18n="r180" aria-pressed="false"></button>
+      </div>
+      <div class="custom">
+        <label for="from" data-i18n="from"></label><input type="date" id="from">
+        <label for="to" data-i18n="to"></label><input type="date" id="to">
+      </div>
+      <div class="seg" id="lang" role="group" data-i18n-label="language">
+        <button type="button" data-lang="en" lang="en" aria-pressed="true">EN</button><button type="button" data-lang="ru" lang="ru" aria-pressed="false">RU</button>
+      </div>
+    </div>
+  </header>
+  <p id="range-msg" class="msg" role="alert" hidden></p>
+
+  <div id="status" class="panel status" role="alert" hidden>
+    <span id="status-text"></span>
+    <button type="button" id="retry" data-i18n="retry"></button>
+  </div>
+
+  <section id="login" class="panel login" aria-labelledby="login-heading" hidden>
+    <h2 id="login-heading" data-i18n="loginTitle"></h2>
+    <p data-i18n="loginText"></p>
+    <!-- No name on the input: even a native submit would not send the code anywhere. -->
+    <form id="login-form" method="post">
+      <label for="invite" data-i18n="inviteLabel"></label>
+      <div class="row">
+        <input id="invite" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" required maxlength="128">
+        <button type="submit" data-i18n="signIn"></button>
+      </div>
+      <p id="login-msg" class="msg" role="alert" hidden></p>
+    </form>
+  </section>
+
+  <main id="stats" aria-busy="true">
+    <p class="placeholder" data-i18n="loading"></p>
+  </main>
+  <p class="note" data-i18n="note"></p>
+</div>
+</body>
+</html>

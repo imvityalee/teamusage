@@ -1,0 +1,50 @@
+{
+  "name": "teamusage",
+  "version": "0.1.0",
+  "description": "Sends your coding agents' token counts (from ccusage) to your team's self-hosted teamusage server",
+  "license": "MIT",
+  "keywords": [
+    "ccusage",
+    "claude-code",
+    "codex",
+    "tokens",
+    "usage",
+    "team",
+    "mcp"
+  ],
+  "homepage": "https://github.com/imvityalee/teamusage#readme",
+  "bugs": {
+    "url": "https://github.com/imvityalee/teamusage/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/imvityalee/teamusage.git",
+    "directory": "packages/client"
+  },
+  "type": "module",
+  "bin": {
+    "teamusage": "dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsup",
+    "prepack": "tsup",
+    "test": "vitest run --root ../.. packages/client",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "ccusage": "20.0.51",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@hono/node-server": "^2.1.8",
+    "@teamusage/shared": "workspace:*",
+    "tsup": "^8.5.0"
+  }
+}

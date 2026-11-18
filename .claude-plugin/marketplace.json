@@ -1,0 +1,14 @@
+{
+  "name": "teamusage",
+  "description": "teamusage: send coding-agent token usage to your team's self-hosted server and view it from Claude Code",
+  "owner": {
+    "name": "imvityalee"
+  },
+  "plugins": [
+    {
+      "name": "teamusage",
+      "source": "./plugin",
+      "description": "Sends this machine's coding-agent token counts to your team's teamusage server after each session, and adds skills and MCP tools to send and view usage"
+    }
+  ]
+}

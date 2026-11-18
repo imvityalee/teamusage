@@ -1,0 +1,29 @@
+{
+  "name": "@teamusage/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run --root ../.. packages/server",
+    "typecheck": "tsc -p tsconfig.json && tsc -p web/tsconfig.json",
+    "build": "tsup && pnpm run build:web",
+    "build:web": "vite build --config web/vite.config.ts",
+    "dev:web": "vite --config web/vite.config.ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "2.1.8",
+    "@teamusage/shared": "workspace:*",
+    "better-sqlite3": "^12.0.0",
+    "hono": "^4.13.19"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.0",
+    "happy-dom": "^21.0.4",
+    "tsup": "^8.5.0",
+    "vite": "^7.3.8"
+  },
+  "bin": {
+    "teamusage-server": "./dist/main.js",
+    "teamusage-admin": "./dist/admin.js"
+  }
+}
