@@ -1,7 +1,7 @@
 import type { Stats } from "@teamusage/shared";
 import { agentIcon, agentLogo, agentName } from "./agents.js";
 import { h, icon } from "./dom.js";
-import { agentTotals, canFilterModel, isActive, summary, type Filters, type ModelRef } from "./filters.js";
+import { agentTotals, canFilterModel, cleanAvailable, isActive, summary, withSelection, type Filters, type ModelRef } from "./filters.js";
 import { compact } from "./format.js";
 import { count, t, type Lang, type MessageKey } from "./i18n.js";
 
@@ -153,7 +153,9 @@ function filterButton(doc: Document, kind: PopoverKind, text: string, selected: 
 }
 
 /** The two filter buttons (with the open popover right after its button) and, when a filter is on, Clear filters. */
-export function renderFilterControls(doc: Document, m: FilterBarModel, lang: Lang, on: FilterBarHandlers): DocumentFragment {
+export function renderFilterControls(doc: Document, model: FilterBarModel, lang: Lang, on: FilterBarHandlers): DocumentFragment {
+  // Well-formed entries only, plus any selection this period or member lacks, so it can be seen and unticked.
+  const m = { ...model, available: withSelection(cleanAvailable(model.available), model.filters) };
   const { agents, models } = m.filters;
   const agentsText = summary(agents.length, m.available.agents.length) === "all" ? t(lang, "allAgents") : count(lang, "agents", agents.length);
   const modelsText = summary(models.length, m.available.models.length) === "all" ? t(lang, "allModels") : count(lang, "models", models.length);

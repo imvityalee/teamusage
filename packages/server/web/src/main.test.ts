@@ -4,7 +4,7 @@ import { Window } from "happy-dom";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { localIsoDate } from "./format.js";
 import { LANG_KEY } from "./i18n.js";
-import { emptyStatsFixture, memberStatsFixture, statsFixture } from "./test-fixtures.js";
+import { memberStatsFixture, statsFixture } from "./test-fixtures.js";
 
 const PAGE = readFileSync(new URL("../index.html", import.meta.url), "utf8");
 const BODY = /<body>([\s\S]*)<\/body>/.exec(PAGE)?.[1]?.replace(/<script[\s\S]*?<\/script>/g, "") ?? "";
@@ -509,7 +509,33 @@ describe("filters", () => {
     expect(calls.at(-1)?.url).toBe(withFilters(statsUrl(range(90)), [["agent", "claude"]]));
   });
 
-  test("the filter survives a range change, a language switch and the member page, and is pruned to what exists", async () => {
+  /**
+   * What the server answers for member 1 when that member used Claude Code only: the member's own `available`,
+   * and the numbers narrowed by the agents asked for (`[]` = no filter).
+   */
+  function claudeOnlyMember(asked: string[]): Stats {
+    const base = memberStatsFixture();
+    const matches = asked.length === 0 || asked.includes("claude");
+    const daily = base.daily.map((d): Stats["daily"][number] => ({ date: d.date, byAgent: matches ? { claude: d.byAgent.claude ?? 0 } : {} }));
+    const tokens = matches ? 55_000 : 0;
+    return {
+      ...base,
+      totals: { tokens, costUsd: matches ? 11 : 0, activeMembers: matches ? 1 : 0, memberCount: 1 },
+      daily,
+      members: base.members.map((m) => ({ ...m, tokens, costUsd: matches ? 11 : 0, byAgent: matches ? { claude: tokens } : {} })),
+      models: matches ? base.models.filter((m) => m.agent === "claude") : [],
+      available: {
+        agents: ["claude"],
+        models: [
+          { agent: "claude", model: "claude-sonnet-4-5", tokens: 30_000 },
+          { agent: "claude", model: "claude-opus-4-1", tokens: 25_000 },
+        ],
+      },
+    };
+  }
+  const chipTexts = () => [...doc.querySelectorAll("#chips button.chip")].map((c) => c.textContent?.trim());
+
+  test("the filter survives a range change and a language switch without a new request for the language", async () => {
     await boot(json(statsFixture()));
     open("agents");
     replies.push(json(statsFixture()));
@@ -527,22 +553,125 @@ describe("filters", () => {
     expect(calls).toHaveLength(before);
     expect($("#agents-btn").textContent?.trim()).toBe("1 агент");
     expect($(".tile .k").textContent).toBe("Всего токенов · с фильтром");
+    noStorage();
+  });
 
-    replies.push(json(memberStatsFixture()));
-    await goTo("#/member/1");
-    expect(calls.at(-1)?.url).toBe(withFilters(memberUrl(range(30), 1), [["agent", "codex"]]));
-    expect($("#agents-btn").textContent?.trim()).toBe("1 агент");
-
-    // A range where Codex was not used: the selection is dropped and the page asks again without it.
+  test("on the team view, a range where the selection no longer exists drops it and asks again", async () => {
+    await boot(json(statsFixture()));
+    open("agents");
+    replies.push(json(statsFixture()));
+    tick(rowBoxes("agents")[1]);
+    await flush();
     const noCodex = { ...statsFixture(), available: { agents: ["claude"], models: [{ agent: "claude", model: "claude-opus-4-1", tokens: 5 }] } };
-    replies.push(json({ ...memberStatsFixture(), available: noCodex.available }), json(memberStatsFixture()));
+    replies.push(json(noCodex), json(noCodex));
     $('#range button[data-days="180"]').click();
     await flush();
-    expect(calls.slice(-2).map((c) => c.url)).toEqual([withFilters(memberUrl(range(180), 1), [["agent", "codex"]]), memberUrl(range(180), 1)]);
-    expect($("#agents-btn").textContent?.trim()).toBe("Все агенты");
+    expect(calls.slice(-2).map((c) => c.url)).toEqual([withFilters(statsUrl(range(180)), [["agent", "codex"]]), statsUrl(range(180))]);
+    expect($("#agents-btn").textContent?.trim()).toBe("All agents");
     expect($("#chips").hidden).toBe(true);
-    noStorage();
-    expect(win.location.hash).toBe("#/member/1");
+  });
+
+  test("a member who never used the filtered agent: the filtered empty state, Clear filters and the machines; the filter is kept", async () => {
+    await boot(json(statsFixture()));
+    open("agents");
+    replies.push(json(statsFixture()));
+    tick(rowBoxes("agents")[1]); // Codex
+    await flush();
+    $(".tile").click(); // closes the popover
+
+    replies.push(json(claudeOnlyMember(["codex"])));
+    await goTo("#/member/1");
+    // Sent as it is, answered once, never re-asked without the filter.
+    expect(calls.at(-1)?.url).toBe(withFilters(memberUrl(range(90), 1), [["agent", "codex"]]));
+    expect(calls).toHaveLength(3);
+    expect($("#stats .empty p").textContent).toBe("Nothing matches these filters in this period");
+    expect($("#empty-clear").textContent).toBe("Clear filters");
+    expect(doc.querySelectorAll("#machines li")).toHaveLength(3);
+    expect(chipTexts()).toEqual(["Codex"]);
+    expect($("#agents-btn").textContent?.trim()).toBe("1 agent");
+
+    // The popover lists the member's agents plus the selection they do not have, ticked, at zero.
+    open("agents");
+    expect([...doc.querySelectorAll("#agents-pop label.pop-row")].map((r) => [r.querySelector(".pop-name")?.textContent, r.querySelector(".pop-num")?.textContent, (r.querySelector("input") as HTMLInputElement).checked])).toEqual([
+      ["Claude Code", "55,000", false],
+      ["Codex", "0", true],
+    ]);
+    $(".tile").click();
+
+    replies.push(json(statsFixture()));
+    $("a.back").click();
+    await flush();
+    expect(calls.at(-1)?.url).toBe(withFilters(statsUrl(range(90)), [["agent", "codex"]]));
+    expect(chipTexts()).toEqual(["Codex"]);
+    expect($(".tile .k").textContent).toBe("Total tokens · filtered");
+  });
+
+  test("Clear filters in the member's empty state asks for the member without filters", async () => {
+    await boot(json(statsFixture()));
+    open("agents");
+    replies.push(json(statsFixture()));
+    tick(rowBoxes("agents")[1]);
+    await flush();
+    replies.push(json(claudeOnlyMember(["codex"])));
+    await goTo("#/member/1");
+    replies.push(json(claudeOnlyMember([])));
+    $("#empty-clear").click();
+    await flush();
+    expect(calls.at(-1)?.url).toBe(memberUrl(range(90), 1));
+    expect(doc.querySelector("#stats .empty")).toBeNull();
+    expect($("#chips").hidden).toBe(true);
+    expect($(".tile .v").textContent).toBe("55,000");
+  });
+
+  test("with Claude Code and Codex selected, a Claude-only member shows Claude data and both chips; both stay selected", async () => {
+    await boot(json(statsFixture()));
+    open("agents");
+    replies.push(json(statsFixture()), json(statsFixture()));
+    tick(rowBoxes("agents")[0]);
+    await flush();
+    tick(rowBoxes("agents")[1]);
+    await flush();
+    $(".tile").click();
+
+    replies.push(json(claudeOnlyMember(["claude", "codex"])));
+    await goTo("#/member/1");
+    expect(calls.at(-1)?.url).toBe(withFilters(memberUrl(range(90), 1), [["agent", "claude"], ["agent", "codex"]]));
+    expect($(".tile .v").textContent).toBe("55,000");
+    expect([...doc.querySelectorAll(".legend .legend-name")].map((n) => n.textContent)).toEqual(["Claude Code"]);
+    expect(chipTexts()).toEqual(["Claude Code", "Codex"]);
+    expect($("#agents-btn").textContent?.trim()).toBe("2 agents");
+
+    replies.push(json(statsFixture()));
+    $("a.back").click();
+    await flush();
+    expect(calls.at(-1)?.url).toBe(withFilters(statsUrl(range(90)), [["agent", "claude"], ["agent", "codex"]]));
+    expect(chipTexts()).toEqual(["Claude Code", "Codex"]);
+  });
+
+  test("when the load after a filter change fails, the bar and chips go back to what the data on screen shows", async () => {
+    await boot(json(statsFixture()));
+    open("agents");
+    replies.push(new TypeError("offline"));
+    tick(rowBoxes("agents")[1]);
+    await flush();
+    expect($("#status").hidden).toBe(false);
+    expect($("#status-text").textContent).toBe("Could not reach the server.");
+    expect($("#agents-btn").textContent?.trim()).toBe("All agents");
+    expect($("#chips").hidden).toBe(true);
+    expect(rowBoxes("agents").map((b) => b.checked)).toEqual([false, false, false]);
+    expect($(".tile .k").textContent).toBe("Total tokens");
+
+    // An error answer behaves the same, and Retry asks for what is on screen.
+    replies.push(json({ error: "invalid query" }, 400));
+    tick(rowBoxes("agents")[0]);
+    await flush();
+    expect($("#status-text").textContent).toBe("Could not load the statistics: invalid query");
+    expect($("#chips").hidden).toBe(true);
+    replies.push(json(statsFixture()));
+    $("#retry").click();
+    await flush();
+    expect(calls.at(-1)?.url).toBe(statsUrl(range(90)));
+    expect($("#status").hidden).toBe(true);
   });
 
   test("Escape closes the popover and gives focus back to its button; so does a click outside", async () => {
@@ -591,20 +720,6 @@ describe("filters", () => {
     expect(focused.checked).toBe(true);
     expect($<HTMLInputElement>("#model-search").value).toBe("OPUS");
     expect(rowBoxes("models")).toHaveLength(1);
-  });
-
-  test("a filter that matches nothing shows the empty state with Clear filters", async () => {
-    await boot(json(statsFixture()));
-    open("agents");
-    replies.push(json({ ...emptyStatsFixture() }));
-    tick(rowBoxes("agents")[2]);
-    await flush();
-    expect($("#stats .empty p").textContent).toBe("Nothing matches these filters in this period");
-    replies.push(json(statsFixture()));
-    $("#empty-clear").click();
-    await flush();
-    expect(calls.at(-1)?.url).toBe(statsUrl(range(90)));
-    expect(doc.querySelector("#stats .empty")).toBeNull();
   });
 
   test("past 20 agents the page stops adding, says so and sends nothing", async () => {

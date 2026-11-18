@@ -82,12 +82,12 @@ function mixOrder(mix: Map<string, number>): [string, number][] {
  * The agent-mix bar: its length is the member's share of the top member's tokens, its segments the member's
  * tokens by agent in agent colours. Without per-agent numbers it is a plain share bar.
  */
-function mixBar(doc: Document, lang: Lang, m: Stats["members"][number], top: number, teamTokens: number): HTMLElement {
+function mixBar(doc: Document, lang: Lang, m: Stats["members"][number], top: number, teamTokens: number, filtered: boolean): HTMLElement {
   const bar = h(doc, "div", { class: "mix-bar" });
   bar.style.width = `${top > 0 ? Number(((m.tokens / top) * 100).toFixed(1)) : 0}%`;
   const share = pct(m.tokens, teamTokens);
   const mix = byAgentOf(m);
-  let label = t(lang, "shareLabel", { share });
+  let label = t(lang, filtered ? "shareLabelFiltered" : "shareLabel", { share });
   if (mix === null) {
     if (m.tokens > 0) bar.append(h(doc, "i", { class: "share" }));
   } else {
@@ -102,13 +102,13 @@ function mixBar(doc: Document, lang: Lang, m: Stats["members"][number], top: num
       bar.append(seg);
     }
     if (parts.length > 0) {
-      label = t(lang, "mixLabel", { share, parts: parts.map(([agent, n]) => `${agentName(agent)} ${pct(n, total)}%`).join(", ") });
+      label = t(lang, filtered ? "mixLabelFiltered" : "mixLabel", { share, parts: parts.map(([agent, n]) => `${agentName(agent)} ${pct(n, total)}%`).join(", ") });
     }
   }
   return h(doc, "div", { class: "mix", role: "img", "aria-label": label }, bar);
 }
 
-function memberRows(doc: Document, stats: Stats, lang: Lang, today: string, shown: Stats["members"]): HTMLElement[] {
+function memberRows(doc: Document, stats: Stats, lang: Lang, today: string, shown: Stats["members"], filtered: boolean): HTMLElement[] {
   // Bars scale to the top member of the whole team, so they do not jump while searching.
   const top = stats.members[0]?.tokens ?? 0;
   return shown.map((m) => {
@@ -134,29 +134,32 @@ function memberRows(doc: Document, stats: Stats, lang: Lang, today: string, show
       ),
       h(doc, "td", {}, full(m.tokens)),
       h(doc, "td", {}, usd(m.costUsd)),
-      h(doc, "td", { class: "l" }, mixBar(doc, lang, m, top, stats.totals.tokens)),
+      h(doc, "td", { class: "l" }, mixBar(doc, lang, m, top, stats.totals.tokens, filtered)),
       h(doc, "td", stale ? { class: "stale" } : {}, sync.text),
       h(doc, "td", { class: "chev-cell", "aria-hidden": "true" }, icon(doc, "right")),
     );
   });
 }
 
-/** Shows the members matching `query` in an already rendered members panel, without rebuilding the search box. */
-export function applyMemberSearch(doc: Document, root: ParentNode, stats: Stats, lang: Lang, today: string, query: string): void {
+/**
+ * Shows the members matching `query` in an already rendered members panel, without rebuilding the search box.
+ * `filtered`: the numbers are narrowed by a filter, so the bars speak of the filtered tokens.
+ */
+export function applyMemberSearch(doc: Document, root: ParentNode, stats: Stats, lang: Lang, today: string, query: string, filtered = false): void {
   const table = root.querySelector("#members");
   const body = table?.querySelector("tbody");
   const countLine = root.querySelector<HTMLElement>("#members-count");
   const scroll = table?.parentElement;
   if (!body || !countLine || !scroll) return;
   const shown = matchMembers(stats.members, query);
-  body.replaceChildren(...memberRows(doc, stats, lang, today, shown));
+  body.replaceChildren(...memberRows(doc, stats, lang, today, shown, filtered));
   const filtering = query.trim() !== "";
   countLine.hidden = !filtering;
   countLine.textContent = !filtering ? "" : shown.length === 0 ? t(lang, "noMatch") : matchCount(lang, shown.length, stats.members.length);
   scroll.hidden = shown.length === 0;
 }
 
-function membersPanel(doc: Document, stats: Stats, lang: Lang, today: string, query: string): HTMLElement {
+function membersPanel(doc: Document, stats: Stats, lang: Lang, today: string, query: string, filtered: boolean): HTMLElement {
   const input = h(doc, "input", { type: "search", id: "member-search", autocomplete: "off", spellcheck: "false" }) as HTMLInputElement;
   input.placeholder = t(lang, "searchPlaceholder");
   input.value = query; // a property, never markup
@@ -193,7 +196,7 @@ function membersPanel(doc: Document, stats: Stats, lang: Lang, today: string, qu
     h(doc, "div", { class: "scroll" }, table),
   );
   if (hasMix) section.append(h(doc, "p", { class: "mix-note" }, t(lang, "mixNote")));
-  applyMemberSearch(doc, section, stats, lang, today, query);
+  applyMemberSearch(doc, section, stats, lang, today, query, filtered);
   return section;
 }
 
@@ -310,7 +313,7 @@ export function renderStats(doc: Document, stats: Stats, lang: Lang, today: stri
     out.append(emptyState(doc, lang, filters));
     return out;
   }
-  out.append(chartPanel(doc, stats, lang), membersPanel(doc, stats, lang, today, opts.query ?? ""), modelsPanel(doc, stats, lang));
+  out.append(chartPanel(doc, stats, lang), membersPanel(doc, stats, lang, today, opts.query ?? "", isActive(filters)), modelsPanel(doc, stats, lang));
   return out;
 }
 

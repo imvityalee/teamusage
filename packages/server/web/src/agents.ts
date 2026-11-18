@@ -30,7 +30,7 @@ export function seriesOf(id: string): number {
   return SERIES_INDEX.get(id) ?? OTHER_SERIES;
 }
 
-/** Same-origin logo files (simple-icons, CC0-1.0), by exact agent id. */
+/** Same-origin logo files from simple-icons, by exact agent id. Licences: see public/agents/NOTICE.md. */
 const LOGOS = new Map([
   ["claude", "/agents/claudecode.svg"],
   ["gemini", "/agents/googlegemini.svg"],

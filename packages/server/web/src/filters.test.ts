@@ -92,11 +92,12 @@ describe("isActive, summary, equalFilters", () => {
     expect(isActive({ agents: [], models: [{ agent: "claude", model: "m" }] })).toBe(true);
   });
 
-  test("summary is all when nothing or everything is selected", () => {
+  test("summary is all only when nothing is selected, so the button never says All while chips show", () => {
     expect(summary(0, 5)).toBe("all");
     expect(summary(2, 5)).toBe("some");
-    expect(summary(5, 5)).toBe("all");
+    expect(summary(5, 5)).toBe("some");
     expect(summary(0, 0)).toBe("all");
+    expect(summary(3, 2)).toBe("some");
   });
 
   test("equalFilters compares contents, not identity", () => {

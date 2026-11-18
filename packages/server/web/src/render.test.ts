@@ -180,6 +180,16 @@ describe("members table", () => {
     );
   });
 
+  test("while a filter is active the bar's label speaks of the filtered tokens", () => {
+    const label = (lang: "en" | "ru") => render(codexOnly(), lang, CODEX_ONLY).querySelector("#members .mix")?.getAttribute("aria-label");
+    expect(label("en")).toBe("90% of the filtered tokens: Codex 100%");
+    expect(label("ru")).toBe("90% отфильтрованных токенов: Codex 100%");
+    const plain = codexOnly();
+    for (const m of plain.members) delete (m as { byAgent?: unknown }).byAgent;
+    expect(render(plain, "en", CODEX_ONLY).querySelector("#members .mix")?.getAttribute("aria-label")).toBe("90% of the filtered tokens");
+    expect(render(statsFixture(), "ru").querySelector("#members thead")?.textContent).toContain("Состав по агентам");
+  });
+
   test("an agent keeps its colour in the mix whatever the order of the totals", () => {
     const stats = statsFixture();
     (stats.members[0] as Stats["members"][number] & { byAgent: unknown }).byAgent = { copilot: 1, gemini: 30_000, claude: 9_999 };
@@ -518,7 +528,7 @@ describe("app code never parses markup", () => {
 
   test("filter state is never stored, put in a cookie or in the URL by app code", () => {
     const dir = new URL("./", import.meta.url);
-    for (const file of ["filters.ts", "filterbar.ts", "agents.ts", "render.ts", "chart.ts", "api.ts"]) {
+    for (const file of ["filters.ts", "filterbar.ts", "agents.ts", "render.ts", "chart.ts", "api.ts", "main.ts"]) {
       const code = readFileSync(new URL(file, dir), "utf8");
       for (const bad of [/localStorage/, /sessionStorage/, /document\.cookie/, /location\.(hash|href|search)\s*=/, /history\.(push|replace)State/, /new RegExp/]) {
         expect([file, bad.test(code)]).toEqual([file, false]);

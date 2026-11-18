@@ -1,5 +1,5 @@
 import type { Stats } from "@teamusage/shared";
-import { NO_FILTERS, toQuery, type Filters } from "./filters.js";
+import { cleanAvailable, NO_FILTERS, toQuery, type Filters } from "./filters.js";
 import { isMemberId } from "./route.js";
 
 /** Talks to the server. Same-origin relative URLs only; the session cookie is the only credential. */
@@ -99,7 +99,9 @@ export async function fetchStats(
     if (res.status === 404 && member !== undefined) return { kind: "notFound" };
     if (!res.ok) return { kind: "error", message: await errorMessage(res) };
     const body: unknown = await res.json();
-    return looksLikeStats(body, member) ? { kind: "ok", stats: body } : { kind: "error", message: "unexpected response" };
+    if (!looksLikeStats(body, member)) return { kind: "error", message: "unexpected response" };
+    // The filter lists drive the controls and `prune`: keep only well-formed entries.
+    return { kind: "ok", stats: { ...body, available: cleanAvailable(body.available) } };
   } catch (err) {
     return isAbort(err) ? { kind: "aborted" } : { kind: "error", message: "unexpected response" };
   }

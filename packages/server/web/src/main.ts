@@ -4,6 +4,7 @@ import { renderChips, renderFilterControls, type FilterBarHandlers, type Popover
 import {
   availableTotal,
   equalFilters,
+  isActive,
   MAX_AGENTS,
   MAX_MODELS,
   NO_FILTERS,
@@ -262,21 +263,24 @@ async function load(): Promise<void> {
   setBusy(false);
   switch (res.kind) {
     case "ok": {
-      // Selections that do not exist in this period or for this member are dropped. When that empties a list,
-      // the answer was narrowed by a filter that is now gone, so ask again.
-      const pruned = prune(filters, res.stats.available);
-      state.filters = pruned;
-      const emptied = (filters.agents.length > 0 && pruned.agents.length === 0) || (filters.models.length > 0 && pruned.models.length === 0);
-      if (emptied) {
-        void load();
-        return;
+      if (route.view === "member") {
+        // A member's `available` is only theirs: the selection is shown as it was sent, never pruned against it.
+        // A member with nothing for it gets the filtered empty state and its Clear filters action.
+        state.query = "";
+        state.shown = { kind: "member", id: route.id, stats: res.stats, filters };
+      } else {
+        // On the team view, a selection that no longer exists in this period is dropped. When that empties a
+        // list, the answer was narrowed by a filter that is now gone, so ask again.
+        const pruned = prune(filters, res.stats.available);
+        state.filters = pruned;
+        const emptied = (filters.agents.length > 0 && pruned.agents.length === 0) || (filters.models.length > 0 && pruned.models.length === 0);
+        if (emptied) {
+          void load();
+          return;
+        }
+        state.team = { from: res.stats.from, to: res.stats.to, tokens: availableTotal(res.stats.available) };
+        state.shown = { kind: "team", stats: res.stats, filters: pruned };
       }
-      if (route.view === "team") state.team = { from: res.stats.from, to: res.stats.to, tokens: availableTotal(res.stats.available) };
-      if (route.view === "member") state.query = "";
-      state.shown =
-        route.view === "member"
-          ? { kind: "member", id: route.id, stats: res.stats, filters: pruned }
-          : { kind: "team", stats: res.stats, filters: pruned };
       state.view = "stats";
       state.status = null;
       break;
@@ -293,14 +297,22 @@ async function load(): Promise<void> {
       break;
     case "network":
       state.status = { key: "netError" };
+      keepFiltersOfShown();
       break;
     case "error":
       state.status = { key: "loadFailed", vars: { error: res.message } };
+      keepFiltersOfShown();
       break;
     case "aborted":
       return;
   }
   paint();
+}
+
+/** After a failed load, the bar and chips go back to the selection the data on screen was loaded with. */
+function keepFiltersOfShown(): void {
+  const { shown } = state;
+  if (shown !== null && shown.kind !== "notFound") state.filters = shown.filters;
 }
 
 /** A new filter applies at once: one request, with the usual abort of the one before. */
@@ -446,7 +458,7 @@ ui.stats.addEventListener("input", (e) => {
   const input = e.target as HTMLInputElement | null;
   if (input?.id !== "member-search" || state.shown?.kind !== "team") return;
   state.query = input.value;
-  applyMemberSearch(document, ui.stats, state.shown.stats, state.lang, today(), state.query);
+  applyMemberSearch(document, ui.stats, state.shown.stats, state.lang, today(), state.query, isActive(state.shown.filters));
 });
 // "Clear filters" in the empty state.
 ui.stats.addEventListener("click", (e) => {

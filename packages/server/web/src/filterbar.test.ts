@@ -289,6 +289,39 @@ describe("edge cases", () => {
     expect(text(models.querySelector(".pop-empty"))).toBe("Nothing in this period");
   });
 
+  test("every available agent ticked still reads as a count, not All", () => {
+    const root = controls(model({ filters: { agents: ["claude", "codex", "aider"], models: [] } }));
+    expect(text(root.querySelector("#agents-btn"))).toBe("3 agents");
+  });
+
+  test("a selection this member does not have stays listed, ticked, with a zero total, so it can be unticked", () => {
+    const memberAvailable: Stats["available"] = { agents: ["claude"], models: [{ agent: "claude", model: "claude-opus-4-1", tokens: 7 }] };
+    const filters: Filters = { agents: ["claude", "codex"], models: [{ agent: "codex", model: "gpt-5-codex" }] };
+    const agents = controls(model({ open: "agents", available: memberAvailable, filters }));
+    expect(rowsOf(agents).map((r) => [text(r.querySelector(".pop-name")), text(r.querySelector(".pop-num")), (r.querySelector("input") as HTMLInputElement).checked])).toEqual([
+      ["Claude Code", "7", true],
+      ["Codex", "0", true],
+    ]);
+    change(rowsOf(agents)[1]?.querySelector("input") as Element);
+    expect(calls.at(-1)).toBe("agent:codex");
+    const models = controls(model({ open: "models", available: memberAvailable, filters }));
+    expect([...models.querySelectorAll(".pop-group")].map((g) => [text(g.querySelector(".pop-group-name")), [...g.querySelectorAll(".pop-row")].map((r) => [text(r.querySelector(".pop-name")), text(r.querySelector(".pop-num")), (r.querySelector("input") as HTMLInputElement).checked])])).toEqual([
+      ["Claude Code", [["claude-opus-4-1", "7", false]]],
+      ["Codex", [["gpt-5-codex", "0", true]]],
+    ]);
+  });
+
+  test("malformed entries never show NaN or throw", () => {
+    const bad = {
+      agents: [null, "claude"],
+      models: [null, { agent: "claude", model: "m", tokens: "x" }, { agent: "claude", model: "n", tokens: Number.NaN }],
+    } as unknown as Stats["available"];
+    for (const open of ["agents", "models"] as const) {
+      const root = controls(model({ open, available: bad }));
+      expect(root.textContent).not.toContain("NaN");
+    }
+  });
+
   test("only the open popover is in the page", () => {
     expect(controls(model({ open: "models" })).querySelectorAll(".popover")).toHaveLength(1);
     expect(controls(model({ open: "models" })).querySelector("#agents-btn")?.getAttribute("aria-expanded")).toBe("false");

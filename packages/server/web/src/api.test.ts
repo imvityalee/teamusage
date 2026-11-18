@@ -165,3 +165,34 @@ describe("fetchStats with filters", () => {
     }
   });
 });
+
+describe("fetchStats cleans the filter lists", () => {
+  test("malformed agents and models are dropped, so a null cannot make prune throw or show NaN", async () => {
+    const body = {
+      ...statsFixture(),
+      available: {
+        agents: [null, "claude", 5, "codex"],
+        models: [
+          null,
+          { agent: "claude", model: "m1", tokens: 10 },
+          { agent: "claude", model: "m2", tokens: "12" },
+          { agent: "claude", model: null, tokens: 1 },
+          { agent: 7, model: "m3", tokens: 1 },
+          { agent: "codex", model: "m4", tokens: Number.MAX_VALUE },
+          "x",
+        ],
+      },
+    };
+    stubFetch(json(body));
+    const res = await fetchStats("2026-01-01", "2026-01-31");
+    expect(res.kind).toBe("ok");
+    const available = (res as { stats: { available: unknown } }).stats.available;
+    expect(available).toEqual({
+      agents: ["claude", "codex"],
+      models: [
+        { agent: "claude", model: "m1", tokens: 10 },
+        { agent: "codex", model: "m4", tokens: Number.MAX_VALUE },
+      ],
+    });
+  });
+});

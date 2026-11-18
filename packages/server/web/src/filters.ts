@@ -68,9 +68,12 @@ export function isActive(f: Filters): boolean {
   return f.agents.length > 0 || f.models.length > 0;
 }
 
-/** Drives a button label: "All agents" when nothing or everything is selected, otherwise "N agents". */
-export function summary(selected: number, total: number): "all" | "some" {
-  return selected === 0 || selected === total ? "all" : "some";
+/**
+ * Drives a button label: "All agents" only when nothing is selected, otherwise "N agents", even when every item is
+ * ticked, so the button never says "All" while chips are showing. `total` is kept for callers' clarity.
+ */
+export function summary(selected: number, _total: number): "all" | "some" {
+  return selected === 0 ? "all" : "some";
 }
 
 export function equalFilters(a: Filters, b: Filters): boolean {
@@ -105,6 +108,46 @@ export function toggleModel(f: Filters, ref: ModelRef): Toggled {
   if (!has && f.models.length >= MAX_MODELS) return { filters: f, limited: true };
   const models = has ? f.models.filter((m) => !sameModel(m, ref)) : [...f.models, { agent: ref.agent, model: ref.model }];
   return { filters: { agents: f.agents, models }, limited: false };
+}
+
+/**
+ * The filter lists from an answer, keeping only well-formed entries: agent ids that are strings, and models with a
+ * string agent and model and a finite, non-negative total. Anything else is dropped, so a `null` cannot make `prune`
+ * throw and no total can show as NaN.
+ */
+export function cleanAvailable(raw: unknown): Stats["available"] {
+  const r = (typeof raw === "object" && raw !== null ? raw : {}) as { agents?: unknown; models?: unknown };
+  const agents = Array.isArray(r.agents) ? r.agents.filter((a): a is string => typeof a === "string") : [];
+  const models = (Array.isArray(r.models) ? r.models : []).flatMap((m: unknown) => {
+    if (typeof m !== "object" || m === null) return [];
+    const { agent, model, tokens: n } = m as { agent?: unknown; model?: unknown; tokens?: unknown };
+    if (typeof agent !== "string" || typeof model !== "string" || typeof n !== "number" || !Number.isFinite(n) || n < 0) return [];
+    return [{ agent, model, tokens: n }];
+  });
+  return { agents, models };
+}
+
+/**
+ * The period's items plus every selected item they lack, at zero, so a selection is always listed and can be
+ * unticked (for example on a member's page, whose `available` is that member's).
+ */
+export function withSelection(available: Stats["available"], f: Filters): Stats["available"] {
+  const agents = [...available.agents];
+  const seen = new Set(agents);
+  for (const a of f.agents) {
+    if (!seen.has(a)) {
+      agents.push(a);
+      seen.add(a);
+    }
+  }
+  const index = modelIndex(available);
+  const models = [...available.models];
+  for (const m of f.models) {
+    if (index.get(m.agent)?.has(m.model) === true) continue;
+    models.push({ agent: m.agent, model: m.model, tokens: 0 });
+    index.set(m.agent, (index.get(m.agent) ?? new Set<string>()).add(m.model));
+  }
+  return { agents, models };
 }
 
 const tokens = (n: unknown): number => (typeof n === "number" && Number.isFinite(n) && n > 0 ? n : 0);

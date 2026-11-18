@@ -111,7 +111,7 @@ describe("plural forms", () => {
     expect([2, 6].map((n) => count("en", "syncedDaysAgo", n))).toEqual(["Synced 2 days ago", "Synced 6 days ago"]);
     expect([2, 5].map((n) => count("ru", "syncedDaysAgo", n))).toEqual(["Отправлено 2 дня назад", "Отправлено 5 дней назад"]);
     expect([7, 21].map((n) => count("en", "noSyncDays", n))).toEqual(["No sync for 7 days", "No sync for 21 days"]);
-    expect([7, 21, 22, 12].map((n) => count("ru", "noSyncDays", n))).toEqual(["Без отправки 7 дней", "Без отправки 21 день", "Без отправки 22 дня", "Без отправки 12 дней"]);
+    expect([7, 21, 22, 12].map((n) => count("ru", "noSyncDays", n))).toEqual(["Нет отправок 7 дней", "Нет отправок 21 день", "Нет отправок 22 дня", "Нет отправок 12 дней"]);
   });
 });
 
