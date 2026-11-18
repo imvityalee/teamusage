@@ -91,6 +91,10 @@ describe("rangeText", () => {
   test("same year: day and month for both ends, the year once at the end", () => {
     expect(rangeText("2026-08-21", "2026-11-18", "en-GB")).toBe("21 Aug – 18 Nov 2026");
   });
+  test("month names do not depend on the run date", () => {
+    expect(rangeText("2026-05-02", "2026-09-30", "en-GB")).toBe("2 May – 30 Sept 2026");
+    expect(rangeText("2026-09-01", "2026-12-20", "en-GB")).toBe("1 Sept – 20 Dec 2026");
+  });
   test("different years: both ends carry their year", () => {
     expect(rangeText("2025-11-18", "2026-02-03", "en-GB")).toBe("18 Nov 2025 – 3 Feb 2026");
   });

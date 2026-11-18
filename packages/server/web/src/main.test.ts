@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { presetRange, type Stats } from "@teamusage/shared";
 import { Window } from "happy-dom";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { localIsoDate } from "./format.js";
+import { localIsoDate, rangeText } from "./format.js";
 import { LANG_KEY } from "./i18n.js";
 import { memberStatsFixture, statsFixture } from "./test-fixtures.js";
 
@@ -124,8 +124,8 @@ describe("login", () => {
   test("the date range reads like 21 Aug – 18 Nov 2026", async () => {
     await boot(json(statsFixture()));
     const r = range(90);
-    expect($("#sub").textContent).toMatch(/^\d{1,2} \w{3} – \d{1,2} \w{3}( \d{4})?/);
-    expect(r.from < r.to).toBe(true);
+    expect($("#sub").textContent).toBe(rangeText(r.from, r.to, "en-GB"));
+    expect($("#sub").textContent).toContain(" – ");
   });
 
   test("a wrong code and too many attempts are explained", async () => {
