@@ -431,10 +431,32 @@ describe("GET /api/stats", () => {
     expect(body.members.map((m) => m.name)).toEqual(["Ann"]);
   });
 
-  test("member=me with only a cookie is 400; other member values are 400", async () => {
+  test("member=me with only a cookie is 400", async () => {
     const cookie = sessionCookie(await login());
     expect((await getStatsReq(`${RANGE}&member=me`, { Cookie: cookie })).status).toBe(400);
+  });
+
+  test("a repeated member parameter is 400 invalid query", async () => {
+    const cookie = sessionCookie(await login());
+    const res = await getStatsReq(`${RANGE}&member=1&member=2`, { Cookie: cookie });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "invalid query" });
+  });
+
+  test("member=me with a token and an agent filter counts only that member's usage by that agent", async () => {
     const { token } = await register();
+    const bob = await register({ email: "bob@example.com", name: "Bob", machineId: MID2 });
+    await post(
+      "/api/usage",
+      { records: [record({ agent: "claude", model: "opus-4-7", total: 10 }), record({ agent: "codex", model: "gpt", total: 20, input: 11 })] },
+      bearer(token),
+    );
+    await post("/api/usage", { records: [record({ agent: "codex", model: "gpt", total: 99 })] }, bearer(bob.token));
+    const res = await getStatsReq(`${RANGE}&member=me&agent=codex`, bearer(token));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { totals: { tokens: number; memberCount: number }; members: { name: string; tokens: number }[] };
+    expect(body.totals.tokens).toBe(20);
+    expect(body.members.map((m) => [m.name, m.tokens])).toEqual([["Ann", 20]]);
   });
 
   test("member=me includes machines by label and last sync only", async () => {
