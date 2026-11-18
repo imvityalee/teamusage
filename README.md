@@ -45,9 +45,14 @@ instead, make the directory writable by uid 10001.
 
 ### Upgrading
 
-Rebuild the image, run `docker rm -f teamusage`, and start it again with the same `docker run` command and
-the same volume. There is no migration. Members, tokens and dashboard sessions are kept, and members do not
-need to update anything for this release.
+Upgrade the server first. Rebuild the image, run `docker rm -f teamusage`, and start it again with the
+same `docker run` command and the same volume. Members, tokens and dashboard sessions are kept. The first
+start with this release adds two columns to the usage table in place; there is nothing for you to run.
+
+Clients on 0.1.0 keep working against the new server. Their usage shows as "Unknown" in the account
+views, because they send no account label. After the server, members update the Claude Code plugin to
+this release, which runs `teamusage@0.2.0`. Anyone who installed the client globally runs
+`npm install -g teamusage@0.2.0`.
 
 ### Put it behind HTTPS (recommended)
 
@@ -198,7 +203,7 @@ teamusage: connect your machine (about 5 minutes)
      Invite code: the code I sent you privately
      Your name and Your email: your work name and work email
 4. Start a new Claude Code session. From now on your usage is sent automatically
-   when a session starts and when it ends.
+   when a session starts and when it ends, and at most every 4 hours after a reply.
 5. Check it: ask Claude "send my usage", then find yourself on https://usage.example.com
 
 No Claude Code (Codex only, for example)? In a terminal:
@@ -219,7 +224,7 @@ teamusage: подключите свой компьютер (около 5 мин
      Invite code: код, присланный вам лично
      Your name и Your email: рабочие имя и почта
 4. Начните новую сессию Claude Code. Дальше статистика отправляется сама
-   при начале и при завершении каждой сессии.
+   при начале и при завершении каждой сессии, а также не чаще раза в 4 часа после ответа.
 5. Проверка: попросите Claude «отправь статистику» и найдите себя на https://usage.example.com
 
 Без Claude Code (например, только Codex)? В терминале:
@@ -262,6 +267,7 @@ teamusage sync              # collect and upload now
 teamusage sync --dry-run    # print exactly what would be sent; send nothing
 teamusage sync --quiet      # print nothing, always exit 0; failures go to sync.log in the config directory
 teamusage sync --detach     # run "sync --quiet" in the background and return at once
+teamusage sync --throttle 4h  # do nothing if a sync attempt started less than 4 hours ago (1m to 24h, or 1m to 1440m)
 teamusage status            # config, last sync, and whether the server is reachable
 teamusage stats             # your usage per model and the team total, last 30 days
 teamusage stats --range 3m  # the same for the last 3 months (1m, 3m or 6m)
@@ -373,7 +379,14 @@ You can instead install it from npm with
 
 **Automatic sending.** When a session starts (new or resumed) and when it ends, the plugin runs
 `npx -y teamusage@0.2.0 sync --quiet --detach`. The client returns at once, the sync continues in the
-background, the client prints nothing, and failures go to `sync.log` in the config directory. The first
+background, the client prints nothing, and failures go to `sync.log` in the config directory.
+
+A `Stop` hook, which Claude Code runs after each reply, runs the same command with `--throttle 4h`. It
+does nothing unless the last sync attempt on this machine started 4 or more hours ago, so a long
+session is sent about every 4 hours, not after every reply. A failed attempt also starts the 4-hour
+window. The session start and end hooks, a manual `teamusage sync`, the MCP tool and the scheduled job
+are never throttled. They do start the window, because it is measured from the last attempt of any
+kind. The time is kept in a `last-attempt` file in the config directory. The first
 run downloads the package, and `npx` itself may print download or npm notices. It sends only the
 numbers listed in [Exactly what is sent](#exactly-what-is-sent), for every agent ccusage finds on the
 machine, and nothing else; the client does not read the session information Claude Code passes to hooks.
@@ -454,6 +467,11 @@ teamusage считает только ту работу, которая выпо
 - **Синхронизация должна проходить хотя бы раз в месяц.** Claude Code по умолчанию удаляет локальные
   журналы через 30 дней. Хуки плагина и синхронизация по расписанию делают это автоматически.
 
+Тип аккаунта Claude (личный, team, enterprise или API-ключ) клиент определяет по локальному файлу
+`.claude.json` и отправляет только для записей Claude за сегодня и вчера; название организации
+отправляется только для team и enterprise, почта и ID аккаунта не отправляются никогда. У более
+старых дней, у других агентов и у клиентов версии 0.1.0 в дашборде стоит «Неизвестно».
+
 ## Exactly what is sent
 
 For each day, agent and model, one record:
@@ -461,6 +479,9 @@ For each day, agent and model, one record:
 - date (your local day), agent, model
 - input, output, cache-create and cache-read token counts, and their total
 - estimated cost in US dollars, and a flag saying the model had no known price
+- on Claude records dated your local today or yesterday only, an account label: a kind (`personal`,
+  `team`, `enterprise` or `api`) and, for `team` and `enterprise` only, the organisation name (see
+  [Account labels](#account-labels))
 
 The server refuses a record with more than 10^12 tokens in any count or 4 × 10^12 in total, a cost above
 $10,000,000, an agent name over 64 or a model name over 128 characters, or control characters in a name;
@@ -476,13 +497,36 @@ When a machine registers, once:
 - the hostname, as a label. It is shown to the team on the member's page, together with the time of
   that machine's last sync.
 
-Nothing else. No prompts, no file paths, no project or repository names, no session contents.
+Nothing else. Never your account email, account IDs or plan. No prompts, no file paths, no project or repository names, no session contents.
 `teamusage sync --dry-run` prints the exact payload and sends nothing, so you can check for yourself.
 
 Usage is read by [ccusage](https://github.com/ryoppippi/ccusage) (a pinned version) from each agent's
 local logs. It supports several agents, for example Claude Code and Codex; see the ccusage project for
 the full list. The cost is an estimate computed from public API prices. It is not what a subscription
 plan charges you.
+
+## Account labels
+
+The dashboard can show which kind of Claude account the usage ran on: an Accounts filter, an Accounts
+column in the members table, and a "By account" breakdown on each member's page.
+
+At each sync the client reads `oauthAccount.organizationType` and `organizationName` from Claude Code's
+`.claude.json` (`$CLAUDE_CONFIG_DIR/.claude.json` when that variable is an absolute path, otherwise
+`~/.claude.json`) and reads nothing else from that file. The kinds:
+
+- `personal`: Pro, Max or Free.
+- `team` and `enterprise`: sent with the organisation name.
+- `api`: no Claude login in the file, so Claude Code is using an API key.
+
+If the file is missing or unreadable, or the plan type is not one of these, no label is sent.
+
+The label is best effort and per day:
+
+- Only Claude records dated your machine's local today or yesterday carry it. Older days, days sent by a
+  0.1.0 client, and every other agent have no label, and the dashboard shows "Unknown" for them.
+- The server changes a day's label only when that day's tokens grow (or when the day has no label yet).
+  A resend without a label never clears one.
+- If you switch accounts during a day, that day keeps the label of the last sync that added tokens.
 
 ## Security model and limits
 
