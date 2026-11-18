@@ -96,3 +96,21 @@ test("presetRange is inclusive and exactly as long as asked", () => {
   expect(presetRange(30, "2026-11-18")).toEqual({ from: "2026-10-20", to: "2026-11-18" });
   expect(presetRange(90, "2026-03-01").from).toBe("2025-12-02");
 });
+
+describe("account label", () => {
+  test("kept on a claude record", () => {
+    const r = { ...good, account: { kind: "team", org: "Devcats" } };
+    expect(validateBatch({ records: [r] })).toEqual({ ok: true, records: [r] });
+  });
+  test("rejected on a non-claude record", () => {
+    const res = validateBatch({ records: [{ ...good, agent: "codex", account: { kind: "personal" } }] });
+    expect(res).toEqual({ ok: false, error: "records[0]: account on a non-claude record" });
+  });
+  test("invalid account rejected", () => {
+    expect(validateBatch({ records: [{ ...good, account: { kind: "vip" } }] }).ok).toBe(false);
+  });
+  test("absent account adds no key", () => {
+    const res = validateBatch({ records: [good] });
+    expect(res.ok && "account" in res.records[0]!).toBe(false);
+  });
+});

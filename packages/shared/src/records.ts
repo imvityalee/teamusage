@@ -1,3 +1,5 @@
+import { validateAccount, type AccountLabel } from "./account.js";
+
 export interface UsageRecord {
   date: string; // YYYY-MM-DD, the machine's local day
   agent: string; // ccusage agent id, e.g. "claude", "codex"
@@ -9,6 +11,7 @@ export interface UsageRecord {
   total: number; // input + output + cacheCreate + cacheRead
   costUsd: number;
   unpriced: boolean;
+  account?: AccountLabel; // Claude records only
 }
 
 export const MAX_BATCH = 1000;
@@ -61,7 +64,14 @@ function validateRecord(raw: unknown): UsageRecord | string {
     return "invalid costUsd";
   }
   if (typeof unpriced !== "boolean") return "invalid unpriced";
-  return { date: r.date, agent: r.agent, model: r.model, input, output, cacheCreate, cacheRead, total, costUsd, unpriced };
+  const rec: UsageRecord = { date: r.date, agent: r.agent, model: r.model, input, output, cacheCreate, cacheRead, total, costUsd, unpriced };
+  if (r.account !== undefined) {
+    if (r.agent !== "claude") return "account on a non-claude record";
+    const account = validateAccount(r.account);
+    if (typeof account === "string") return account;
+    rec.account = account;
+  }
+  return rec;
 }
 
 /** Never throws: any malformed input yields `{ ok: false }`. */
