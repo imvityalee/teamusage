@@ -94,7 +94,7 @@ To open the dashboard, visit the server's address and enter the invite code. Das
 Prerequisite: Node.js 22 or newer, with `npx`. You also need the server address and the invite code
 from whoever runs the server.
 
-After the first release (not published yet):
+From npm:
 
 ```sh
 npx teamusage setup
@@ -113,7 +113,7 @@ Enter the invite code at the prompt, or set it in the environment (`TEAMUSAGE_IN
 `--invite` on the command line: it stays in shell history and is visible in process listings. The invite
 code is not stored unless you pass `--save-invite`.
 
-Other commands (after the first release `npx teamusage ...`; from source `node packages/client/dist/cli.js ...`):
+Other commands (`npx teamusage ...`; from source `node packages/client/dist/cli.js ...`):
 
 ```sh
 teamusage sync              # collect and upload now
@@ -155,16 +155,15 @@ They use the same config as the other commands. The Claude Code plugin below reg
 
 This repository is also a Claude Code plugin marketplace. The plugin sends your usage automatically when
 Claude Code sessions start and end, and adds two skills and the MCP tools above. It runs the client from
-npm at a pinned version (`npx -y teamusage@0.1.0`), so it works only after the first release and once
-this repository is public (neither has happened yet). Then, inside Claude Code:
+npm at a pinned version (`npx -y teamusage@0.1.0`). Adding the marketplace needs read access to this
+repository. Inside Claude Code:
 
 ```
 /plugin marketplace add imvityalee/teamusage
 /plugin install teamusage@teamusage
 ```
 
-The full install through `/plugin install` has not been tested end to end yet, because the package is not
-published.
+The full install through `/plugin install` has not been tested end to end yet.
 
 You need Node.js 22 or newer, with `npx`. In organisations that restrict plugin marketplaces (Claude Code's
 `strictKnownMarketplaces` and `blockedMarketplaces` settings), an admin may need to allow this marketplace
@@ -227,7 +226,7 @@ node packages/client/dist/cli.js setup
 node packages/client/dist/cli.js sync
 ```
 
-After the first release (not published yet), you can instead install it with
+You can instead install it from npm with
 `npm install -g teamusage@0.1.0` and use `teamusage setup`, `teamusage sync` and
 `teamusage schedule install` (see [Scheduled sync](#scheduled-sync)).
 
@@ -317,8 +316,7 @@ Read this before you deploy. This version is deliberately simple.
 ## Scheduled sync
 
 For agents that have no session hook (Codex, for example), a scheduled job runs `teamusage sync --quiet`
-every four hours, and once when it is installed. It is installed only when you ask, after the first
-release (not published yet):
+every four hours, and once when it is installed. It is installed only when you ask:
 
 ```sh
 npm install -g teamusage          # the job needs a client that stays where it is
