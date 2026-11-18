@@ -1,8 +1,8 @@
 # Agent logos
 
-The agent logos in this folder come from simple-icons 16.38.0 (https://simpleicons.org), released under the
-CC0-1.0 licence, except `githubcopilot.svg`, which simple-icons marks as MIT (see below). The logos are trademarks
-of their owners, used only to identify the products.
+The agent logos in this folder come from simple-icons 16.38.0 (https://simpleicons.org). simple-icons publishes
+its icon files under CC0-1.0, except `githubcopilot.svg`, which it marks as MIT (reproduced below). This grants no
+trademark rights: the logos are trademarks of their owners, used only to identify the products.
 
 The files are copied unchanged: `claudecode.svg`, `cline.svg`, `cursor.svg`, `deepseek.svg`, `githubcopilot.svg`,
 `googlegemini.svg`, `kimi.svg`, `ollama.svg`, `opencode.svg`, `qwen.svg`.

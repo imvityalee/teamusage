@@ -3,6 +3,7 @@
 A small self-hosted server and command-line tool that show how much your team uses coding agents.
 Each person's machine reads its own local usage logs and sends token counts to a server you run.
 The server shows one dashboard for the whole team: tokens and estimated cost by person, agent and day.
+You can filter it by agent and model, and every member has a page of their own.
 
 It is built for teams that want these numbers without handing them to a third party. You host the server,
 you hold the data, and the data sent is small and fixed (see [Exactly what is sent](#exactly-what-is-sent)).
@@ -41,6 +42,12 @@ keeps it in the database and prints it in the log once, on the first start. Afte
 
 The container runs as a non-root user (uid 10001). A named volume works as is. If you use a bind mount
 instead, make the directory writable by uid 10001.
+
+### Upgrading
+
+Rebuild the image, run `docker rm -f teamusage`, and start it again with the same `docker run` command and
+the same volume. There is no migration. Members, tokens and dashboard sessions are kept, and members do not
+need to update anything for this release.
 
 ### Put it behind HTTPS (recommended)
 
@@ -94,36 +101,64 @@ To open the dashboard, visit the server's address and enter the invite code. Das
 ### Back up and move
 
 Everything the server knows is in one SQLite file, `teamusage.sqlite`, in the `teamusage-data` volume:
-members, machines, usage history and the invite code. There is no other database to run or back up.
+members, machines, usage history and, if the server generated it, the invite code. There is no other
+database to run or back up.
+
+The backup contains the invite code and everyone's names, emails and machine names. Keep it as private
+as the server itself.
 
 **Back up.** Stop the container first. The database keeps its most recent writes in a companion file
-until it is closed, so a copy taken while the server is running can miss rows.
+until it is closed, so a copy taken while the server is running can miss rows. The dated name is made
+by your own shell, before Docker runs, and the archive is created readable by you only.
 
 ```sh
+f=teamusage-backup-$(date +%F).tar.gz
 docker stop teamusage
 docker run --rm -v teamusage-data:/data -v "$PWD":/backup node:22-slim \
-  tar -czf /backup/teamusage-backup.tar.gz -C /data .
+  sh -c 'umask 077 && tar -czf "/backup/$1" -C /data .' sh "$f" ;
 docker start teamusage
 ```
 
-The dashboard is unavailable for those few seconds. Nothing is lost: each member's machine sends the
-same days again on its next sync. To do this on a schedule, put the three commands in a script and
-run it from cron, keeping several dated copies.
+The `;` makes `docker start teamusage` run even if the copy fails, so a failed copy cannot leave the
+server stopped. In a script, do not use `set -e` or `&&` between these steps for the same reason, and
+check afterwards that the file exists.
 
-**Restore, or move to another server.** On the new machine, build or load the image, then:
+The dashboard is unavailable for those few seconds. Nothing is lost: each member's machine sends the
+same days again on its next sync. To do this on a schedule, put the commands in a script and run it
+from cron. Each run writes a new dated file, so keep several of them and delete the old ones yourself.
+
+**Restore, or move to another server.** Restore only into a new, empty volume that no container is
+using. A running server, or leftover companion files from an old database, can corrupt the restored one.
+
+On a new server, build or load the image, put the archive in the current directory, and run (use the
+archive's own file name):
 
 ```sh
+f=teamusage-backup-2026-11-18.tar.gz
 docker volume create teamusage-data
 docker run --rm -v teamusage-data:/data -v "$PWD":/backup node:22-slim \
-  sh -c "tar -xzf /backup/teamusage-backup.tar.gz -C /data && chown -R 10001:10001 /data"
+  sh -c 'tar -xzf "/backup/$1" -C /data && chown -R 10001:10001 /data' sh "$f"
 ```
 
-Then start the container exactly as in [Run it for your team](#run-it-for-your-team). Members,
-history and the invite code all come with the file.
+Then start the container exactly as in [Run it for your team](#run-it-for-your-team).
+
+To restore on the same server, first remove the old container and its volume, then run the same steps:
+
+```sh
+docker rm -f teamusage
+docker volume rm teamusage-data
+```
+
+Members, tokens and usage history come with the file. The invite code comes with it only when the server
+generated it. If you pinned it with `TEAMUSAGE_INVITE_CODE`, pass the same variable to the new server.
 
 - **If the server keeps the same address,** nobody on the team has to do anything.
-- **If the address changes,** each member runs `teamusage setup` once with the new address. A saved
-  token is tied to the address it was issued for, and the client sends nothing until that is confirmed.
+- **If the address changes,** a saved token is tied to the address it was issued for, and the client
+  sends nothing until the change is confirmed. Members who use the command-line client run
+  `teamusage setup` with the new address. Members who use the Claude Code plugin change the Server URL
+  in the plugin's settings (`/plugin configure teamusage@teamusage`) and then run `teamusage setup` in a
+  terminal to confirm the change; until then their syncs send nothing. Setup registers again, so it asks
+  for the invite code.
 
 Restore a backup somewhere once before you rely on it: a backup that has never been restored is not
 yet proven.
@@ -375,7 +410,8 @@ When a machine registers, once:
 - a machine id: a hash derived from the operating system's machine identifier and your email. The raw
   identifier never leaves your machine. (On systems where none is available, a random value stored in
   your config takes its place.)
-- the hostname, as a label
+- the hostname, as a label. It is shown to the team on the member's page, together with the time of
+  that machine's last sync.
 
 Nothing else. No prompts, no file paths, no project or repository names, no session contents.
 `teamusage sync --dry-run` prints the exact payload and sends nothing, so you can check for yourself.
@@ -391,7 +427,7 @@ Read this before you deploy. This version is deliberately simple.
 
 - There are no passwords, roles or email verification. Anyone holding the invite code can register
   under any email, and can open the dashboard.
-- Everyone on the team sees everyone's usage.
+- Everyone on the team sees everyone's usage, machine names (hostnames) and last-sync times.
 - Treat the invite code as a shared secret. An operator can remove a member or machine, and can rotate
   the invite code (which ends all dashboard sessions). Removing a member does not stop them from
   registering again while they still know the current code, so rotate it too. A removed machine that
@@ -465,9 +501,10 @@ its marketplace file in `.claude-plugin/`, and `pnpm test` also runs `scripts/ch
 
 ## Credits
 
-The agent logos on the dashboard come from simple-icons 16.38.0 (https://simpleicons.org), released under the
-CC0-1.0 licence, except the GitHub Copilot logo, which is MIT. The logos are trademarks of their owners, used only to
-identify the products. See `packages/server/web/public/agents/NOTICE.md`.
+The agent logos on the dashboard come from simple-icons 16.38.0 (https://simpleicons.org). simple-icons
+publishes its icon files under CC0-1.0 (the GitHub Copilot icon under the MIT licence, reproduced in
+`packages/server/web/public/agents/NOTICE.md`). That grants no trademark rights: the logos are trademarks
+of their owners, used only to identify the products.
 
 ## Licence
 
