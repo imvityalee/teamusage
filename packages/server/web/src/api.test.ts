@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { checkRange, fetchStats, login } from "./api.js";
-import { statsFixture } from "./test-fixtures.js";
+import { memberStatsFixture, statsFixture } from "./test-fixtures.js";
 
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", ...headers } });
@@ -87,5 +87,36 @@ describe("checkRange", () => {
     expect(checkRange("2026-02-30", "2026-03-01")).toBe("incomplete");
     expect(checkRange("2026-02-01", "2026-01-01")).toBe("order");
     expect(checkRange("2024-11-18", "2026-11-18")).toBe("tooLong"); // 731 days
+  });
+});
+
+describe("fetchStats for one member", () => {
+  test("adds the numeric member id and maps 404 to not found", async () => {
+    const fetch = stubFetch(json(memberStatsFixture()), json({ error: "member not found" }, 404));
+    expect(await fetchStats("2026-01-01", "2026-01-31", undefined, 1)).toEqual({ kind: "ok", stats: memberStatsFixture() });
+    const [url, init] = fetch.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe("/api/stats?from=2026-01-01&to=2026-01-31&member=1");
+    expect(init.credentials).toBe("same-origin");
+    expect(await fetchStats("2026-01-01", "2026-01-31", undefined, 999999)).toEqual({ kind: "notFound" });
+  });
+
+  test("an invalid id is never sent", async () => {
+    const fetch = stubFetch();
+    for (const bad of [0, -1, 1.5, Number.NaN, 1e21, "1&member=2" as unknown as number]) {
+      expect(await fetchStats("2026-01-01", "2026-01-31", undefined, bad)).toEqual({ kind: "error", message: "invalid member" });
+    }
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  test("an answer without that member or without machines is unexpected", async () => {
+    stubFetch(json(statsFixture()), json({ ...memberStatsFixture(), members: [] }), json({ ...memberStatsFixture(), machines: "x" }));
+    for (let i = 0; i < 3; i++) {
+      expect(await fetchStats("2026-01-01", "2026-01-31", undefined, 1)).toEqual({ kind: "error", message: "unexpected response" });
+    }
+  });
+
+  test("a 404 for the team stats stays an ordinary error", async () => {
+    stubFetch(json({ error: "not found" }, 404));
+    expect(await fetchStats("2026-01-01", "2026-01-31")).toEqual({ kind: "error", message: "not found" });
   });
 });

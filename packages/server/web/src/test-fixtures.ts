@@ -39,6 +39,21 @@ export function statsFixture(names: FixtureNames = PLAIN): Stats {
   };
 }
 
+/** One member's stats, as the API answers `member=1`: only that member, plus their machines. */
+export function memberStatsFixture(names: FixtureNames = PLAIN, machine = "alice-mbp"): Stats {
+  const s = statsFixture(names);
+  return {
+    ...s,
+    totals: { tokens: 60_500, costUsd: 12.5, activeMembers: 1, memberCount: 1 },
+    members: s.members.slice(0, 1),
+    machines: [
+      { label: machine, lastSyncAt: "2026-11-18T12:00:00.000Z" },
+      { label: "alice-linux", lastSyncAt: "2026-11-15T12:00:00.000Z" },
+      { label: "old-box", lastSyncAt: null },
+    ],
+  };
+}
+
 /** The same shape with nothing used. */
 export function emptyStatsFixture(): Stats {
   const s = statsFixture();

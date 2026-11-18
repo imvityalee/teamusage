@@ -60,6 +60,16 @@ const en = {
   netError: "Could not reach the server.",
   loadFailed: "Could not load the statistics: {error}",
   retry: "Retry",
+  searchMembers: "Search members",
+  matchCount: "{n} of {m} members",
+  matchCount1: "{n} of {m} member",
+  noMatch: "No members match",
+  allMembers: "← All members",
+  k4: "Active days",
+  machine: "Machine",
+  noMachines: "No machines yet",
+  notFound: "Member not found",
+  memberTitle: "{name} — teamusage",
 };
 
 export type MessageKey = keyof typeof en;
@@ -122,6 +132,16 @@ const ru: Record<MessageKey, string> = {
   netError: "Не удалось связаться с сервером.",
   loadFailed: "Не удалось загрузить статистику: {error}",
   retry: "Повторить",
+  searchMembers: "Поиск участников",
+  matchCount: "{n} из {m} участников",
+  matchCount1: "{n} из {m} участника",
+  noMatch: "Участники не найдены",
+  allMembers: "← Все участники",
+  k4: "Активные дни",
+  machine: "Устройство",
+  noMachines: "Устройств пока нет",
+  notFound: "Участник не найден",
+  memberTitle: "{name} — teamusage",
 };
 
 export const messages: { en: Record<MessageKey, string>; ru: Record<MessageKey, string> } = { en, ru };
@@ -131,6 +151,12 @@ export function t(lang: Lang, key: MessageKey, vars: Record<string, string | num
   return messages[lang][key].replace(/\{(\w+)\}/g, (hole, name: string) =>
     Object.hasOwn(vars, name) ? String(vars[name]) : hole,
   );
+}
+
+/** "N of M members", with the noun agreeing with M ("из 21 участника", "of 1 member"). */
+export function matchCount(lang: Lang, n: number, m: number): string {
+  const one = lang === "ru" ? m % 10 === 1 && m % 100 !== 11 : m === 1;
+  return t(lang, one ? "matchCount1" : "matchCount", { n, m });
 }
 
 /** A stored choice wins; otherwise Russian for a Russian browser, English for everything else. */

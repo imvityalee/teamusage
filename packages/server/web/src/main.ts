@@ -2,12 +2,15 @@ import { presetRange, type Stats } from "@teamusage/shared";
 import { checkRange, fetchStats, login } from "./api.js";
 import { localIsoDate, longDate } from "./format.js";
 import { loadLang, locale, pickLang, saveLang, t, type Lang, type MessageKey } from "./i18n.js";
-import { applyStaticText, renderStats } from "./render.js";
+import { applyMemberSearch, applyStaticText, renderMember, renderNotFound, renderStats } from "./render.js";
+import { parseRoute, type Route } from "./route.js";
 
 /** Wires state and events. All drawing goes through `paint()`, so a language switch re-renders everything. */
 
 type Preset = 30 | 90 | 180;
 type Message = { key: MessageKey; vars?: Record<string, string | number> };
+/** What `#stats` shows: the answer for the route it was loaded for, which may lag the URL while loading. */
+type Shown = { kind: "team"; stats: Stats } | { kind: "member"; id: number; stats: Stats } | { kind: "notFound" };
 
 const PRESETS: readonly Preset[] = [30, 90, 180];
 
@@ -40,7 +43,10 @@ const state: {
   from: string;
   to: string;
   view: "stats" | "login";
-  stats: Stats | null;
+  route: Route;
+  shown: Shown | null;
+  /** The member search text. It lives only here and in the input: never sent, stored or put in the URL. */
+  query: string;
   request: AbortController | null;
   status: Message | null;
   rangeMsg: Message | null;
@@ -51,7 +57,9 @@ const state: {
   from: "",
   to: "",
   view: "stats",
-  stats: null,
+  route: parseRoute(location.hash),
+  shown: null,
+  query: "",
   request: null,
   status: null,
   rangeMsg: null,
@@ -81,7 +89,30 @@ function paint(): void {
   showMessage(ui.loginMsg, state.loginMsg);
   ui.login.hidden = state.view !== "login";
   ui.stats.hidden = state.view === "login";
-  if (state.stats !== null) ui.stats.replaceChildren(renderStats(document, state.stats, lang, today()));
+  const { shown } = state;
+  if (shown === null) return;
+  // A load can finish while someone types in the search box; give them back the box they were typing in.
+  const active = document.activeElement as HTMLInputElement | null;
+  const typing = active?.id === "member-search" ? ([active.selectionStart, active.selectionEnd] as const) : null;
+  switch (shown.kind) {
+    case "team":
+      ui.stats.replaceChildren(renderStats(document, shown.stats, lang, today(), state.query));
+      break;
+    case "member": {
+      ui.stats.replaceChildren(renderMember(document, shown.stats, shown.id, lang, today()));
+      const name = shown.stats.members.find((m) => m.id === shown.id)?.name;
+      if (name !== undefined) document.title = t(lang, "memberTitle", { name });
+      break;
+    }
+    case "notFound":
+      ui.stats.replaceChildren(renderNotFound(document, lang));
+      break;
+  }
+  const search = document.getElementById("member-search") as HTMLInputElement | null;
+  if (typing && search) {
+    search.focus();
+    search.setSelectionRange(typing[0], typing[1]);
+  }
 }
 
 function setBusy(busy: boolean): void {
@@ -89,19 +120,27 @@ function setBusy(busy: boolean): void {
   ui.stats.setAttribute("aria-busy", String(busy));
 }
 
-/** Loads the current range. The previous numbers stay on screen, dimmed, until the answer arrives. */
+/** Loads the current range and route. The previous view stays on screen, dimmed, until the answer arrives. */
 async function load(): Promise<void> {
   state.request?.abort();
   const request = new AbortController();
   state.request = request;
   setBusy(true);
-  const res = await fetchStats(state.from, state.to, request.signal);
+  const route = state.route;
+  const res = await fetchStats(state.from, state.to, request.signal, route.view === "member" ? route.id : undefined);
   if (state.request !== request) return; // a newer request took over
   state.request = null;
   setBusy(false);
   switch (res.kind) {
     case "ok":
-      state.stats = res.stats;
+      if (route.view === "member") state.query = "";
+      state.shown = route.view === "member" ? { kind: "member", id: route.id, stats: res.stats } : { kind: "team", stats: res.stats };
+      state.view = "stats";
+      state.status = null;
+      break;
+    case "notFound":
+      state.query = "";
+      state.shown = { kind: "notFound" };
       state.view = "stats";
       state.status = null;
       break;
@@ -201,6 +240,22 @@ ui.lang.addEventListener("click", (e) => {
   paint();
 });
 ui.retry.addEventListener("click", () => void load());
+// Filters the rows already on the page; no request.
+ui.stats.addEventListener("input", (e) => {
+  const input = e.target as HTMLInputElement | null;
+  if (input?.id !== "member-search" || state.shown?.kind !== "team") return;
+  state.query = input.value;
+  applyMemberSearch(document, ui.stats, state.shown.stats, state.lang, today(), state.query);
+});
+// Member links, the back link and the browser's Back arrive here (a reload reads the fragment at start).
+// The fragment is parsed into a route, never used as is.
+window.addEventListener("hashchange", () => {
+  const route = parseRoute(location.hash);
+  const same = route.view === state.route.view && (route.view === "team" || (state.route.view === "member" && route.id === state.route.id));
+  if (same) return;
+  state.route = route;
+  void load();
+});
 ui.loginForm.addEventListener("submit", (e) => void onLogin(e));
 
 selectPreset(90);
