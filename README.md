@@ -91,6 +91,47 @@ variable. `rotate-invite` also refuses; to change a pinned code, change the vari
 To open the dashboard, visit the server's address and enter the invite code. Dashboard sessions last
 30 days.
 
+### Back up and move
+
+Everything the server knows is in one SQLite file, `teamusage.sqlite`, in the `teamusage-data` volume:
+members, machines, usage history and the invite code. There is no other database to run or back up.
+
+**Back up.** Stop the container first. The database keeps its most recent writes in a companion file
+until it is closed, so a copy taken while the server is running can miss rows.
+
+```sh
+docker stop teamusage
+docker run --rm -v teamusage-data:/data -v "$PWD":/backup node:22-slim \
+  tar -czf /backup/teamusage-backup.tar.gz -C /data .
+docker start teamusage
+```
+
+The dashboard is unavailable for those few seconds. Nothing is lost: each member's machine sends the
+same days again on its next sync. To do this on a schedule, put the three commands in a script and
+run it from cron, keeping several dated copies.
+
+**Restore, or move to another server.** On the new machine, build or load the image, then:
+
+```sh
+docker volume create teamusage-data
+docker run --rm -v teamusage-data:/data -v "$PWD":/backup node:22-slim \
+  sh -c "tar -xzf /backup/teamusage-backup.tar.gz -C /data && chown -R 10001:10001 /data"
+```
+
+Then start the container exactly as in [Run it for your team](#run-it-for-your-team). Members,
+history and the invite code all come with the file.
+
+- **If the server keeps the same address,** nobody on the team has to do anything.
+- **If the address changes,** each member runs `teamusage setup` once with the new address. A saved
+  token is tied to the address it was issued for, and the client sends nothing until that is confirmed.
+
+Restore a backup somewhere once before you rely on it: a backup that has never been restored is not
+yet proven.
+
+**One server, one file.** SQLite serves one server process. That is plenty for a team's usage data,
+and it is why there is nothing else to install. Two servers cannot share one database file; run a
+single server per team.
+
 ## Join as a team member
 
 Prerequisite: Node.js 22 or newer, with `npx`. You also need the server address and the invite code
