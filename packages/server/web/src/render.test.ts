@@ -8,7 +8,7 @@ import { applyMemberSearch, renderBackLink, renderMember, renderMemberHead, rend
 import { emptyStatsFixture, HOSTILE_IDS, memberStatsFixture, statsFixture } from "./test-fixtures.js";
 
 const TODAY = "2026-11-18";
-const CODEX_ONLY: Filters = { agents: ["codex"], models: [] };
+const CODEX_ONLY: Filters = { agents: ["codex"], models: [], accounts: [] };
 
 function newDocument(): Document {
   const window = new Window({ settings: { disableJavaScriptEvaluation: true, disableJavaScriptFileLoading: true } });
@@ -134,8 +134,11 @@ describe("tiles", () => {
       ["Active members", "2 of 3", "used the selected agents"],
       ["Most used agent", "Codex", "100% of filtered tokens"],
     ]);
-    const models: Filters = { agents: [], models: [{ agent: "codex", model: "gpt-5-codex" }] };
+    const models: Filters = { agents: [], models: [{ agent: "codex", model: "gpt-5-codex" }], accounts: [] };
     expect(tileTexts(render(codexOnly(), "en", models))[2]).toEqual(["Active members", "2 of 3", "used the selected models"]);
+    const accounts: Filters = { agents: [], models: [], accounts: ["personal"] };
+    expect(tileTexts(render(codexOnly(), "en", accounts))[2]).toEqual(["Active members", "2 of 3", "used the selected accounts"]);
+    expect(tileTexts(render(codexOnly(), "en", accounts))[0]?.[0]).toBe("Total tokens · filtered");
     expect(tileTexts(render(codexOnly(), "ru", CODEX_ONLY)).map((t) => t[0])).toEqual([
       "Всего токенов · с фильтром",
       "Оценка стоимости · с фильтром",
@@ -153,15 +156,15 @@ describe("members table", () => {
       ["BN", "Bao Nguyen", "bao@example.com"],
       ["CM", "Carla Mendes", "carla@example.com"],
     ]);
-    expect(cells(r[0] as Element).slice(1)).toEqual(["40,000", "$9.00", "", "today", ""]);
-    expect(cells(r[1] as Element)[4]).toBe("8 days ago");
-    expect(cells(r[2] as Element)[4]).toBe("—");
+    expect(cells(r[0] as Element).slice(1)).toEqual(["40,000", "$9.00", "", "Team · Devcats 78%Unknown 13%+1", "today", ""]);
+    expect(cells(r[1] as Element)[5]).toBe("8 days ago");
+    expect(cells(r[2] as Element)[5]).toBe("—");
     expect(r.map((row) => row.querySelector(".avatar")?.getAttribute("aria-hidden"))).toEqual(["true", "true", "true"]);
   });
 
   test("a last sync 7 or more days ago is marked stale, in words and colour", () => {
     const r = rows(render(), "members");
-    expect(r.map((row) => row.querySelectorAll("td")[3]?.classList.contains("stale"))).toEqual([false, true, false]);
+    expect(r.map((row) => row.querySelectorAll("td")[4]?.classList.contains("stale"))).toEqual([false, true, false]);
   });
 
   test("the agent mix: length is the share of the top member, segments are agents in fixed colours", () => {
@@ -228,6 +231,61 @@ describe("members table", () => {
     expect(root.querySelector("#members-heading")?.textContent).toBe("Members 3");
     expect(root.querySelector("#members-heading ~ .hint, .panel-head .hint")?.textContent).toBe("Select a member to see their own usage");
     expect((root.querySelector("#member-search") as HTMLInputElement).placeholder).toBe("Search by name or email");
+  });
+});
+
+describe("members table: accounts", () => {
+  const accountLines = (root: Element) =>
+    rows(root, "members").map((row) => {
+      const cell = row.querySelector("td.accts-cell") as Element;
+      const lines = [...cell.querySelectorAll("li")].map((li) => li.textContent);
+      return lines.length > 0 ? lines : cell.textContent;
+    });
+
+  test("an Accounts column after the agent mix: largest first as Name share%, at most two lines then +N; none is a dash", () => {
+    const root = render();
+    expect([...root.querySelectorAll("#members thead th")].map((th) => th.textContent)).toEqual([
+      "Member",
+      "Total tokens↓",
+      "Cost (USD)",
+      "Agent mix",
+      "Accounts",
+      "Last sync",
+    ]);
+    expect(accountLines(root)).toEqual([["Team · Devcats 78%", "Unknown 13%", "+1"], ["Team · Devcats 98%", "Unknown 2%"], "—"]);
+    expect(render(statsFixture(), "ru").querySelectorAll("#members thead th")[4]?.textContent).toBe("Аккаунты");
+    expect(accountLines(render(statsFixture(), "ru"))[0]).toEqual(["Команда · Devcats 78%", "Неизвестно 13%", "+1"]);
+  });
+
+  test("many accounts: two lines and the count of the rest; ties keep a fixed order", () => {
+    const stats = statsFixture();
+    (stats.members[0] as Stats["members"][number]).byAccount = { api: 10, personal: 10, "team:": 30, "enterprise:": 40, unknown: 10 };
+    expect(accountLines(render(stats))[0]).toEqual(["Enterprise 40%", "Team 30%", "+3"]);
+  });
+
+  test("text only: no colour, no bar, no style; malformed keys and numbers are left out", () => {
+    const stats = statsFixture();
+    (stats.members[0] as Stats["members"][number]).byAccount = { boss: 999, "team:A": 3, personal: Number.NaN, api: -1, unknown: 1 } as Record<string, number>;
+    delete (stats.members[1] as { byAccount?: unknown }).byAccount;
+    const root = render(stats);
+    expect(accountLines(root)).toEqual([["Team · A 75%", "Unknown 25%"], "—", "—"]);
+    for (const el of root.querySelectorAll("td.accts-cell, td.accts-cell *")) {
+      expect(el.getAttribute("style")).toBeNull();
+      expect(el.getAttribute("class") ?? "").not.toMatch(/ag-/);
+    }
+  });
+
+  test("renders org as text", () => {
+    const evil = "<img src=x onerror=alert(1)>";
+    const withOrg = (org: string) => {
+      const stats = statsFixture();
+      (stats.members[0] as Stats["members"][number]).byAccount = { [`team:${org}`]: 3, [`enterprise:${org}`]: 1 };
+      return render(stats);
+    };
+    const root = withOrg(evil);
+    expect(tags(root)).toEqual(tags(withOrg("Plain")));
+    expect(root.querySelector("#members img, script")).toBeNull();
+    expect(accountLines(root)[0]).toEqual([`Team · ${evil} 75%`, `Enterprise · ${evil} 25%`]);
   });
 });
 
@@ -442,6 +500,51 @@ describe("member page", () => {
     expect(root.querySelector("#member-search")).toBeNull();
   });
 
+  test("By account: name, tokens and share of the member's tokens, largest first", () => {
+    const byAccount = (root: Element) =>
+      [...root.querySelectorAll("#accounts li")].map((li) => [
+        li.querySelector(".acct-name")?.textContent,
+        li.querySelector(".acct-tokens")?.textContent,
+        li.querySelector(".acct-share")?.textContent,
+      ]);
+    const root = renderPage();
+    expect(root.querySelector("#accounts-heading")?.textContent).toBe("By account");
+    expect(byAccount(root)).toEqual([
+      ["Team · Devcats", "31,000", "78%"],
+      ["Unknown", "5,000", "13%"],
+      ["Personal", "4,000", "10%"],
+    ]);
+    // After the models, before the machines.
+    const headings = [...root.querySelectorAll("section.panel h2")].map((h) => h.id);
+    expect(headings.indexOf("accounts-heading")).toBe(headings.indexOf("models-heading") + 1);
+    expect(headings.indexOf("machines-heading")).toBe(headings.indexOf("accounts-heading") + 1);
+    expect(root.querySelector("#accounts .agent-icon, #accounts [style]")).toBeNull();
+    const ru = renderPage(memberStatsFixture(), "ru");
+    expect(ru.querySelector("#accounts-heading")?.textContent).toBe("По аккаунтам");
+    expect(byAccount(ru)[2]).toEqual(["Личный", "4,000", "10%"]);
+  });
+
+  test("By account is left out when the member has no account numbers or no usage", () => {
+    const stats = memberStatsFixture();
+    (stats.members[0] as Stats["members"][number]).byAccount = {};
+    expect(renderPage(stats).querySelector("#accounts-heading")).toBeNull();
+    const empty = { ...emptyStatsFixture(), members: memberStatsFixture().members, machines: memberStatsFixture().machines };
+    expect(renderPage(empty).querySelector("#accounts")).toBeNull();
+  });
+
+  test("renders org as text on the member page", () => {
+    const evil = "<img src=x onerror=alert(1)>";
+    const withOrg = (org: string) => {
+      const stats = memberStatsFixture();
+      (stats.members[0] as Stats["members"][number]).byAccount = { [`enterprise:${org}`]: 9, personal: 1 };
+      return renderPage(stats);
+    };
+    const root = withOrg(evil);
+    expect(tags(root)).toEqual(tags(withOrg("Plain")));
+    expect(root.querySelector("#accounts img, script")).toBeNull();
+    expect(root.querySelector("#accounts .acct-name")?.textContent).toBe(`Enterprise · ${evil}`);
+  });
+
   test("active days count only days with tokens", () => {
     const stats = memberStatsFixture();
     for (const i of [0, 3, 4]) (stats.daily[i] as Stats["daily"][number]).byAgent = { claude: 0, codex: 0 };
@@ -520,7 +623,7 @@ describe("app code never parses markup", () => {
   test("no HTML-parsing or code-evaluating API appears in the dashboard sources", () => {
     const dir = new URL("./", import.meta.url);
     const sources = readdirSync(dir).filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts") && f !== "test-fixtures.ts");
-    expect(sources).toEqual(expect.arrayContaining(["render.ts", "filterbar.ts", "agents.ts", "filters.ts", "chart.ts", "main.ts"]));
+    expect(sources).toEqual(expect.arrayContaining(["render.ts", "filterbar.ts", "agents.ts", "accounts.ts", "filters.ts", "chart.ts", "main.ts"]));
     for (const file of sources) {
       const code = readFileSync(new URL(file, dir), "utf8");
       for (const bad of [/innerHTML/, /outerHTML/, /insertAdjacentHTML/, /document\.write/, /\beval\s*\(/, /new Function\b/, /createContextualFragment/, /DOMParser/, /setHTML/]) {
@@ -531,7 +634,7 @@ describe("app code never parses markup", () => {
 
   test("filter state is never stored, put in a cookie or in the URL by app code", () => {
     const dir = new URL("./", import.meta.url);
-    for (const file of ["filters.ts", "filterbar.ts", "agents.ts", "render.ts", "chart.ts", "api.ts", "main.ts"]) {
+    for (const file of ["filters.ts", "filterbar.ts", "agents.ts", "accounts.ts", "render.ts", "chart.ts", "api.ts", "main.ts"]) {
       const code = readFileSync(new URL(file, dir), "utf8");
       for (const bad of [/localStorage/, /sessionStorage/, /document\.cookie/, /location\.(hash|href|search)\s*=/, /history\.(push|replace)State/, /new RegExp/]) {
         expect([file, bad.test(code)]).toEqual([file, false]);
@@ -545,7 +648,7 @@ describe("language", () => {
     const root = render(statsFixture(), "ru");
     expect(root.querySelector(".tile .k")?.textContent).toBe("Всего токенов");
     expect(root.querySelector("#members thead th")?.textContent).toBe("Участник");
-    expect(cells(rows(root, "members")[1] as Element)[4]).toBe("8 дней назад");
+    expect(cells(rows(root, "members")[1] as Element)[5]).toBe("8 дней назад");
     expect(root.querySelector("#members-heading")?.textContent).toBe("Участники 3");
   });
 });

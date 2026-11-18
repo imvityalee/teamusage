@@ -146,6 +146,19 @@ describe("filter and design strings", () => {
     expect(t("ru", "modelLimit", { n: 50 })).toBe("Можно выбрать не больше 50 моделей.");
     expect(t("en", "removeFilter", { name: "Codex" })).toBe("Remove filter: Codex");
   });
+
+  test("the accounts filter, column and member list in both languages", () => {
+    const both = (key: keyof typeof messages.en) => [t("en", key), t("ru", key)];
+    expect(both("allAccounts")).toEqual(["All accounts", "Все аккаунты"]);
+    expect(both("accountsTitle")).toEqual(["Accounts in this period", "Аккаунты за этот период"]);
+    expect(both("mhAccounts")).toEqual(["Accounts", "Аккаунты"]);
+    expect(both("byAccount")).toEqual(["By account", "По аккаунтам"]);
+    expect(both("usedSelectedAccounts")).toEqual(["used the selected accounts", "пользовались выбранными аккаунтами"]);
+    expect(t("en", "accountLimit", { n: 50 })).toBe("You can select up to 50 accounts.");
+    expect(t("ru", "accountLimit", { n: 50 })).toBe("Можно выбрать не больше 50 аккаунтов.");
+    expect([1, 2, 5].map((n) => count("en", "accounts", n))).toEqual(["1 account", "2 accounts", "5 accounts"]);
+    expect([1, 3, 5, 11, 21, 22].map((n) => count("ru", "accounts", n))).toEqual(["1 аккаунт", "3 аккаунта", "5 аккаунтов", "11 аккаунтов", "21 аккаунт", "22 аккаунта"]);
+  });
 });
 
 describe("more design strings", () => {
@@ -166,7 +179,7 @@ describe("more design strings", () => {
   });
 
   test("every counted noun has all three forms in both languages", () => {
-    for (const noun of ["agents", "models", "machines", "daysAgo", "syncedDaysAgo", "noSyncDays"] as const) {
+    for (const noun of ["agents", "models", "accounts", "machines", "daysAgo", "syncedDaysAgo", "noSyncDays"] as const) {
       for (const n of [1, 2, 5, 11, 21, 22]) {
         for (const lang of ["en", "ru"] as const) {
           const s = count(lang, noun, n);

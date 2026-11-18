@@ -167,6 +167,11 @@ td.strong { font-weight: 600; }
 td.stale { color: var(--stale); }
 .chev-cell { width: 1%; color: var(--muted); }
 .mix-note { margin: 10px 0 0; font-size: 12px; color: var(--muted); }
+/* Accounts: text only, no colour. A long org name wraps inside the cell instead of widening the table. */
+td.accts-cell { white-space: normal; min-width: 8em; max-width: 16em; }
+.accts { list-style: none; margin: 0; padding: 0; font-size: 13px; }
+.accts li { overflow-wrap: anywhere; }
+.acct-share, .acct-more { color: var(--muted); font-variant-numeric: tabular-nums; }
 
 /* Member page */
 .page-head-in { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
@@ -186,6 +191,12 @@ td.stale { color: var(--stale); }
 .status-pill.good { background: var(--good-bg); color: var(--good-text); }
 .status-pill.warn { background: var(--warn-bg); color: var(--warn-text); }
 .machines-none { color: var(--muted); margin: 0; }
+.accounts { list-style: none; margin: 0; padding: 0; }
+.accounts li { display: flex; align-items: baseline; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.accounts li:last-child { border-bottom: 0; }
+.accounts .acct-name { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.accounts .acct-tokens { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.accounts .acct-share { min-width: 3.5em; text-align: right; white-space: nowrap; }
 
 /* States */
 .empty, .placeholder { color: var(--muted); text-align: center; padding: 40px 16px; margin: 0; }

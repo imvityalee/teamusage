@@ -5,10 +5,12 @@ import {
   availableTotal,
   equalFilters,
   isActive,
+  MAX_ACCOUNTS,
   MAX_AGENTS,
   MAX_MODELS,
   NO_FILTERS,
   prune,
+  toggleAccount,
   toggleAgent,
   toggleModel,
   type Filters,
@@ -80,7 +82,7 @@ const state: {
   shown: Shown | null;
   /** The member search text. It lives only here and in the input: never sent, stored or put in the URL. */
   query: string;
-  /** The agent and model filters. Only here: sent as query parameters, never stored or put in the URL. */
+  /** The agent, model and account filters. Only here: sent as query parameters, never stored or put in the URL. */
   filters: Filters;
   open: PopoverKind | null;
   /** The models search text: a plain substring match on the rows already drawn; never sent or stored. */
@@ -274,7 +276,10 @@ async function load(): Promise<void> {
         // list, the answer was narrowed by a filter that is now gone, so ask again.
         const pruned = prune(filters, res.stats.available);
         state.filters = pruned;
-        const emptied = (filters.agents.length > 0 && pruned.agents.length === 0) || (filters.models.length > 0 && pruned.models.length === 0);
+        const emptied =
+          (filters.agents.length > 0 && pruned.agents.length === 0) ||
+          (filters.models.length > 0 && pruned.models.length === 0) ||
+          (filters.accounts.length > 0 && pruned.accounts.length === 0);
         if (emptied) {
           void load();
           return;
@@ -362,8 +367,8 @@ const handlers: FilterBarHandlers = {
   },
   toggleAgent: (id) => applyToggle(toggleAgent(state.filters, id), "agentLimit", MAX_AGENTS),
   toggleModel: (ref) => applyToggle(toggleModel(state.filters, ref), "modelLimit", MAX_MODELS),
-  showAll: (kind) =>
-    setFilters(kind === "agents" ? { agents: [], models: state.filters.models } : { agents: state.filters.agents, models: [] }),
+  toggleAccount: (key) => applyToggle(toggleAccount(state.filters, key), "accountLimit", MAX_ACCOUNTS),
+  showAll: (kind) => setFilters({ ...state.filters, [kind]: [] }),
   modelQuery: (query) => {
     state.modelQuery = query;
   },

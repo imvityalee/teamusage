@@ -4,7 +4,7 @@ import { Window } from "happy-dom";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { localIsoDate, rangeText } from "./format.js";
 import { LANG_KEY } from "./i18n.js";
-import { memberStatsFixture, statsFixture } from "./test-fixtures.js";
+import { emptyStatsFixture, memberStatsFixture, statsFixture } from "./test-fixtures.js";
 
 const PAGE = readFileSync(new URL("../index.html", import.meta.url), "utf8");
 const BODY = /<body>([\s\S]*)<\/body>/.exec(PAGE)?.[1]?.replace(/<script[\s\S]*?<\/script>/g, "") ?? "";
@@ -45,6 +45,8 @@ async function bootAt(url: string, ...first: Reply[]): Promise<void> {
   vi.stubGlobal("localStorage", win.localStorage);
   vi.stubGlobal("sessionStorage", win.sessionStorage);
   vi.stubGlobal("location", win.location);
+  // main.ts restores the caret with `instanceof HTMLInputElement`, a global in a browser.
+  vi.stubGlobal("HTMLInputElement", win.HTMLInputElement);
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string, init: RequestInit) => {
@@ -458,8 +460,8 @@ describe("page title", () => {
 describe("filters", () => {
   const withFilters = (url: string, params: [string, string][]) =>
     params.length === 0 ? url : `${url}&${new URLSearchParams(params).toString()}`;
-  const open = (kind: "agents" | "models") => $(`#${kind}-btn`).click();
-  const rowBoxes = (kind: "agents" | "models") =>
+  const open = (kind: "agents" | "models" | "accounts") => $(`#${kind}-btn`).click();
+  const rowBoxes = (kind: "agents" | "models" | "accounts") =>
     [...doc.querySelectorAll<HTMLInputElement>(`#${kind}-pop label.pop-row input`)].filter((b) => !(b.closest("li") as HTMLElement).hidden);
   function tick(box: HTMLInputElement | undefined): void {
     if (!box) throw new Error("no checkbox");
@@ -798,6 +800,158 @@ describe("filters", () => {
     $("a.back").click();
     await flush();
     expect($("#page-head").childElementCount).toBe(0);
+  });
+
+  test("ticking an account asks again with account parameters after agents and models; Show all and Clear filters drop it", async () => {
+    await boot(json(statsFixture()));
+    open("agents");
+    replies.push(json(statsFixture()));
+    tick(rowBoxes("agents")[1]); // Codex
+    await flush();
+    open("models");
+    replies.push(json(statsFixture()));
+    tick(rowBoxes("models")[0]); // gpt-5-codex, the only model of the selected agent
+    await flush();
+    open("accounts");
+    expect($("#accounts-btn").getAttribute("aria-expanded")).toBe("true");
+    expect(doc.querySelectorAll(".popover")).toHaveLength(1);
+    replies.push(json(statsFixture()));
+    tick(rowBoxes("accounts")[0]); // Team · Devcats
+    await flush();
+    replies.push(json(statsFixture()));
+    tick(rowBoxes("accounts")[2]); // Personal
+    await flush();
+    expect(calls.at(-1)?.url).toBe(
+      withFilters(statsUrl(range(90)), [["agent", "codex"], ["model", "codex:gpt-5-codex"], ["account", "team:Devcats"], ["account", "personal"]]),
+    );
+    expect($("#accounts-btn").getAttribute("aria-expanded")).toBe("true");
+    expect(rowBoxes("accounts").map((b) => b.checked)).toEqual([true, false, true]);
+    expect($("#accounts-btn").textContent?.trim()).toBe("2 accounts");
+    expect(chipTexts()).toEqual(["Codex", "gpt-5-codex", "Team · Devcats", "Personal"]);
+
+    // Removing an account chip, then Show all in the accounts popover, leave agents and models alone.
+    replies.push(json(statsFixture()));
+    (doc.querySelectorAll<HTMLButtonElement>("#chips button.chip")[2] as HTMLButtonElement).click();
+    await flush();
+    expect(calls.at(-1)?.url).toBe(withFilters(statsUrl(range(90)), [["agent", "codex"], ["model", "codex:gpt-5-codex"], ["account", "personal"]]));
+    $(".tile").click(); // closes the popover
+    open("accounts");
+    replies.push(json(statsFixture()));
+    $("#accounts-pop .pop-head button").click();
+    await flush();
+    expect(calls.at(-1)?.url).toBe(withFilters(statsUrl(range(90)), [["agent", "codex"], ["model", "codex:gpt-5-codex"]]));
+    expect($("#accounts-btn").textContent?.trim()).toBe("All accounts");
+
+    replies.push(json(statsFixture()));
+    tick(rowBoxes("accounts")[1]); // Unknown
+    await flush();
+    replies.push(json(statsFixture()));
+    $("#clear-filters").click();
+    await flush();
+    expect(calls.at(-1)?.url).toBe(statsUrl(range(90)));
+    expect($("#chips").hidden).toBe(true);
+    noStorage();
+    expect(win.location.href).toBe("http://localhost:8787/");
+  });
+
+  test("the account filter survives a range change and a language switch; a range without it drops it and asks again", async () => {
+    await boot(json(statsFixture()));
+    open("accounts");
+    replies.push(json(statsFixture()));
+    tick(rowBoxes("accounts")[0]);
+    await flush();
+
+    replies.push(json(statsFixture()));
+    $('#range button[data-days="30"]').click();
+    await flush();
+    expect(calls.at(-1)?.url).toBe(withFilters(statsUrl(range(30)), [["account", "team:Devcats"]]));
+
+    const before = calls.length;
+    $('#lang button[data-lang="ru"]').click();
+    await flush();
+    expect(calls).toHaveLength(before);
+    expect($("#accounts-btn").textContent?.trim()).toBe("1 аккаунт");
+    expect(chipTexts()).toEqual(["Команда · Devcats"]);
+    expect([...doc.querySelectorAll("#members thead th")][4]?.textContent).toBe("Аккаунты");
+
+    const noTeam = { ...statsFixture(), available: { ...statsFixture().available, accounts: [{ key: "personal", tokens: 5 }] } };
+    replies.push(json(noTeam), json(noTeam));
+    $('#range button[data-days="180"]').click();
+    await flush();
+    expect(calls.slice(-2).map((c) => c.url)).toEqual([withFilters(statsUrl(range(180)), [["account", "team:Devcats"]]), statsUrl(range(180))]);
+    expect($("#accounts-btn").textContent?.trim()).toBe("Все аккаунты");
+    expect($("#chips").hidden).toBe(true);
+    noStorage();
+  });
+
+  test("on a member page an account selection the member lacks is never pruned: listed at zero, ticked, and kept going back", async () => {
+    await boot(json(statsFixture()));
+    open("accounts");
+    replies.push(json(statsFixture()));
+    tick(rowBoxes("accounts")[2]); // Personal
+    await flush();
+    $(".tile").click();
+
+    // Member 1 never used a personal account: nothing matches, and their `available` lacks it.
+    const member = memberStatsFixture();
+    const none: Stats = {
+      ...emptyStatsFixture(),
+      members: member.members.map((m) => ({ ...m, tokens: 0, costUsd: 0, byAgent: {}, byAccount: {} })),
+      machines: member.machines,
+      totals: { tokens: 0, costUsd: 0, activeMembers: 0, memberCount: 1 },
+      available: { ...member.available, accounts: [{ key: "team:Devcats", tokens: 31_000 }] },
+    };
+    replies.push(json(none));
+    await goTo("#/member/1");
+    expect(calls.at(-1)?.url).toBe(withFilters(memberUrl(range(90), 1), [["account", "personal"]]));
+    expect(calls).toHaveLength(3); // sent as it is, answered once, never re-asked without the filter
+    expect($("#stats .empty p").textContent).toBe("Nothing matches these filters in this period");
+    expect(chipTexts()).toEqual(["Personal"]);
+    open("accounts");
+    expect([...doc.querySelectorAll("#accounts-pop label.pop-row")].map((r) => [r.querySelector(".pop-name")?.textContent, r.querySelector(".pop-num")?.textContent, (r.querySelector("input") as HTMLInputElement).checked])).toEqual([
+      ["Team · Devcats", "31,000", false],
+      ["Personal", "0", true],
+    ]);
+    $(".tile").click();
+
+    // A range change on the member page keeps it too.
+    replies.push(json(none));
+    $('#range button[data-days="30"]').click();
+    await flush();
+    expect(calls.at(-1)?.url).toBe(withFilters(memberUrl(range(30), 1), [["account", "personal"]]));
+    expect(chipTexts()).toEqual(["Personal"]);
+
+    replies.push(json(statsFixture()));
+    $("a.back").click();
+    await flush();
+    expect(calls.at(-1)?.url).toBe(withFilters(statsUrl(range(30)), [["account", "personal"]]));
+    expect(chipTexts()).toEqual(["Personal"]);
+  });
+
+  test("the member page lists their accounts", async () => {
+    await boot(json(statsFixture()));
+    replies.push(json(memberStatsFixture()));
+    await goTo("#/member/1");
+    expect([...doc.querySelectorAll("#accounts .acct-name")].map((n) => n.textContent)).toEqual(["Team · Devcats", "Unknown", "Personal"]);
+  });
+
+  test("past 50 accounts the page stops adding, says so and sends nothing", async () => {
+    const keys = Array.from({ length: 51 }, (_, i) => ({ key: `team:o${String(i).padStart(2, "0")}`, tokens: 51 - i }));
+    const many = { ...statsFixture(), available: { ...statsFixture().available, accounts: keys } };
+    await boot(json(many));
+    open("accounts");
+    for (let i = 0; i < 50; i++) {
+      replies.push(json(many));
+      tick(rowBoxes("accounts")[i]);
+      await flush();
+    }
+    expect(new URLSearchParams(calls.at(-1)?.url.split("?")[1]).getAll("account")).toHaveLength(50);
+    const before = calls.length;
+    tick(rowBoxes("accounts")[50]);
+    await flush();
+    expect(calls).toHaveLength(before);
+    expect($("#accounts-pop .pop-note").textContent).toBe("You can select up to 50 accounts.");
+    expect(rowBoxes("accounts")[50]?.checked).toBe(false);
   });
 
   test("the filter bar is hidden while signing in", async () => {

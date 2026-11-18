@@ -1,4 +1,5 @@
-import type { Stats } from "@teamusage/shared";
+import { parseAccountKey, type Stats } from "@teamusage/shared";
+import { accountName } from "./accounts.js";
 import { agentIcon, agentName, OTHER_SERIES, SERIES, SERIES_CLASS, otherAgentsIcon, seriesOf } from "./agents.js";
 import { agentTotals, buckets, drawChart, presentSeries, rankAgents, WEEKLY_AFTER_DAYS } from "./chart.js";
 import { h, icon, type Child } from "./dom.js";
@@ -73,6 +74,41 @@ function byAgentOf(m: Stats["members"][number]): Map<string, number> | null {
   return out;
 }
 
+/**
+ * A member's tokens by account, largest first (ties by key, so the order never depends on the server's), with
+ * malformed keys and numbers left out.
+ */
+function byAccountOf(m: Stats["members"][number]): [string, number][] {
+  const v = (m as { byAccount?: unknown }).byAccount;
+  if (typeof v !== "object" || v === null || Array.isArray(v)) return [];
+  const out: [string, number][] = [];
+  for (const [key, n] of Object.entries(v)) {
+    if (parseAccountKey(key) !== undefined && typeof n === "number" && Number.isFinite(n) && n > 0) out.push([key, n]);
+  }
+  return out.sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+}
+
+const sumOf = (parts: [string, number][]): number => parts.reduce((s, [, n]) => s + n, 0);
+/** Accounts shown per member in the table; the rest are counted as "+N". */
+const ACCOUNT_LINES = 2;
+
+/** "Team · Devcats 78%" lines, at most two, then "+N"; a dash when there is nothing to show. Text only. */
+function accountsCell(doc: Document, lang: Lang, m: Stats["members"][number]): HTMLElement {
+  const parts = byAccountOf(m);
+  const cell = h(doc, "td", { class: "l accts-cell" });
+  if (parts.length === 0) {
+    cell.textContent = "—";
+    return cell;
+  }
+  const total = sumOf(parts);
+  const lines = parts
+    .slice(0, ACCOUNT_LINES)
+    .map(([key, n]) => h(doc, "li", {}, h(doc, "span", { class: "acct-name" }, accountName(key, lang)), " ", h(doc, "span", { class: "acct-share" }, `${pct(n, total)}%`)));
+  if (parts.length > ACCOUNT_LINES) lines.push(h(doc, "li", { class: "acct-more" }, `+${parts.length - ACCOUNT_LINES}`));
+  cell.append(h(doc, "ul", { class: "accts" }, ...lines));
+  return cell;
+}
+
 /** The fixed five first in their order, then the others by tokens. */
 function mixOrder(mix: Map<string, number>): [string, number][] {
   return [...mix].sort((a, b) => seriesOf(a[0]) - seriesOf(b[0]) || b[1] - a[1]);
@@ -135,6 +171,7 @@ function memberRows(doc: Document, stats: Stats, lang: Lang, today: string, show
       h(doc, "td", {}, full(m.tokens)),
       h(doc, "td", {}, usd(m.costUsd)),
       h(doc, "td", { class: "l" }, mixBar(doc, lang, m, top, stats.totals.tokens, filtered)),
+      accountsCell(doc, lang, m),
       h(doc, "td", stale ? { class: "stale" } : {}, sync.text),
       h(doc, "td", { class: "chev-cell", "aria-hidden": "true" }, icon(doc, "right")),
     );
@@ -176,6 +213,7 @@ function membersPanel(doc: Document, stats: Stats, lang: Lang, today: string, qu
       headCell(doc, t(lang, "mh1"), false, true),
       headCell(doc, t(lang, "mh2"), false, false),
       headCell(doc, t(lang, hasMix ? "mixHead" : "mh3"), true, false),
+      headCell(doc, t(lang, "mhAccounts"), true, false),
       headCell(doc, t(lang, "mh5"), false, false),
       h(doc, "td", { class: "chev-cell", "aria-hidden": "true" }),
     ),
@@ -297,6 +335,14 @@ function emptyState(doc: Document, lang: Lang, filters: Filters): HTMLElement {
 const modelsPanel = (doc: Document, stats: Stats, lang: Lang) =>
   panel(doc, [t(lang, "models")], "models-heading", h(doc, "div", { class: "scroll" }, modelsTable(doc, stats, lang)));
 
+/** The Active members sub-line: what the members counted did, naming the narrowest filter that is on. */
+function activeSub(f: Filters): MessageKey {
+  if (!isActive(f)) return "sentUsage";
+  if (f.models.length > 0) return "usedSelectedModels";
+  if (f.agents.length > 0) return "usedSelectedAgents";
+  return "usedSelectedAccounts";
+}
+
 /** The team view: tiles, then the chart and tables, or the empty state when nothing matches. */
 export function renderStats(doc: Document, stats: Stats, lang: Lang, today: string, opts: { query?: string; filters?: Filters } = {}): DocumentFragment {
   const filters = opts.filters ?? NO_FILTERS;
@@ -305,7 +351,7 @@ export function renderStats(doc: Document, stats: Stats, lang: Lang, today: stri
     doc,
     t(lang, "k2"),
     nOfM(doc, lang, stats.totals.activeMembers, stats.totals.memberCount),
-    t(lang, !isActive(filters) ? "sentUsage" : filters.models.length > 0 ? "usedSelectedModels" : "usedSelectedAgents"),
+    t(lang, activeSub(filters)),
   );
   const out = doc.createDocumentFragment();
   out.append(tiles(doc, stats, lang, active, { filters, view: "team", firstSub: t(lang, "perDay", { n: compact(stats.totals.tokens / days) }) }));
@@ -367,7 +413,26 @@ function machinesPanel(doc: Document, stats: Stats, lang: Lang, today: string): 
   return panel(doc, heading, "machines-heading", h(doc, "ul", { id: "machines", class: "machines" }, ...items));
 }
 
-/** One member's page below the filter bar: tiles, the chart, their agents and models, and their machines. */
+/** "By account" on a member's page: name, tokens and share of the member's tokens, largest first; null when none. */
+function accountsPanel(doc: Document, stats: Stats, id: number, lang: Lang): HTMLElement | null {
+  const member = stats.members.find((m) => m.id === id);
+  const parts = member === undefined ? [] : byAccountOf(member);
+  if (parts.length === 0) return null;
+  const total = sumOf(parts);
+  const items = parts.map(([key, n]) =>
+    h(
+      doc,
+      "li",
+      {},
+      h(doc, "span", { class: "acct-name" }, accountName(key, lang)),
+      h(doc, "span", { class: "acct-tokens" }, full(n)),
+      h(doc, "span", { class: "acct-share" }, `${pct(n, total)}%`),
+    ),
+  );
+  return panel(doc, [t(lang, "byAccount")], "accounts-heading", h(doc, "ul", { id: "accounts", class: "accounts" }, ...items));
+}
+
+/** One member's page below the filter bar: tiles, the chart, their agents and models, accounts, and their machines. */
 export function renderMember(
   doc: Document,
   stats: Stats,
@@ -394,7 +459,10 @@ export function renderMember(
     out.append(emptyState(doc, lang, filters), machinesPanel(doc, stats, lang, today));
     return out;
   }
-  out.append(chartPanel(doc, stats, lang), modelsPanel(doc, stats, lang), machinesPanel(doc, stats, lang, today));
+  out.append(chartPanel(doc, stats, lang), modelsPanel(doc, stats, lang));
+  const accounts = accountsPanel(doc, stats, id, lang);
+  if (accounts) out.append(accounts);
+  out.append(machinesPanel(doc, stats, lang, today));
   return out;
 }
 

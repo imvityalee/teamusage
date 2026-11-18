@@ -23,7 +23,10 @@ export const HOSTILE_IDS = [
 
 const PLAIN: FixtureNames = { name: "Alice Archer", email: "alice@example.com", agent: "aider", model: "some-model" };
 
-/** Ten days ending 2026-11-18, two members, three agents. `names` replaces the first member and the third agent. */
+/**
+ * Ten days ending 2026-11-18, two members, three agents, three accounts. `names` replaces the first member and the
+ * third agent.
+ */
 export function statsFixture(names: FixtureNames = PLAIN): Stats {
   const daily = Array.from({ length: 10 }, (_, i) => ({
     date: `2026-11-${String(9 + i).padStart(2, "0")}`,
@@ -37,12 +40,13 @@ export function statsFixture(names: FixtureNames = PLAIN): Stats {
     {
       id: 1, name: names.name, email: names.email, tokens: 40_000, costUsd: 9, machines: 2, lastSyncAt: "2026-11-18T12:00:00.000Z",
       byAgent: Object.fromEntries([["claude", 35_000], ["codex", 4_500], [names.agent, 500]]) as Record<string, number>,
-      byAccount: {},
+      // Shares of 40,000: 78%, 13%, 10%.
+      byAccount: { "team:Devcats": 31_000, unknown: 5_000, personal: 4_000 },
     },
     {
       id: 2, name: "Bao Nguyen", email: "bao@example.com", tokens: 20_500, costUsd: 3.5, machines: 1, lastSyncAt: "2026-11-10T12:00:00.000Z",
       byAgent: { claude: 20_000, codex: 500 },
-      byAccount: {},
+      byAccount: { "team:Devcats": 20_000, unknown: 500 },
     },
     { id: 3, name: "Carla Mendes", email: "carla@example.com", tokens: 0, costUsd: 0, machines: 1, lastSyncAt: null, byAgent: {}, byAccount: {} },
   ];
@@ -66,7 +70,11 @@ export function statsFixture(names: FixtureNames = PLAIN): Stats {
         { agent: "codex", model: "gpt-5-codex", tokens: 5_000 },
         { agent: names.agent, model: names.model, tokens: 500 },
       ],
-      accounts: [],
+      accounts: [
+        { key: "team:Devcats", tokens: 51_000 },
+        { key: "unknown", tokens: 5_500 },
+        { key: "personal", tokens: 4_000 },
+      ],
     },
   };
 }
@@ -93,7 +101,7 @@ export function emptyStatsFixture(): Stats {
     ...s,
     totals: { tokens: 0, costUsd: 0, activeMembers: 0, memberCount: 3 },
     daily: s.daily.map((d) => ({ date: d.date, byAgent: {} })),
-    members: s.members.map((m) => ({ ...m, tokens: 0, costUsd: 0, byAgent: {} })),
+    members: s.members.map((m) => ({ ...m, tokens: 0, costUsd: 0, byAgent: {}, byAccount: {} })),
     models: [],
   };
 }

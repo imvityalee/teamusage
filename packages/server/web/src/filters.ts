@@ -1,9 +1,9 @@
-import { parseAccountKey, type Stats } from "@teamusage/shared";
+import { MAX_ACCOUNTS, parseAccountKey, type Stats } from "@teamusage/shared";
 
 /**
- * The agent and model filters. They live only in memory: they are never stored and never put in the URL, and
- * reach the server only as `agent` and `model` query parameters (see `toQuery`).
- * Agent ids and model names are compared as plain strings, through Map and Set only.
+ * The agent, model and account filters. They live only in memory: they are never stored and never put in the URL,
+ * and reach the server only as `agent`, `model` and `account` query parameters (see `toQuery`).
+ * Agent ids, model names and account keys are compared as plain strings, through Map and Set only.
  */
 
 export interface ModelRef {
@@ -14,13 +14,20 @@ export interface ModelRef {
 export interface Filters {
   agents: string[];
   models: ModelRef[];
+  /** Account keys (`accountKey` values), in selection order. */
+  accounts: string[];
 }
 
-export const NO_FILTERS: Filters = Object.freeze({ agents: Object.freeze([]), models: Object.freeze([]) }) as unknown as Filters;
+export const NO_FILTERS: Filters = Object.freeze({
+  agents: Object.freeze([]),
+  models: Object.freeze([]),
+  accounts: Object.freeze([]),
+}) as unknown as Filters;
 
 /** The server's limits; the page never asks for more. */
 export const MAX_AGENTS = 20;
 export const MAX_MODELS = 50;
+export { MAX_ACCOUNTS };
 
 /**
  * Whether a model can be filtered on. The server reads `<agent>:<model>` up to the first colon, so a model of an
@@ -30,7 +37,7 @@ export function canFilterModel(ref: ModelRef): boolean {
   return !String(ref.agent).includes(":");
 }
 
-/** Query parameters, agents first in selection order, then models as `<agent>:<model>`. */
+/** Query parameters, agents first in selection order, then models as `<agent>:<model>`, then account keys. */
 export function toQuery(f: Filters): [string, string][] {
   return [
     ...f.agents.slice(0, MAX_AGENTS).map((a): [string, string] => ["agent", a]),
@@ -38,6 +45,7 @@ export function toQuery(f: Filters): [string, string][] {
       .filter(canFilterModel)
       .slice(0, MAX_MODELS)
       .map((m): [string, string] => ["model", `${m.agent}:${m.model}`]),
+    ...f.accounts.slice(0, MAX_ACCOUNTS).map((k): [string, string] => ["account", k]),
   ];
 }
 
@@ -58,14 +66,16 @@ function modelIndex(available: Stats["available"]): Map<string, Set<string>> {
 export function prune(f: Filters, available: Stats["available"]): Filters {
   const agents = new Set(available.agents);
   const models = modelIndex(available);
+  const accounts = new Set(available.accounts.map((a) => a.key));
   return {
     agents: f.agents.filter((a) => agents.has(a)),
     models: f.models.filter((m) => models.get(m.agent)?.has(m.model) === true),
+    accounts: f.accounts.filter((k) => accounts.has(k)),
   };
 }
 
 export function isActive(f: Filters): boolean {
-  return f.agents.length > 0 || f.models.length > 0;
+  return f.agents.length > 0 || f.models.length > 0 || f.accounts.length > 0;
 }
 
 /**
@@ -81,7 +91,9 @@ export function equalFilters(a: Filters, b: Filters): boolean {
     a.agents.length === b.agents.length &&
     a.agents.every((x, i) => x === b.agents[i]) &&
     a.models.length === b.models.length &&
-    a.models.every((x, i) => sameModel(x, b.models[i] as ModelRef))
+    a.models.every((x, i) => sameModel(x, b.models[i] as ModelRef)) &&
+    a.accounts.length === b.accounts.length &&
+    a.accounts.every((x, i) => x === b.accounts[i])
   );
 }
 
@@ -98,7 +110,7 @@ export function toggleAgent(f: Filters, id: string): Toggled {
   const agents = has ? f.agents.filter((a) => a !== id) : [...f.agents, id];
   const listed = new Set(agents);
   const models = agents.length === 0 ? f.models : f.models.filter((m) => listed.has(m.agent));
-  return { filters: { agents, models }, limited: false };
+  return { filters: { ...f, agents, models }, limited: false };
 }
 
 /** Adds or removes an exact (agent, model) pair. */
@@ -107,7 +119,15 @@ export function toggleModel(f: Filters, ref: ModelRef): Toggled {
   const has = f.models.some((m) => sameModel(m, ref));
   if (!has && f.models.length >= MAX_MODELS) return { filters: f, limited: true };
   const models = has ? f.models.filter((m) => !sameModel(m, ref)) : [...f.models, { agent: ref.agent, model: ref.model }];
-  return { filters: { agents: f.agents, models }, limited: false };
+  return { filters: { ...f, models }, limited: false };
+}
+
+/** Adds or removes an account key. Agents and models are left as they are. */
+export function toggleAccount(f: Filters, key: string): Toggled {
+  const has = f.accounts.includes(key);
+  if (!has && f.accounts.length >= MAX_ACCOUNTS) return { filters: f, limited: true };
+  const accounts = has ? f.accounts.filter((k) => k !== key) : [...f.accounts, key];
+  return { filters: { ...f, accounts }, limited: false };
 }
 
 /**
@@ -155,7 +175,14 @@ export function withSelection(available: Stats["available"], f: Filters): Stats[
     models.push({ agent: m.agent, model: m.model, tokens: 0 });
     index.set(m.agent, (index.get(m.agent) ?? new Set<string>()).add(m.model));
   }
-  return { agents, models, accounts: available.accounts };
+  const accounts = [...available.accounts];
+  const keys = new Set(accounts.map((a) => a.key));
+  for (const key of f.accounts) {
+    if (keys.has(key)) continue;
+    accounts.push({ key, tokens: 0 });
+    keys.add(key);
+  }
+  return { agents, models, accounts };
 }
 
 const tokens = (n: unknown): number => (typeof n === "number" && Number.isFinite(n) && n > 0 ? n : 0);
