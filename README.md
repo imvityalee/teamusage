@@ -181,6 +181,56 @@ yet proven.
 and it is why there is nothing else to install. Two servers cannot share one database file; run a
 single server per team.
 
+## Invite your team
+
+Once the server runs, send each person the message below with your own address. Send the invite code
+separately and privately (a password manager or a direct message), not in a group chat.
+
+```text
+teamusage: connect your machine (about 5 minutes)
+
+1. Install Node.js 22 or newer: https://nodejs.org
+2. In Claude Code, type:
+     /plugin marketplace add imvityalee/teamusage
+     /plugin install teamusage@teamusage
+3. When it asks for the settings, enter:
+     Server URL:  https://usage.example.com
+     Invite code: the code I sent you privately
+     Your name and Your email: your work name and work email
+4. Start a new Claude Code session. From now on your usage is sent automatically
+   when a session starts and when it ends.
+5. Check it: ask Claude "send my usage", then find yourself on https://usage.example.com
+
+No Claude Code (Codex only, for example)? In a terminal:
+     npm install -g teamusage
+     teamusage setup --schedule
+This sends your usage every 4 hours (macOS and Linux).
+```
+
+```text
+teamusage: подключите свой компьютер (около 5 минут)
+
+1. Установите Node.js 22 или новее: https://nodejs.org
+2. В Claude Code введите:
+     /plugin marketplace add imvityalee/teamusage
+     /plugin install teamusage@teamusage
+3. Когда спросит настройки, введите:
+     Server URL:  https://usage.example.com
+     Invite code: код, присланный вам лично
+     Your name и Your email: рабочие имя и почта
+4. Начните новую сессию Claude Code. Дальше статистика отправляется сама
+   при начале и при завершении каждой сессии.
+5. Проверка: попросите Claude «отправь статистику» и найдите себя на https://usage.example.com
+
+Без Claude Code (например, только Codex)? В терминале:
+     npm install -g teamusage
+     teamusage setup --schedule
+Статистика будет отправляться каждые 4 часа (macOS и Linux).
+```
+
+If something does not arrive, the person runs `npx -y teamusage@0.1.0 status` in a terminal and reads
+`sync.log` in `~/.config/teamusage`. Details on each path follow below.
+
 ## Join as a team member
 
 Prerequisite: Node.js 22 or newer, with `npx`. You also need the server address and the invite code
@@ -193,7 +243,7 @@ npx teamusage setup
 ```
 
 It asks for the server URL, the invite code (not echoed), your name and your email, registers this machine
-and runs a first sync. From source, until then:
+and runs a first sync. Or from source:
 
 ```sh
 pnpm install && pnpm build
@@ -247,15 +297,14 @@ They use the same config as the other commands. The Claude Code plugin below reg
 
 This repository is also a Claude Code plugin marketplace. The plugin sends your usage automatically when
 Claude Code sessions start and end, and adds two skills and the MCP tools above. It runs the client from
-npm at a pinned version (`npx -y teamusage@0.1.0`). Adding the marketplace needs read access to this
-repository. Inside Claude Code:
+npm at a pinned version (`npx -y teamusage@0.1.0`). Inside Claude Code:
 
 ```
 /plugin marketplace add imvityalee/teamusage
 /plugin install teamusage@teamusage
 ```
 
-The full install through `/plugin install` has not been tested end to end yet.
+Start a new session after installing, so the session hooks are loaded.
 
 You need Node.js 22 or newer, with `npx`. In organisations that restrict plugin marketplaces (Claude Code's
 `strictKnownMarketplaces` and `blockedMarketplaces` settings), an admin may need to allow this marketplace
