@@ -11,7 +11,7 @@ import type { Stats } from "@teamusage/shared";
 import { ApiError } from "./api.js";
 import { defaults as mcpDefaults, COST_NOTE, loadStats, startMcp, RANGES, type Range } from "./mcp.js";
 import { clean } from "./text.js";
-import { errorMessage, getStatus, setup, sync, type Deps } from "./sync.js";
+import { errorMessage, getStatus, parseThrottle, readLastAttempt, setup, shouldSkip, sync, type Deps } from "./sync.js";
 import { codexDeps, registerCodex, type CodexDeps } from "./codex.js";
 import { installSchedule, removeSchedule, ScheduleError, scheduleStatus, type ScheduleDeps } from "./schedule.js";
 
@@ -39,11 +39,12 @@ Commands:
   schedule install|remove
       Install or remove the job that runs "sync --quiet" every 4 hours (launchd on macOS, cron on Linux).
       Install the client globally first: npm install -g ${APP_NAME}
-  sync [--dry-run] [--quiet] [--detach]
+  sync [--dry-run] [--quiet] [--detach] [--throttle <duration>]
       Collect usage with ccusage and upload it.
       --dry-run  print exactly what would be sent, and send nothing (--detach is then ignored)
       --quiet    print nothing and always exit 0 (failures go to sync.log in the config directory)
       --detach   start "sync --quiet" in the background and return at once
+      --throttle <n>m|<n>h   do nothing when a sync was attempted less than that long ago (1m-1440m or 1h-24h)
   status
       Show the configuration, the last successful sync and whether the server is reachable.
   stats [--range 1m|3m|6m]
@@ -230,10 +231,18 @@ async function runSync(args: string[], deps: Partial<Deps>): Promise<number> {
   try {
     const { values } = parseArgs({
       args,
-      options: { "dry-run": { type: "boolean" }, quiet: { type: "boolean" }, detach: { type: "boolean" } },
+      options: { "dry-run": { type: "boolean" }, quiet: { type: "boolean" }, detach: { type: "boolean" }, throttle: { type: "string" } },
       strict: true,
       allowPositionals: false,
     });
+    if (values.throttle !== undefined) {
+      const ms = parseThrottle(values.throttle);
+      if (ms === undefined) {
+        throw Object.assign(new Error("invalid --throttle"), { code: "ERR_PARSE_ARGS_INVALID_THROTTLE" });
+      }
+      // Checked before detaching, so nothing is spawned when the window has not passed. A dry run never skips.
+      if (!values["dry-run"] && shouldSkip(ms, new Date(), readLastAttempt)) return 0;
+    }
     if (values.detach && !values["dry-run"]) {
       const child = spawn(process.execPath, [fileURLToPath(import.meta.url), "sync", "--quiet"], {
         detached: true,

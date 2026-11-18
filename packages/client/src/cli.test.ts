@@ -1,11 +1,11 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, expect, test, vi, type MockInstance } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi, type MockInstance } from "vitest";
 import type { UsageRecord } from "@teamusage/shared";
 import { main } from "./cli.js";
 import { configPath } from "./config.js";
-import type { Deps } from "./sync.js";
+import { lastAttemptPath, parseThrottle, type Deps } from "./sync.js";
 import { countRows, startServer, type TestServer } from "./test-server.js";
 
 const spawned = vi.hoisted(() => ({ calls: [] as unknown[][] }));
@@ -294,4 +294,79 @@ test("status says a schedule with a missing path is broken", async () => {
   out.mockClear();
   await main(["status"], { ...d, schedule: { ...s.schedule, exists: () => false } });
   expect(printed(out)).toMatch(/Scheduled sync: +installed but broken .* schedule install/);
+});
+
+test("parseThrottle accepts 1-1440 minutes and 1-24 hours only", () => {
+  expect(parseThrottle("4h")).toBe(14_400_000);
+  expect(parseThrottle("30m")).toBe(1_800_000);
+  for (const bad of ["0h", "25h", "4", "h", "1441m", "0m", "1.5h", "-1h", "4H", ""]) expect(parseThrottle(bad)).toBeUndefined();
+});
+
+describe("sync --throttle", () => {
+  const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
+  const H = 3_600_000;
+  const writeAttempt = (iso: string) => {
+    mkdirSync(path.dirname(lastAttemptPath()), { recursive: true });
+    writeFileSync(lastAttemptPath(), iso);
+  };
+
+  test("skips within the window: nothing collected or spawned, exit 0", async () => {
+    writeAttempt(ago(3 * H));
+    const d = deps();
+    expect(await main(["sync", "--quiet", "--detach", "--throttle", "4h"], d)).toBe(0);
+    expect(spawned.calls).toHaveLength(0);
+    expect(d.collect).not.toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  test("runs after the window", async () => {
+    writeAttempt(ago(5 * H));
+    expect(await main(["sync", "--quiet", "--detach", "--throttle", "4h"], deps())).toBe(0);
+    expect(spawned.calls).toHaveLength(1);
+  });
+
+  test("runs when there is no attempt file", async () => {
+    expect(await main(["sync", "--quiet", "--detach", "--throttle", "4h"], deps())).toBe(0);
+    expect(spawned.calls).toHaveLength(1);
+  });
+
+  test("a failed attempt still throttles the next run", async () => {
+    const failing = { ...deps(), collect: (async () => { throw new Error("boom"); }) as Deps["collect"] };
+    expect(await main(["sync", "--quiet"], failing)).toBe(0);
+    expect(existsSync(lastAttemptPath())).toBe(true);
+    expect(await main(["sync", "--quiet", "--detach", "--throttle", "4h"], deps())).toBe(0);
+    expect(spawned.calls).toHaveLength(0);
+  });
+
+  test("a manual sync ignores the throttle", async () => {
+    writeAttempt(ago(60_000));
+    const d = deps();
+    expect(await main(["sync"], d)).toBe(0);
+    expect(d.collect).toHaveBeenCalled();
+  });
+
+  test("a throttled sync run directly also skips", async () => {
+    writeAttempt(ago(60_000));
+    const d = deps();
+    expect(await main(["sync", "--throttle", "4h"], d)).toBe(0);
+    expect(d.collect).not.toHaveBeenCalled();
+  });
+
+  test("a dry run writes no attempt time", async () => {
+    expect(await main(["sync", "--dry-run"], deps())).toBe(0);
+    expect(existsSync(lastAttemptPath())).toBe(false);
+  });
+
+  test("the attempt file is private and holds one ISO timestamp", async () => {
+    expect(await main(["sync"], deps())).toBe(0);
+    expect(statSync(lastAttemptPath()).mode & 0o777).toBe(0o600);
+    const text = readFileSync(lastAttemptPath(), "utf8").trim();
+    expect(new Date(text).toISOString()).toBe(text);
+  });
+
+  test("an invalid value is a usage error; with --quiet it exits 0", async () => {
+    expect(await main(["sync", "--throttle", "5"], deps())).toBe(2);
+    expect(await main(["sync", "--quiet", "--throttle", "99h"], deps())).toBe(0);
+    expect(spawned.calls).toHaveLength(0);
+  });
 });

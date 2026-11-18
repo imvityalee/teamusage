@@ -228,7 +228,7 @@ teamusage: подключите свой компьютер (около 5 мин
 Статистика будет отправляться каждые 4 часа (macOS и Linux).
 ```
 
-If something does not arrive, the person runs `npx -y teamusage@0.1.0 status` in a terminal and reads
+If something does not arrive, the person runs `npx -y teamusage@0.2.0 status` in a terminal and reads
 `sync.log` in `~/.config/teamusage`. Details on each path follow below.
 
 ## Join as a team member
@@ -297,7 +297,7 @@ They use the same config as the other commands. The Claude Code plugin below reg
 
 This repository is also a Claude Code plugin marketplace. The plugin sends your usage automatically when
 Claude Code sessions start and end, and adds two skills and the MCP tools above. It runs the client from
-npm at a pinned version (`npx -y teamusage@0.1.0`). Inside Claude Code:
+npm at a pinned version (`npx -y teamusage@0.2.0`). Inside Claude Code:
 
 ```
 /plugin marketplace add imvityalee/teamusage
@@ -368,11 +368,11 @@ node packages/client/dist/cli.js sync
 ```
 
 You can instead install it from npm with
-`npm install -g teamusage@0.1.0` and use `teamusage setup`, `teamusage sync` and
+`npm install -g teamusage@0.2.0` and use `teamusage setup`, `teamusage sync` and
 `teamusage schedule install` (see [Scheduled sync](#scheduled-sync)).
 
 **Automatic sending.** When a session starts (new or resumed) and when it ends, the plugin runs
-`npx -y teamusage@0.1.0 sync --quiet --detach`. The client returns at once, the sync continues in the
+`npx -y teamusage@0.2.0 sync --quiet --detach`. The client returns at once, the sync continues in the
 background, the client prints nothing, and failures go to `sync.log` in the config directory. The first
 run downloads the package, and `npx` itself may print download or npm notices. It sends only the
 numbers listed in [Exactly what is sent](#exactly-what-is-sent), for every agent ccusage finds on the

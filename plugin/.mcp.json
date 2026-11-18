@@ -2,7 +2,7 @@
   "mcpServers": {
     "teamusage": {
       "command": "npx",
-      "args": ["-y", "teamusage@0.1.0", "mcp"],
+      "args": ["-y", "teamusage@0.2.0", "mcp"],
       "env": {
         "TEAMUSAGE_SERVER_URL": "${user_config.server_url}",
         "TEAMUSAGE_INVITE_CODE": "${user_config.invite_code}",

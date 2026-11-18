@@ -20,7 +20,8 @@ const MCP_ENV = {
   TEAMUSAGE_EMAIL: "email",
   TEAMUSAGE_ALLOW_INSECURE_HTTP: "allow_insecure_http",
 };
-const HOOK_EVENTS = ["SessionEnd", "SessionStart"];
+const HOOK_EVENTS = ["SessionEnd", "SessionStart", "Stop"];
+const STOP_ARGS = ["--throttle", "4h"];
 const SKILLS = ["usage-stats", "usage-sync"];
 const ALLOWED_EXT = new Set([".json", ".md"]);
 const MAX_DESCRIPTION = 1536; // Claude Code truncates longer skill descriptions in its listing
@@ -160,10 +161,10 @@ export function checkPlugin(root) {
       fail('plugin/hooks/hooks.json: the event map must sit under a top-level "hooks" key');
     } else {
       if (!sameArray(Object.keys(events).sort(), HOOK_EVENTS)) {
-        fail(`plugin/hooks/hooks.json: hooks must be exactly ${HOOK_EVENTS.join(" and ")}`);
+        fail(`plugin/hooks/hooks.json: hooks must be exactly ${HOOK_EVENTS.slice(0, -1).join(", ")} and ${HOOK_EVENTS.at(-1)}`);
       }
-      const want = clientArgs("sync", "--quiet", "--detach");
       for (const ev of Object.keys(events)) {
+        const want = clientArgs("sync", "--quiet", "--detach", ...(ev === "Stop" ? STOP_ARGS : []));
         const handlers = (Array.isArray(events[ev]) ? events[ev] : []).flatMap((g) => (Array.isArray(g?.hooks) ? g.hooks : [null]));
         if (handlers.length !== 1) fail(`plugin/hooks/hooks.json: ${ev} must have exactly one hook`);
         for (const h of handlers) {

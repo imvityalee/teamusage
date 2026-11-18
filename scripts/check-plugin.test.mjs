@@ -122,8 +122,8 @@ test("allow_insecure_http defaults to true", () =>
 
 test("a hook on another event", () =>
   expectFailure(
-    copy(({ json }) => json(HOOKS, (h) => (h.hooks.Stop = h.hooks.SessionEnd))),
-    /hooks must be exactly SessionEnd and SessionStart/,
+    copy(({ json }) => json(HOOKS, (h) => (h.hooks.PreCompact = h.hooks.SessionEnd))),
+    /hooks must be exactly SessionEnd, SessionStart and Stop/,
   ));
 
 test("the SessionStart hook is missing", () =>
@@ -220,3 +220,21 @@ test("the README pins a version range", () =>
   ));
 
 test("the README is missing", () => expectFailure(copy(({ file }) => rmSync(file("README.md"))), /README\.md: missing/));
+
+test("the Stop hook is missing", () =>
+  expectFailure(copy(({ json }) => json(HOOKS, (h) => delete h.hooks.Stop)), /hooks must be exactly/));
+
+test("the Stop hook lacks --throttle 4h", () =>
+  expectFailure(
+    copy(({ json }) => json(HOOKS, (h) => (h.hooks.Stop[0].hooks[0].args = ["-y", `teamusage@${version}`, "sync", "--quiet", "--detach"]))),
+    /Stop hook must be/,
+  ));
+
+test("the Stop hook is not async", () =>
+  expectFailure(copy(({ json }) => json(HOOKS, (h) => (h.hooks.Stop[0].hooks[0].async = false))), /Stop hook must be/));
+
+test("SessionEnd must not carry --throttle", () =>
+  expectFailure(
+    copy(({ json }) => json(HOOKS, (h) => h.hooks.SessionEnd[0].hooks[0].args.push("--throttle", "4h"))),
+    /SessionEnd hook must be/,
+  ));

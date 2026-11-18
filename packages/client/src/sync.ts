@@ -7,6 +7,7 @@ import { ApiError, health, register, upload } from "./api.js";
 import { collect, CollectError } from "./collect.js";
 import {
   ConfigError,
+  configDir,
   configPath,
   ensureConfigDir,
   insecureHttpAllowedByEnv,
@@ -50,6 +51,49 @@ const CHUNK = 500;
 const LOG_LINES = 200;
 const SETUP_HINT = "run `teamusage setup`";
 const LOCK_STALE_MS = 10 * 60 * 1000;
+
+/** Milliseconds for `<n>m` (1-1440) or `<n>h` (1-24); anything else is undefined. */
+export function parseThrottle(s: string): number | undefined {
+  const m = /^([1-9]\d{0,3})([mh])$/.exec(s);
+  if (!m) return undefined;
+  const n = Number(m[1]);
+  if (m[2] === "m") return n <= 1440 ? n * 60_000 : undefined;
+  return n <= 24 ? n * 3_600_000 : undefined;
+}
+
+/** One ISO timestamp: when a real sync attempt last started (kept even when it failed). */
+export function lastAttemptPath(): string {
+  return path.join(configDir(), "last-attempt");
+}
+
+/** The stored attempt time, or undefined when there is none. */
+export function readLastAttempt(): string | undefined {
+  try {
+    return readFileSync(lastAttemptPath(), "utf8").trim();
+  } catch {
+    return undefined;
+  }
+}
+
+/** True when the last attempt is less than `throttleMs` before `now`. A missing or unreadable time never skips. */
+export function shouldSkip(throttleMs: number, now: Date, readAttempt: () => string | undefined): boolean {
+  const raw = readAttempt();
+  if (!raw) return false;
+  const at = Date.parse(raw);
+  if (Number.isNaN(at)) return false;
+  const age = now.getTime() - at;
+  return age >= 0 && age < throttleMs;
+}
+
+function writeLastAttempt(): void {
+  try {
+    const file = path.join(ensureConfigDir(), "last-attempt");
+    writeFileSync(file, `${new Date().toISOString()}\n`, { mode: 0o600 });
+    chmodSync(file, 0o600);
+  } catch {
+    // the throttle is best effort; it must never make a sync fail
+  }
+}
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
@@ -208,6 +252,7 @@ async function run(deps: Deps, dryRun: boolean, quiet: boolean): Promise<SyncRes
     return { ...empty(), skipped: true };
   }
   try {
+    writeLastAttempt();
     return await collectAndUpload(deps, cfg, false, quiet);
   } finally {
     release();
