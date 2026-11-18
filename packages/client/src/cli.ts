@@ -241,7 +241,10 @@ async function runSync(args: string[], deps: Partial<Deps>): Promise<number> {
         throw Object.assign(new Error("invalid --throttle"), { code: "ERR_PARSE_ARGS_INVALID_THROTTLE" });
       }
       // Checked before detaching, so nothing is spawned when the window has not passed. A dry run never skips.
-      if (!values["dry-run"] && shouldSkip(ms, new Date(), readLastAttempt)) return 0;
+      if (!values["dry-run"] && shouldSkip(ms, new Date(), readLastAttempt)) {
+        if (!quiet) out(`Skipped: the last sync attempt was less than ${values.throttle} ago.\n`);
+        return 0;
+      }
       // The window starts here, before anything can fail (config, token, lock) and before the child exists.
       if (!values["dry-run"]) writeLastAttempt();
     }

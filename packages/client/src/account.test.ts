@@ -42,6 +42,19 @@ describe("readClaudeAccount", () => {
       expect(read(login(t, "Someone's Org"))).toEqual({ kind: "personal" });
     }
   });
+  test("inherited Object property names as organizationType give no label", () => {
+    for (const t of ["constructor", "toString", "valueOf", "hasOwnProperty", "__proto__"]) {
+      expect(read(login(t, "Devcats"))).toBeNull();
+    }
+    expect(read('{"oauthAccount":{"organizationType":"__proto__","organizationName":"X"}}')).toBeNull();
+  });
+  test("a throwing home resolver or file reader gives no label", () => {
+    const boom = () => {
+      throw new Error("no home");
+    };
+    expect(readClaudeAccount({ env: {}, home: boom, readFile: () => "{}" })).toBeNull();
+    expect(readClaudeAccount({ env: {}, home: () => "/h", readFile: boom })).toBeNull();
+  });
   test("a file without oauthAccount is an API login", () => {
     expect(read("{}")).toEqual({ kind: "api" });
   });

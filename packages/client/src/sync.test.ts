@@ -145,6 +145,16 @@ describe("account label", () => {
     rec(2, { date: "2026-11-10", agent: "claude" }),
   ];
 
+  test("a throwing account reader still uploads, with no account fields", async () => {
+    const boom = () => {
+      throw new Error("login file");
+    };
+    await sync({ deps: deps({ collect: async () => recs(), account: boom }) });
+    const body = calls("/api/usage")[0];
+    expect(body.records).toHaveLength(3);
+    for (const r of body.records) expect("account" in r).toBe(false);
+  });
+
   test("the upload carries account on recent Claude records only", async () => {
     const d = deps({ collect: async () => recs(), account: () => acct });
     await sync({ deps: d });

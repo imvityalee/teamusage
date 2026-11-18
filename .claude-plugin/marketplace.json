@@ -8,7 +8,7 @@
     {
       "name": "teamusage",
       "source": "./plugin",
-      "description": "Sends this machine's coding-agent token counts to your team's teamusage server after each session, and adds skills and MCP tools to send and view usage"
+      "description": "Sends this machine's coding-agent token counts to your team's teamusage server after each session and during one at most every 4 hours, and adds skills and MCP tools to send and view usage"
     }
   ]
 }

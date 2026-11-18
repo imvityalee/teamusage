@@ -263,7 +263,14 @@ async function run(deps: Deps, dryRun: boolean, quiet: boolean): Promise<SyncRes
 async function collectAndUpload(deps: Deps, cfg: Config, dryRun: boolean, quiet: boolean): Promise<SyncResult> {
   const today = deps.today();
   const since = syncSince(cfg.lastSuccessfulSync);
-  const account = deps.account();
+  // The login file must never fail a sync: a throwing reader means no label.
+  const account = (() => {
+    try {
+      return deps.account();
+    } catch {
+      return null;
+    }
+  })();
   const gather = async (from: string | undefined) => {
     const records = labelRecords((await deps.collect(from)).map(onlyRecordFields), account, today);
     const summary: SyncResult = {

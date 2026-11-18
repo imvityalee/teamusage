@@ -54,6 +54,17 @@ views, because they send no account label. After the server, members update the 
 this release, which runs `teamusage@0.2.0`. Anyone who installed the client globally runs
 `npm install -g teamusage@0.2.0`.
 
+To update the plugin, run `claude plugin update teamusage@teamusage` in your shell, or open `/plugin`,
+select `teamusage` on the Installed tab and choose Update now. A third-party marketplace does not
+auto-update by default. The running session keeps the old version until the next session or
+`/reload-plugins`.
+
+A client upgraded before the server still uploads; it just loses the account labels for the days synced
+before the server upgrade.
+
+An existing Codex MCP registration stays on the version it was registered with. Re-run
+`teamusage setup --codex` to move it to 0.2.0.
+
 ### Put it behind HTTPS (recommended)
 
 The server speaks plain HTTP. Put it behind a reverse proxy that terminates HTTPS, so that tokens and
@@ -302,7 +313,7 @@ They use the same config as the other commands. The Claude Code plugin below reg
 ## Use it from Claude Code
 
 This repository is also a Claude Code plugin marketplace. The plugin sends your usage automatically when
-Claude Code sessions start and end, and adds two skills and the MCP tools above. It runs the client from
+Claude Code sessions start and end and during a session at most every 4 hours, and adds two skills and the MCP tools above. It runs the client from
 npm at a pinned version (`npx -y teamusage@0.2.0`). Inside Claude Code:
 
 ```
@@ -381,9 +392,9 @@ You can instead install it from npm with
 `npx -y teamusage@0.2.0 sync --quiet --detach`. The client returns at once, the sync continues in the
 background, the client prints nothing, and failures go to `sync.log` in the config directory.
 
-A `Stop` hook, which Claude Code runs after each reply, runs the same command with `--throttle 4h`. It
-does nothing unless the last sync attempt on this machine started 4 or more hours ago, so a long
-session is sent about every 4 hours, not after every reply. A failed attempt also starts the 4-hour
+A `Stop` hook, which Claude Code runs after each reply, runs the same command with `--throttle 4h`. The
+hook starts each time, and the client exits at once without syncing unless the last sync attempt on this
+machine started 4 or more hours ago, so a long session is sent about every 4 hours, not after every reply. A failed attempt also starts the 4-hour
 window. The session start and end hooks, a manual `teamusage sync`, the MCP tool and the scheduled job
 are never throttled. They do start the window, because it is measured from the last attempt of any
 kind. The time is kept in a `last-attempt` file in the config directory. The first

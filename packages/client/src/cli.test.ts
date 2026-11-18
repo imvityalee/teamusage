@@ -396,6 +396,21 @@ describe("sync --throttle", () => {
     expect(d.collect).not.toHaveBeenCalled();
   });
 
+  test("a manual skip prints one line; quiet and detached skips stay silent", async () => {
+    writeAttempt(ago(60_000));
+    const write = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    try {
+      expect(await main(["sync", "--throttle", "4h"], deps())).toBe(0);
+      expect(write.mock.calls.map((c) => String(c[0])).join("")).toBe("Skipped: the last sync attempt was less than 4h ago.\n");
+      write.mockClear();
+      expect(await main(["sync", "--quiet", "--throttle", "4h"], deps())).toBe(0);
+      expect(await main(["sync", "--detach", "--throttle", "4h"], deps())).toBe(0);
+      expect(write).not.toHaveBeenCalled();
+    } finally {
+      write.mockRestore();
+    }
+  });
+
   test("a dry run writes no attempt time", async () => {
     expect(await main(["sync", "--dry-run"], deps())).toBe(0);
     expect(existsSync(lastAttemptPath())).toBe(false);

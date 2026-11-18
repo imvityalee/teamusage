@@ -8,7 +8,7 @@ export interface AccountLabel {
 
 /** Organisation name bound, in UTF-16 code units. */
 export const MAX_ORG_CHARS = 100;
-/** Most distinct accounts one stats response lists. */
+/** Most `account=` values one stats request accepts. */
 export const MAX_ACCOUNTS = 50;
 
 const KINDS: readonly AccountKind[] = ["personal", "team", "enterprise", "api"];

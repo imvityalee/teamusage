@@ -12,7 +12,7 @@ export function claudeConfigPath(env: NodeJS.ProcessEnv, home: string): string {
   return dir && path.isAbsolute(dir) ? path.join(dir, ".claude.json") : path.join(home, ".claude.json");
 }
 
-const KIND_BY_TYPE: Record<string, AccountLabel["kind"]> = {
+const KIND_BY_TYPE: Readonly<Record<string, AccountLabel["kind"]>> = {
   claude_team: "team",
   claude_enterprise: "enterprise",
   claude_pro: "personal",
@@ -34,12 +34,12 @@ function cleanOrg(raw: unknown): string | undefined {
  * Only `oauthAccount.organizationType` and `organizationName` are read. Any problem gives null.
  */
 export function readClaudeAccount(
-  deps: { env?: NodeJS.ProcessEnv; home?: string; readFile?: (p: string) => string } = {},
+  deps: { env?: NodeJS.ProcessEnv; home?: string | (() => string); readFile?: (p: string) => string } = {},
 ): AccountLabel | null {
-  const { env = process.env, home = homedir(), readFile = (p: string) => readFileSync(p, "utf8") } = deps;
+  const { env = process.env, home = homedir, readFile = (p: string) => readFileSync(p, "utf8") } = deps;
   let parsed: unknown;
   try {
-    parsed = JSON.parse(readFile(claudeConfigPath(env, home)));
+    parsed = JSON.parse(readFile(claudeConfigPath(env, typeof home === "function" ? home() : home)));
   } catch {
     return null;
   }
@@ -48,7 +48,9 @@ export function readClaudeAccount(
   if (oauth === undefined) return { kind: "api" };
   if (typeof oauth !== "object" || oauth === null || Array.isArray(oauth)) return null;
   const { organizationType, organizationName } = oauth as { organizationType?: unknown; organizationName?: unknown };
-  const kind = typeof organizationType === "string" ? KIND_BY_TYPE[organizationType] : undefined;
+  const kind = typeof organizationType === "string" && Object.hasOwn(KIND_BY_TYPE, organizationType)
+      ? KIND_BY_TYPE[organizationType]
+      : undefined;
   if (kind === undefined) return null;
   if (kind === "personal") return { kind };
   const org = cleanOrg(organizationName);
