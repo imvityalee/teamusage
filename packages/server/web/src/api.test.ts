@@ -120,3 +120,48 @@ describe("fetchStats for one member", () => {
     expect(await fetchStats("2026-01-01", "2026-01-31")).toEqual({ kind: "error", message: "not found" });
   });
 });
+
+describe("fetchStats with filters", () => {
+  test("sends agents and models as repeated, encoded parameters after the range and member", async () => {
+    const fetch = stubFetch(json(memberStatsFixture()));
+    const filters = {
+      agents: ["codex", `claude"><img src=x>`],
+      models: [{ agent: "claude", model: "opus 4/7&member=2#x" }, { agent: "x", model: "a:b" }],
+    };
+    await fetchStats("2026-01-01", "2026-01-31", undefined, 1, filters);
+    const [url] = fetch.mock.calls[0] as unknown as [string];
+    expect(url.startsWith("/api/stats?")).toBe(true);
+    const q = new URLSearchParams(url.slice("/api/stats?".length));
+    expect([...q]).toEqual([
+      ["from", "2026-01-01"],
+      ["to", "2026-01-31"],
+      ["member", "1"],
+      ["agent", "codex"],
+      ["agent", `claude"><img src=x>`],
+      ["model", "claude:opus 4/7&member=2#x"],
+      ["model", "x:a:b"],
+    ]);
+    expect(q.getAll("member")).toEqual(["1"]);
+  });
+
+  test("no filters, no filter parameters; never more than 20 agents and 50 models", async () => {
+    const fetch = stubFetch(json(statsFixture()), json(statsFixture()));
+    await fetchStats("2026-01-01", "2026-01-31", undefined, undefined, { agents: [], models: [] });
+    expect((fetch.mock.calls[0] as unknown as [string])[0]).toBe("/api/stats?from=2026-01-01&to=2026-01-31");
+    const many = {
+      agents: Array.from({ length: 25 }, (_, i) => `a${i}`),
+      models: Array.from({ length: 60 }, (_, i) => ({ agent: "a", model: `m${i}` })),
+    };
+    await fetchStats("2026-01-01", "2026-01-31", undefined, undefined, many);
+    const q = new URLSearchParams((fetch.mock.calls[1] as unknown as [string])[0].split("?")[1]);
+    expect(q.getAll("agent")).toHaveLength(20);
+    expect(q.getAll("model")).toHaveLength(50);
+  });
+
+  test("an answer without the filter lists is unexpected", async () => {
+    stubFetch(json({ ...statsFixture(), available: undefined }), json({ ...statsFixture(), available: { agents: "x", models: [] } }));
+    for (let i = 0; i < 2; i++) {
+      expect(await fetchStats("2026-01-01", "2026-01-31")).toEqual({ kind: "error", message: "unexpected response" });
+    }
+  });
+});

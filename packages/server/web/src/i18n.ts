@@ -16,7 +16,7 @@ const en = {
   k0: "Total tokens",
   k1: "Estimated cost",
   k2: "Active members",
-  k3: "Top agent",
+  k3: "Most used agent",
   perDay: "{n} per day on average",
   apiPrices: "at public API prices",
   ofN: "of {n}",
@@ -24,7 +24,7 @@ const en = {
   chartDaily: "Tokens per day, by agent",
   chartWeekly: "Tokens per week, by agent",
   chartAlt: "Tokens by agent from {from} to {to}: {total} in total.",
-  others: "Others",
+  otherAgents: "Other agents",
   members: "Members",
   models: "Agents and models",
   mh0: "Member",
@@ -45,7 +45,6 @@ const en = {
   unpricedHint: "No public price is known for this model, so its cost is not included.",
   today: "today",
   yesterday: "yesterday",
-  daysAgo: "{n} days ago",
   empty: "No usage in this period",
   note: "Cost is an estimate from public API prices, not what subscription plans actually charge. No project names, prompts or file paths are collected.",
   loginTitle: "Sign in",
@@ -64,12 +63,69 @@ const en = {
   matchCount: "{n} of {m} members",
   matchCount1: "{n} of {m} member",
   noMatch: "No members match",
-  allMembers: "← All members",
+  allMembers: "All members",
   k4: "Active days",
-  machine: "Machine",
   noMachines: "No machines yet",
   notFound: "Member not found",
   memberTitle: "{name} — teamusage",
+  filters: "Filters",
+  show: "Show",
+  allAgents: "All agents",
+  allModels: "All models",
+  agentsTitle: "Agents in this period",
+  modelsTitle: "Models in this period",
+  showAll: "Show all",
+  searchModels: "Search models",
+  noModels: "No models match",
+  nothingInPeriod: "Nothing in this period",
+  onlySelectedAgents: "Only models of the selected agents are listed.",
+  showingOnly: "Showing only",
+  clearFilters: "Clear filters",
+  removeFilter: "Remove filter: {name}",
+  agentLimit: "You can select up to {n} agents.",
+  modelLimit: "You can select up to {n} models.",
+  emptyFiltered: "Nothing matches these filters in this period",
+  k0f: "Total tokens · filtered",
+  k1f: "Estimated cost · filtered",
+  ofAllInPeriod: "{n}% of all tokens in this period",
+  ofFiltered: "{n}% of filtered tokens",
+  ofTheirs: "{n}% of their tokens",
+  teamShare: "{n}% of the team's tokens",
+  sentUsage: "sent usage in this period",
+  usedSelectedAgents: "used the selected agents",
+  usedSelectedModels: "used the selected models",
+  activeDaysSub: "days with any usage",
+  membersHint: "Select a member to see their own usage",
+  searchPlaceholder: "Search by name or email",
+  mixHead: "Agent mix",
+  mixNote: "The bar's length shows each member's share of the team's tokens; its colours show which agents they used.",
+  mixLabel: "{share}% of the team's tokens: {parts}",
+  shareLabel: "{share}% of the team's tokens",
+  breadcrumb: "Breadcrumb",
+  lastSyncLine: "last sync {when}",
+  neverSyncedLine: "never synced",
+  syncedToday: "Synced today",
+  syncedYesterday: "Synced yesterday",
+  neverSynced: "Never synced",
+  notCounted: "Usage on this machine since then is not counted yet",
+  agents_one: "{n} agent",
+  agents_few: "{n} agents",
+  agents_many: "{n} agents",
+  models_one: "{n} model",
+  models_few: "{n} models",
+  models_many: "{n} models",
+  machines_one: "{n} machine",
+  machines_few: "{n} machines",
+  machines_many: "{n} machines",
+  daysAgo_one: "{n} day ago",
+  daysAgo_few: "{n} days ago",
+  daysAgo_many: "{n} days ago",
+  syncedDaysAgo_one: "Synced {n} day ago",
+  syncedDaysAgo_few: "Synced {n} days ago",
+  syncedDaysAgo_many: "Synced {n} days ago",
+  noSyncDays_one: "No sync for {n} day",
+  noSyncDays_few: "No sync for {n} days",
+  noSyncDays_many: "No sync for {n} days",
 };
 
 export type MessageKey = keyof typeof en;
@@ -88,7 +144,7 @@ const ru: Record<MessageKey, string> = {
   k0: "Всего токенов",
   k1: "Оценка стоимости",
   k2: "Активные участники",
-  k3: "Главный агент",
+  k3: "Самый используемый агент",
   perDay: "{n} в среднем за день",
   apiPrices: "по публичным ценам API",
   ofN: "из {n}",
@@ -96,7 +152,7 @@ const ru: Record<MessageKey, string> = {
   chartDaily: "Токены по дням, по агентам",
   chartWeekly: "Токены по неделям, по агентам",
   chartAlt: "Токены по агентам с {from} по {to}: всего {total}.",
-  others: "Другие",
+  otherAgents: "Другие агенты",
   members: "Участники",
   models: "Агенты и модели",
   mh0: "Участник",
@@ -117,7 +173,6 @@ const ru: Record<MessageKey, string> = {
   unpricedHint: "Публичная цена этой модели неизвестна, поэтому её стоимость не учтена.",
   today: "сегодня",
   yesterday: "вчера",
-  daysAgo: "{n} дн. назад",
   empty: "За этот период данных нет",
   note: "Стоимость — оценка по публичным ценам API, а не реальные списания по подписке. Названия проектов, промпты и пути к файлам не собираются.",
   loginTitle: "Вход",
@@ -136,12 +191,69 @@ const ru: Record<MessageKey, string> = {
   matchCount: "{n} из {m} участников",
   matchCount1: "{n} из {m} участника",
   noMatch: "Участники не найдены",
-  allMembers: "← Все участники",
+  allMembers: "Все участники",
   k4: "Активные дни",
-  machine: "Устройство",
   noMachines: "Устройств пока нет",
   notFound: "Участник не найден",
   memberTitle: "{name} — teamusage",
+  filters: "Фильтры",
+  show: "Показать",
+  allAgents: "Все агенты",
+  allModels: "Все модели",
+  agentsTitle: "Агенты за этот период",
+  modelsTitle: "Модели за этот период",
+  showAll: "Показать все",
+  searchModels: "Поиск моделей",
+  noModels: "Модели не найдены",
+  nothingInPeriod: "За этот период ничего нет",
+  onlySelectedAgents: "Показаны только модели выбранных агентов.",
+  showingOnly: "Показаны только",
+  clearFilters: "Сбросить фильтры",
+  removeFilter: "Убрать фильтр: {name}",
+  agentLimit: "Можно выбрать не больше {n} агентов.",
+  modelLimit: "Можно выбрать не больше {n} моделей.",
+  emptyFiltered: "За этот период под фильтры ничего не подходит",
+  k0f: "Всего токенов · с фильтром",
+  k1f: "Оценка стоимости · с фильтром",
+  ofAllInPeriod: "{n}% всех токенов за этот период",
+  ofFiltered: "{n}% отфильтрованных токенов",
+  ofTheirs: "{n}% токенов участника",
+  teamShare: "{n}% токенов команды",
+  sentUsage: "отправляли данные за этот период",
+  usedSelectedAgents: "пользовались выбранными агентами",
+  usedSelectedModels: "пользовались выбранными моделями",
+  activeDaysSub: "дни, когда были данные",
+  membersHint: "Выберите участника, чтобы увидеть его статистику",
+  searchPlaceholder: "Поиск по имени или почте",
+  mixHead: "Агенты",
+  mixNote: "Длина полосы — доля участника в токенах команды, цвета — агенты, которыми он пользовался.",
+  mixLabel: "{share}% токенов команды: {parts}",
+  shareLabel: "{share}% токенов команды",
+  breadcrumb: "Навигация",
+  lastSyncLine: "последняя отправка {when}",
+  neverSyncedLine: "данные ещё не отправлялись",
+  syncedToday: "Отправлено сегодня",
+  syncedYesterday: "Отправлено вчера",
+  neverSynced: "Ещё не отправлялось",
+  notCounted: "Использование на этом устройстве с тех пор ещё не учтено",
+  agents_one: "{n} агент",
+  agents_few: "{n} агента",
+  agents_many: "{n} агентов",
+  models_one: "{n} модель",
+  models_few: "{n} модели",
+  models_many: "{n} моделей",
+  machines_one: "{n} устройство",
+  machines_few: "{n} устройства",
+  machines_many: "{n} устройств",
+  daysAgo_one: "{n} день назад",
+  daysAgo_few: "{n} дня назад",
+  daysAgo_many: "{n} дней назад",
+  syncedDaysAgo_one: "Отправлено {n} день назад",
+  syncedDaysAgo_few: "Отправлено {n} дня назад",
+  syncedDaysAgo_many: "Отправлено {n} дней назад",
+  noSyncDays_one: "Без отправки {n} день",
+  noSyncDays_few: "Без отправки {n} дня",
+  noSyncDays_many: "Без отправки {n} дней",
 };
 
 export const messages: { en: Record<MessageKey, string>; ru: Record<MessageKey, string> } = { en, ru };
@@ -157,6 +269,37 @@ export function t(lang: Lang, key: MessageKey, vars: Record<string, string | num
 export function matchCount(lang: Lang, n: number, m: number): string {
   const one = lang === "ru" ? m % 10 === 1 && m % 100 !== 11 : m === 1;
   return t(lang, one ? "matchCount1" : "matchCount", { n, m });
+}
+
+export type PluralForm = "one" | "few" | "many" | "other";
+
+/** The plural category of a count: English one/other; Russian one/few/many, with 11–14 always many. */
+export function pluralForm(lang: Lang, n: number): PluralForm {
+  const abs = Math.abs(Math.trunc(n));
+  if (lang === "en") return abs === 1 ? "one" : "other";
+  const last = abs % 10;
+  const lastTwo = abs % 100;
+  if (lastTwo >= 11 && lastTwo <= 14) return "many";
+  if (last === 1) return "one";
+  if (last >= 2 && last <= 4) return "few";
+  return "many";
+}
+
+export type CountedNoun = "agents" | "models" | "machines" | "daysAgo" | "syncedDaysAgo" | "noSyncDays";
+
+const FORMS = {
+  agents: { one: "agents_one", few: "agents_few", many: "agents_many" },
+  models: { one: "models_one", few: "models_few", many: "models_many" },
+  machines: { one: "machines_one", few: "machines_few", many: "machines_many" },
+  daysAgo: { one: "daysAgo_one", few: "daysAgo_few", many: "daysAgo_many" },
+  syncedDaysAgo: { one: "syncedDaysAgo_one", few: "syncedDaysAgo_few", many: "syncedDaysAgo_many" },
+  noSyncDays: { one: "noSyncDays_one", few: "noSyncDays_few", many: "noSyncDays_many" },
+} as const satisfies Record<CountedNoun, Record<"one" | "few" | "many", MessageKey>>;
+
+/** "3 агента", "5 models": the number with its noun in the right form. */
+export function count(lang: Lang, noun: CountedNoun, n: number): string {
+  const form = pluralForm(lang, n);
+  return t(lang, FORMS[noun][form === "other" ? "many" : form], { n });
 }
 
 /** A stored choice wins; otherwise Russian for a Russian browser, English for everything else. */

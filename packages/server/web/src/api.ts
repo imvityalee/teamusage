@@ -1,4 +1,5 @@
 import type { Stats } from "@teamusage/shared";
+import { NO_FILTERS, toQuery, type Filters } from "./filters.js";
 import { isMemberId } from "./route.js";
 
 /** Talks to the server. Same-origin relative URLs only; the session cookie is the only credential. */
@@ -33,6 +34,7 @@ function looksLikeStats(v: unknown, member?: number): v is Stats {
   if (typeof v !== "object" || v === null) return false;
   const s = v as Record<string, unknown>;
   const totals = s.totals as Record<string, unknown> | null;
+  const available = s.available as Record<string, unknown> | null;
   const shape =
     typeof s.from === "string" &&
     typeof s.to === "string" &&
@@ -41,7 +43,11 @@ function looksLikeStats(v: unknown, member?: number): v is Stats {
     typeof totals.tokens === "number" &&
     Array.isArray(s.daily) &&
     Array.isArray(s.members) &&
-    Array.isArray(s.models);
+    Array.isArray(s.models) &&
+    typeof available === "object" &&
+    available !== null &&
+    Array.isArray(available.agents) &&
+    Array.isArray(available.models);
   if (!shape || member === undefined) return shape;
   const members = s.members as unknown[];
   return (
@@ -60,14 +66,24 @@ async function errorMessage(res: Response): Promise<string> {
   return `HTTP ${res.status}`;
 }
 
-/** The team's stats for the range, or one member's when `member` is given. */
-export async function fetchStats(from: string, to: string, signal?: AbortSignal, member?: number): Promise<StatsResult> {
+/**
+ * The team's stats for the range, or one member's when `member` is given, narrowed by the agent and model filters.
+ * Every value is encoded by URLSearchParams; the path is fixed.
+ */
+export async function fetchStats(
+  from: string,
+  to: string,
+  signal?: AbortSignal,
+  member?: number,
+  filters: Filters = NO_FILTERS,
+): Promise<StatsResult> {
   const query = new URLSearchParams({ from, to });
   if (member !== undefined) {
     // Only a checked number goes into the URL, written out by this code.
     if (!isMemberId(member)) return { kind: "error", message: "invalid member" };
     query.set("member", String(member));
   }
+  for (const [key, value] of toQuery(filters)) query.append(key, value);
   let res: Response;
   try {
     res = await fetch(`/api/stats?${query}`, {

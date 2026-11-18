@@ -1,4 +1,5 @@
 import type { Stats } from "@teamusage/shared";
+import { OTHER_SERIES, SERIES_CLASS, seriesOf } from "./agents.js";
 import { compact, full } from "./format.js";
 
 export interface Bucket {
@@ -40,21 +41,16 @@ export function rankAgents(totals: Map<string, number>): string[] {
     .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0)).map(([id]) => id);
 }
 
-const OWN_COLOURS = 4;
-/** The neutral colour slot shared by every agent past the top four. */
-export const OTHERS_SLOT = OWN_COLOURS;
-
-/** Colour slot 0–3 for the top four agents, 4 ("others") for the rest. */
-export function slotOf(agent: string, ranked: string[]): number {
-  const i = ranked.indexOf(agent);
-  return i >= 0 && i < OWN_COLOURS ? i : OTHERS_SLOT;
+/** The chart series that have any tokens, in the fixed bottom-to-top order (see agents.ts). */
+export function presentSeries(totals: Map<string, number>): number[] {
+  const present = new Set<number>();
+  for (const [agent, n] of totals) if (n > 0) present.add(seriesOf(agent));
+  return [...present].sort((a, b) => a - b);
 }
 
 export interface ChartOptions {
-  /** Agents in rank order; the first is drawn at the bottom of each bar. */
-  ranked: string[];
-  /** Display name per colour slot, in slot order (the last may be "Others"). */
-  seriesNames: string[];
+  /** Display name per series, in series order; the last is "Other agents". */
+  names: string[];
   label: (bucketLabel: string) => string;
   ariaLabel: string;
 }
@@ -67,7 +63,29 @@ const BOTTOM = 22;
 const TOP = 8;
 const X_LABELS = 8;
 
-/** Stacked bars drawn as SVG elements. Every text, including tooltips, goes in as textContent. */
+const GAP = 2;
+const RADIUS = 3;
+const num = (n: number): string => String(Math.round(n * 100) / 100);
+
+/** A bar segment with its top corners rounded. */
+function roundedTop(x: number, y: number, w: number, h: number): string {
+  const r = Math.min(RADIUS, h, w / 2);
+  return [
+    `M${num(x)} ${num(y + h)}`,
+    `V${num(y + r)}`,
+    `Q${num(x)} ${num(y)} ${num(x + r)} ${num(y)}`,
+    `H${num(x + w - r)}`,
+    `Q${num(x + w)} ${num(y)} ${num(x + w)} ${num(y + r)}`,
+    `V${num(y + h)}`,
+    "Z",
+  ].join(" ");
+}
+
+/**
+ * Stacked bars drawn as SVG elements, one segment per series in the fixed order, so an agent keeps its colour
+ * whatever is shown. Segments are separated by a small gap; only the top one is rounded.
+ * Every text, including tooltips, goes in as textContent; classes come from the fixed SERIES_CLASS list.
+ */
 export function drawChart(doc: Document, data: Bucket[], opts: ChartOptions): SVGSVGElement {
   const el = <K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string, string | number>, text?: string) => {
     const node = doc.createElementNS(SVG, tag);
@@ -78,12 +96,12 @@ export function drawChart(doc: Document, data: Bucket[], opts: ChartOptions): SV
 
   const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": opts.ariaLabel });
   const series = data.map((b) => {
-    const bySlot = opts.seriesNames.map(() => 0);
+    const bySeries = Array.from({ length: OTHER_SERIES + 1 }, () => 0);
     for (const [agent, n] of Object.entries(b.byAgent)) {
-      const slot = Math.min(slotOf(agent, opts.ranked), opts.seriesNames.length - 1);
-      bySlot[slot] = (bySlot[slot] ?? 0) + n;
+      const i = seriesOf(agent);
+      bySeries[i] = (bySeries[i] ?? 0) + (Number.isFinite(n) && n > 0 ? n : 0);
     }
-    return bySlot;
+    return bySeries;
   });
   const sums = series.map((s) => s.reduce((a, b) => a + b, 0));
   const max = Math.max(0, ...sums) || 1;
@@ -92,7 +110,7 @@ export function drawChart(doc: Document, data: Bucket[], opts: ChartOptions): SV
   for (let g = 0; g <= 3; g++) {
     const y = TOP + plot * (1 - g / 3);
     svg.append(
-      el("line", { x1: LEFT, x2: W, y1: y, y2: y, class: "grid" }),
+      el("line", { x1: LEFT, x2: W, y1: y, y2: y, class: g === 0 ? "axis" : "grid" }),
       el("text", { x: LEFT - 6, y: y + 4, "text-anchor": "end" }, compact((max * g) / 3)),
     );
   }
@@ -101,16 +119,24 @@ export function drawChart(doc: Document, data: Bucket[], opts: ChartOptions): SV
   const every = Math.ceil(data.length / X_LABELS);
   data.forEach((bucket, n) => {
     const label = opts.label(bucket.label);
-    const bySlot = series[n] ?? [];
-    const lines = bySlot.flatMap((v, slot) => (v > 0 ? [`${opts.seriesNames[slot]}: ${full(v)}`] : []));
+    const bySeries = series[n] ?? [];
+    const lines = bySeries.flatMap((v, i) => (v > 0 ? [`${opts.names[i] ?? ""}: ${full(v)}`] : []));
     const group = el("g", { class: "bar" });
     group.append(el("title", {}, [`${label}: ${full(sums[n] ?? 0)}`, ...lines].join("\n")));
-    let y = H - BOTTOM;
-    bySlot.forEach((v, slot) => {
-      if (v <= 0) return;
-      const h = (v / max) * plot;
-      y -= h;
-      group.append(el("rect", { x: LEFT + n * bw + bw * 0.12, y, width: bw * 0.76, height: h, class: `s${slot}` }));
+    const shown = bySeries.flatMap((v, i) => (v > 0 ? [i] : []));
+    const x = LEFT + n * bw + bw * 0.12;
+    const w = bw * 0.76;
+    let base = H - BOTTOM;
+    shown.forEach((i, k) => {
+      const slot = ((bySeries[i] ?? 0) / max) * plot;
+      // Every segment above the first leaves a gap of the card colour under it.
+      const bottom = k === 0 ? base : base - GAP;
+      const top = base - slot;
+      const height = Math.max(0, bottom - top);
+      const cls = SERIES_CLASS[i] as string;
+      if (k === shown.length - 1) group.append(el("path", { d: roundedTop(x, top, w, height), class: cls }));
+      else group.append(el("rect", { x: num(x), y: num(top), width: num(w), height: num(height), class: cls }));
+      base = top;
     });
     svg.append(group);
     if (n % every === 0) {

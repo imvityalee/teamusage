@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { agentName, compact, daysSince, full, localIsoDate, shortDate, usd } from "./format.js";
+import { agentName, compact, daysSince, full, initials, localIsoDate, shortDate, usd } from "./format.js";
 
 describe("full", () => {
   test("groups thousands", () => {
@@ -58,8 +58,30 @@ describe("agentName", () => {
     expect(agentName("codex")).toBe("Codex");
     expect(agentName("gemini")).toBe("Gemini CLI");
     expect(agentName("opencode")).toBe("OpenCode");
+    expect(agentName("copilot")).toBe("Copilot");
     expect(agentName("aider")).toBe("aider");
     expect(agentName("__proto__")).toBe("__proto__");
     expect(agentName("toString")).toBe("toString");
+  });
+});
+
+describe("initials", () => {
+  test("first letters of the first two words, Latin or Cyrillic", () => {
+    expect(initials("Alice Archer")).toBe("AA");
+    expect(initials("bao nguyen van")).toBe("BN");
+    expect(initials("Айгерим Садыкова")).toBe("АС");
+    expect(initials("  Cher  ")).toBe("C");
+    expect(initials("Élodie d'Arc")).toBe("ÉD");
+  });
+
+  test("a name with markup gives letters only; a name without letters gives ?", () => {
+    expect(initials(`<img src=x onerror="alert(1)">`)).toBe("IS");
+    expect(initials("123 456")).toBe("?");
+    expect(initials("")).toBe("?");
+    expect(initials("<>")).toBe("?");
+  });
+
+  test("always one or two characters", () => {
+    for (const name of ["ß ß", "ﬁ x", "𝒜lpha 𝔅eta", "a".repeat(500)]) expect([...initials(name)].length).toBeLessThanOrEqual(2);
   });
 });

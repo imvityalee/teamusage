@@ -52,14 +52,19 @@ export function longDate(iso: string, locale: string): string {
   return calendarDate(iso).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" });
 }
 
-const AGENT_NAMES = new Map([
-  ["claude", "Claude Code"],
-  ["codex", "Codex"],
-  ["gemini", "Gemini CLI"],
-  ["opencode", "OpenCode"],
-]);
+export { agentName } from "./agents.js";
 
-/** Display name for a known agent id, otherwise the id itself. */
-export function agentName(id: string): string {
-  return AGENT_NAMES.get(id) ?? id;
+const LETTER = /\p{L}/u;
+
+/** Avatar initials: the first letter of each of the first two words that have one ("Айгерим Садыкова" → "АС"), or "?". */
+export function initials(name: string): string {
+  const letters: string[] = [];
+  for (const word of String(name).split(/\s+/)) {
+    const first = [...word].find((c) => LETTER.test(c));
+    if (first !== undefined) letters.push(first);
+    if (letters.length === 2) break;
+  }
+  if (letters.length === 0) return "?";
+  // A letter whose capital is longer ("ß" → "SS") stays as it is, so the avatar never exceeds two characters.
+  return letters.map((c) => ([...c.toUpperCase()].length === 1 ? c.toUpperCase() : c)).join("");
 }

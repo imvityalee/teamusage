@@ -4,7 +4,7 @@ import { Window } from "happy-dom";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { localIsoDate } from "./format.js";
 import { LANG_KEY } from "./i18n.js";
-import { memberStatsFixture, statsFixture } from "./test-fixtures.js";
+import { emptyStatsFixture, memberStatsFixture, statsFixture } from "./test-fixtures.js";
 
 const PAGE = readFileSync(new URL("../index.html", import.meta.url), "utf8");
 const BODY = /<body>([\s\S]*)<\/body>/.exec(PAGE)?.[1]?.replace(/<script[\s\S]*?<\/script>/g, "") ?? "";
@@ -208,7 +208,7 @@ describe("language", () => {
 });
 
 const memberUrl = (r: { from: string; to: string }, id: number) => `${statsUrl(r)}&member=${id}`;
-const memberRows = () => [...doc.querySelectorAll("#members tbody tr")].map((r) => r.querySelector("th")?.textContent);
+const memberRows = () => [...doc.querySelectorAll("#members tbody tr")].map((r) => r.querySelector(".who a")?.textContent);
 
 function typeQuery(value: string): void {
   const input = $<HTMLInputElement>("#member-search");
@@ -227,7 +227,7 @@ describe("member search", () => {
     expect(memberRows()).toHaveLength(3);
     typeQuery("NGUY");
     await flush();
-    expect(memberRows()).toEqual(["Bao Nguyenbao@example.com"]);
+    expect(memberRows()).toEqual(["Bao Nguyen"]);
     expect($("#members-count").textContent).toBe("1 of 3 members");
     typeQuery("zzz");
     await flush();
@@ -253,11 +253,11 @@ describe("member search", () => {
     expect(calls.at(-1)?.url).toBe(statsUrl(range(30)));
     expect(calls.at(-1)?.url).not.toContain("carla");
     expect($<HTMLInputElement>("#member-search").value).toBe("carla");
-    expect(memberRows()).toEqual(["Carla Mendescarla@example.com"]);
+    expect(memberRows()).toEqual(["Carla Mendes"]);
     $('#lang button[data-lang="ru"]').click();
     await flush();
     expect($("#members-count").textContent).toBe("1 из 3 участников");
-    expect(memberRows()).toEqual(["Carla Mendescarla@example.com"]);
+    expect(memberRows()).toEqual(["Carla Mendes"]);
   });
 
   test("the search box keeps focus when a load finishes while typing", async () => {
@@ -285,7 +285,7 @@ describe("member page", () => {
     expect(calls.at(-1)?.init.credentials).toBe("same-origin");
     expect($("#member-heading").textContent).toBe("Alice Archer");
     expect(doc.title).toBe("Alice Archer — teamusage");
-    expect(doc.querySelectorAll("#machines tbody tr")).toHaveLength(3);
+    expect(doc.querySelectorAll("#machines li")).toHaveLength(3);
     expect(doc.querySelector("#members")).toBeNull();
     expect(doc.querySelector("#member-search")).toBeNull();
   });
@@ -331,7 +331,7 @@ describe("member page", () => {
     $('#lang button[data-lang="ru"]').click();
     await flush();
     expect(calls).toHaveLength(2);
-    expect($("a.back").textContent).toBe("← Все участники");
+    expect($("a.back").textContent).toBe("Все участники");
     expect(doc.title).toBe("Alice Archer — teamusage");
   });
 
@@ -351,7 +351,7 @@ describe("member page", () => {
     await goTo("#/member/999999");
     expect(calls.at(-1)?.url).toBe(memberUrl(range(90), 999999));
     expect($("#stats .empty").textContent).toBe("Member not found");
-    expect($("#stats a.back").getAttribute("href")).toBe("#/");
+    expect($("#page-head a.back").getAttribute("href")).toBe("#/");
     expect($("#status").hidden).toBe(true);
     expect(doc.querySelector("#members")).toBeNull();
     $('#lang button[data-lang="ru"]').click();
@@ -395,7 +395,7 @@ describe("out-of-order answers", () => {
     await flush();
     expect($("#member-heading").textContent).toBe("Bao Nguyen");
     expect(doc.title).toBe("Bao Nguyen — teamusage");
-    expect([...doc.querySelectorAll("#machines tbody th")].map((th) => th.textContent)).toEqual(["bao-desktop"]);
+    expect([...doc.querySelectorAll("#machines .machine-label")].map((el) => el.textContent)).toEqual(["bao-desktop"]);
     expect([...doc.querySelectorAll("#models tbody tr")].map((r) => r.querySelectorAll("td")[1]?.textContent)).toEqual(["gpt-5-codex"]);
     expect($("#stats").classList.contains("loading")).toBe(false);
   });
@@ -427,7 +427,243 @@ describe("page title", () => {
     expect(doc.title).toBe(`${evil} — teamusage`);
     expect(doc.querySelector("title")?.textContent).toBe(`${evil} — teamusage`);
     expect(doc.querySelector("title")?.children).toHaveLength(0);
-    expect(doc.querySelector("img")).toBeNull();
+    // The only images are the fixed agent logos.
+    expect([...doc.querySelectorAll("img")].every((img) => (img.getAttribute("src") ?? "").startsWith("/agents/"))).toBe(true);
     expect($("#member-heading").textContent).toBe(evil);
+  });
+});
+
+describe("filters", () => {
+  const withFilters = (url: string, params: [string, string][]) =>
+    params.length === 0 ? url : `${url}&${new URLSearchParams(params).toString()}`;
+  const open = (kind: "agents" | "models") => $(`#${kind}-btn`).click();
+  const rowBoxes = (kind: "agents" | "models") =>
+    [...doc.querySelectorAll<HTMLInputElement>(`#${kind}-pop label.pop-row input`)].filter((b) => !(b.closest("li") as HTMLElement).hidden);
+  function tick(box: HTMLInputElement | undefined): void {
+    if (!box) throw new Error("no checkbox");
+    box.checked = !box.checked;
+    box.dispatchEvent(new win.Event("change", { bubbles: true }) as unknown as Event);
+  }
+  const key = (k: string, target: EventTarget = doc.activeElement ?? doc.body) =>
+    target.dispatchEvent(new win.KeyboardEvent("keydown", { key: k, bubbles: true }) as unknown as Event);
+  const noStorage = () => {
+    expect(keys(win.localStorage as unknown as Storage).filter((k) => k !== LANG_KEY)).toEqual([]);
+    expect(win.sessionStorage.length).toBe(0);
+    expect(doc.cookie).toBe("");
+  };
+
+  test("ticking agents and a model asks again with repeated agent and model parameters; Clear filters drops them", async () => {
+    await boot(json(statsFixture()));
+    open("agents");
+    expect($("#agents-btn").getAttribute("aria-expanded")).toBe("true");
+    replies.push(json(statsFixture()));
+    tick(rowBoxes("agents")[1]); // Codex
+    await flush();
+    expect(calls.at(-1)?.url).toBe(withFilters(statsUrl(range(90)), [["agent", "codex"]]));
+    // The popover stays open for more choices and shows the selection.
+    expect($("#agents-btn").getAttribute("aria-expanded")).toBe("true");
+    expect(rowBoxes("agents").map((b) => b.checked)).toEqual([false, true, false]);
+    expect($("#agents-btn").textContent?.trim()).toBe("1 agent");
+
+    replies.push(json(statsFixture()));
+    tick(rowBoxes("agents")[0]); // Claude Code
+    await flush();
+    expect(calls.at(-1)?.url).toBe(withFilters(statsUrl(range(90)), [["agent", "codex"], ["agent", "claude"]]));
+
+    open("models");
+    expect($("#agents-btn").getAttribute("aria-expanded")).toBe("false");
+    expect(doc.querySelectorAll(".popover")).toHaveLength(1);
+    replies.push(json(statsFixture()));
+    tick(rowBoxes("models")[1]); // claude-opus-4-1
+    await flush();
+    expect(calls.at(-1)?.url).toBe(
+      withFilters(statsUrl(range(90)), [["agent", "codex"], ["agent", "claude"], ["model", "claude:claude-opus-4-1"]]),
+    );
+    expect([...doc.querySelectorAll("#chips button.chip")].map((c) => c.textContent?.trim())).toEqual(["Codex", "Claude Code", "claude-opus-4-1"]);
+    expect($("#chips").hidden).toBe(false);
+    expect([...doc.querySelectorAll(".tile .k")].slice(0, 2).map((k) => k.textContent)).toEqual(["Total tokens · filtered", "Estimated cost · filtered"]);
+
+    replies.push(json(statsFixture()));
+    $("#clear-filters").click();
+    await flush();
+    expect(calls.at(-1)?.url).toBe(statsUrl(range(90)));
+    expect($("#chips").hidden).toBe(true);
+    expect(doc.querySelector("#clear-filters")).toBeNull();
+    expect(doc.querySelector(".popover")).toBeNull();
+    expect($(".tile .k").textContent).toBe("Total tokens");
+    noStorage();
+    expect(win.location.href).toBe("http://localhost:8787/");
+  });
+
+  test("removing a chip removes that filter", async () => {
+    await boot(json(statsFixture()));
+    open("agents");
+    replies.push(json(statsFixture()), json(statsFixture()));
+    tick(rowBoxes("agents")[1]);
+    await flush();
+    tick(rowBoxes("agents")[0]);
+    await flush();
+    replies.push(json(statsFixture()));
+    (doc.querySelector("#chips button.chip") as HTMLButtonElement).click();
+    await flush();
+    expect(calls.at(-1)?.url).toBe(withFilters(statsUrl(range(90)), [["agent", "claude"]]));
+  });
+
+  test("the filter survives a range change, a language switch and the member page, and is pruned to what exists", async () => {
+    await boot(json(statsFixture()));
+    open("agents");
+    replies.push(json(statsFixture()));
+    tick(rowBoxes("agents")[1]);
+    await flush();
+
+    replies.push(json(statsFixture()));
+    $('#range button[data-days="30"]').click();
+    await flush();
+    expect(calls.at(-1)?.url).toBe(withFilters(statsUrl(range(30)), [["agent", "codex"]]));
+
+    const before = calls.length;
+    $('#lang button[data-lang="ru"]').click();
+    await flush();
+    expect(calls).toHaveLength(before);
+    expect($("#agents-btn").textContent?.trim()).toBe("1 агент");
+    expect($(".tile .k").textContent).toBe("Всего токенов · с фильтром");
+
+    replies.push(json(memberStatsFixture()));
+    await goTo("#/member/1");
+    expect(calls.at(-1)?.url).toBe(withFilters(memberUrl(range(30), 1), [["agent", "codex"]]));
+    expect($("#agents-btn").textContent?.trim()).toBe("1 агент");
+
+    // A range where Codex was not used: the selection is dropped and the page asks again without it.
+    const noCodex = { ...statsFixture(), available: { agents: ["claude"], models: [{ agent: "claude", model: "claude-opus-4-1", tokens: 5 }] } };
+    replies.push(json({ ...memberStatsFixture(), available: noCodex.available }), json(memberStatsFixture()));
+    $('#range button[data-days="180"]').click();
+    await flush();
+    expect(calls.slice(-2).map((c) => c.url)).toEqual([withFilters(memberUrl(range(180), 1), [["agent", "codex"]]), memberUrl(range(180), 1)]);
+    expect($("#agents-btn").textContent?.trim()).toBe("Все агенты");
+    expect($("#chips").hidden).toBe(true);
+    noStorage();
+    expect(win.location.hash).toBe("#/member/1");
+  });
+
+  test("Escape closes the popover and gives focus back to its button; so does a click outside", async () => {
+    await boot(json(statsFixture()));
+    $("#models-btn").focus();
+    open("models");
+    expect(doc.activeElement?.id).toBe("models-btn");
+    const search = $<HTMLInputElement>("#model-search");
+    search.focus();
+    key("Escape", search);
+    expect(doc.querySelector(".popover")).toBeNull();
+    expect($("#models-btn").getAttribute("aria-expanded")).toBe("false");
+    expect(doc.activeElement?.id).toBe("models-btn");
+
+    open("agents");
+    expect(doc.querySelector("#agents-pop")).not.toBeNull();
+    $(".tile").click();
+    expect(doc.querySelector(".popover")).toBeNull();
+
+    // The button itself opens and closes.
+    open("agents");
+    open("agents");
+    expect(doc.querySelector(".popover")).toBeNull();
+    expect(calls).toHaveLength(1);
+  });
+
+  test("keyboard: focus stays on the checkbox after ticking, and the search keeps its text across a reload", async () => {
+    await boot(json(statsFixture()));
+    open("models");
+    const search = $<HTMLInputElement>("#model-search");
+    search.focus();
+    search.value = "OPUS";
+    search.dispatchEvent(new win.Event("input", { bubbles: true }) as unknown as Event);
+    expect(rowBoxes("models")).toHaveLength(1);
+    expect(calls).toHaveLength(1); // searching never asks the server
+    expect(calls.every((c) => !c.url.includes("OPUS") && !c.url.includes("opus"))).toBe(true);
+
+    const box = rowBoxes("models")[0] as HTMLInputElement;
+    box.focus();
+    replies.push(json(statsFixture()));
+    tick(box);
+    await flush();
+    expect(calls.at(-1)?.url).toBe(withFilters(statsUrl(range(90)), [["model", "claude:claude-opus-4-1"]]));
+    const focused = doc.activeElement as HTMLInputElement;
+    expect(focused.type).toBe("checkbox");
+    expect(focused.checked).toBe(true);
+    expect($<HTMLInputElement>("#model-search").value).toBe("OPUS");
+    expect(rowBoxes("models")).toHaveLength(1);
+  });
+
+  test("a filter that matches nothing shows the empty state with Clear filters", async () => {
+    await boot(json(statsFixture()));
+    open("agents");
+    replies.push(json({ ...emptyStatsFixture() }));
+    tick(rowBoxes("agents")[2]);
+    await flush();
+    expect($("#stats .empty p").textContent).toBe("Nothing matches these filters in this period");
+    replies.push(json(statsFixture()));
+    $("#empty-clear").click();
+    await flush();
+    expect(calls.at(-1)?.url).toBe(statsUrl(range(90)));
+    expect(doc.querySelector("#stats .empty")).toBeNull();
+  });
+
+  test("past 20 agents the page stops adding, says so and sends nothing", async () => {
+    const ids = Array.from({ length: 21 }, (_, i) => `agent${String(i).padStart(2, "0")}`);
+    const many = { ...statsFixture(), available: { agents: ids, models: ids.map((a) => ({ agent: a, model: "m", tokens: 1 })) } };
+    await boot(json(many));
+    open("agents");
+    for (let i = 0; i < 20; i++) {
+      replies.push(json(many));
+      tick(rowBoxes("agents")[i]);
+      await flush();
+    }
+    expect(new URLSearchParams(calls.at(-1)?.url.split("?")[1]).getAll("agent")).toHaveLength(20);
+    const before = calls.length;
+    tick(rowBoxes("agents")[20]);
+    await flush();
+    expect(calls).toHaveLength(before);
+    expect($("#agents-pop .pop-note").textContent).toBe("You can select up to 20 agents.");
+    expect(rowBoxes("agents")[20]?.checked).toBe(false);
+  });
+
+  test("a slow answer for an earlier filter never replaces a later one", async () => {
+    await boot(json(statsFixture()));
+    open("agents");
+    let release: (r: Response) => void = () => {};
+    replies.push(() => new Promise<Response>((r) => (release = r)));
+    tick(rowBoxes("agents")[0]); // Claude Code: slow
+    const both = { ...statsFixture(), totals: { tokens: 5_000, costUsd: 1.5, activeMembers: 2, memberCount: 3 } };
+    replies.push(json(both));
+    tick(rowBoxes("agents")[1]); // and Codex: fast
+    await flush();
+    expect(calls.slice(-2).map((c) => c.url)).toEqual([
+      withFilters(statsUrl(range(90)), [["agent", "claude"]]),
+      withFilters(statsUrl(range(90)), [["agent", "claude"], ["agent", "codex"]]),
+    ]);
+    expect((calls.at(-2)?.init.signal as AbortSignal).aborted).toBe(true);
+    release(json(statsFixture()));
+    await flush();
+    expect($(".tile .v").textContent).toBe("5,000");
+    expect($("#stats").classList.contains("loading")).toBe(false);
+  });
+
+  test("the member page shows the share of the team once the team total for the range is known", async () => {
+    await boot(json(statsFixture()));
+    replies.push(json(memberStatsFixture()));
+    $('#members a[href="#/member/1"]').click();
+    await flush();
+    expect($(".tile .s").textContent).toBe("100% of the team's tokens");
+    expect($(".member-head .avatar").textContent).toBe("AA");
+    expect($("#page-head nav a.back").getAttribute("href")).toBe("#/");
+
+    replies.push(json(statsFixture()));
+    $("a.back").click();
+    await flush();
+    expect($("#page-head").childElementCount).toBe(0);
+  });
+
+  test("the filter bar is hidden while signing in", async () => {
+    await boot(unauthorized());
+    expect($("#filterbar").hidden).toBe(true);
   });
 });
