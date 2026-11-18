@@ -422,6 +422,12 @@ Needs Node.js 22 or newer and pnpm. The packages are `packages/server` (server a
 `packages/client` (the `teamusage` command) and `packages/shared`. The Claude Code plugin is in `plugin/`,
 its marketplace file in `.claude-plugin/`, and `pnpm test` also runs `scripts/check-plugin.mjs` on them.
 
+## Credits
+
+The agent logos on the dashboard come from simple-icons 16.38.0 (https://simpleicons.org), released under the
+CC0-1.0 licence, except the GitHub Copilot logo, which is MIT. The logos are trademarks of their owners, used only to
+identify the products. See `packages/server/web/public/agents/NOTICE.md`.
+
 ## Licence
 
 MIT. See [LICENSE](LICENSE).
