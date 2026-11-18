@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { presetRange } from "@teamusage/shared";
+import { presetRange, type Stats } from "@teamusage/shared";
 import { Window } from "happy-dom";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { localIsoDate } from "./format.js";
@@ -365,5 +365,69 @@ describe("member page", () => {
     expect($("#status").hidden).toBe(false);
     expect($("#status-text").textContent).toBe("Could not load the statistics: <b>boom</b>");
     expect(doc.querySelector("#status b")).toBeNull();
+  });
+});
+
+describe("out-of-order answers", () => {
+  const pending = () => {
+    let release: (r: Response) => void = () => {};
+    const reply = () => new Promise<Response>((r) => (release = r));
+    return { reply, release: (r: Response) => release(r) };
+  };
+  const bao = () => ({
+    ...memberStatsFixture(),
+    members: [{ ...(statsFixture().members[1] as Stats["members"][number]) }],
+    machines: [{ label: "bao-desktop", lastSyncAt: "2026-11-18T12:00:00.000Z" }],
+    models: [memberStatsFixture().models[1] as Stats["models"][number]],
+  });
+
+  test("a slow answer for an earlier member never replaces the later member's page", async () => {
+    await boot(json(statsFixture()));
+    const slow = pending();
+    replies.push(slow.reply);
+    await goTo("#/member/1");
+    replies.push(json(bao()));
+    await goTo("#/member/2");
+    expect(calls.map((c) => c.url).slice(-2)).toEqual([memberUrl(range(90), 1), memberUrl(range(90), 2)]);
+    expect($("#member-heading").textContent).toBe("Bao Nguyen");
+
+    slow.release(json(memberStatsFixture()));
+    await flush();
+    expect($("#member-heading").textContent).toBe("Bao Nguyen");
+    expect(doc.title).toBe("Bao Nguyen — teamusage");
+    expect([...doc.querySelectorAll("#machines tbody th")].map((th) => th.textContent)).toEqual(["bao-desktop"]);
+    expect([...doc.querySelectorAll("#models tbody tr")].map((r) => r.querySelectorAll("td")[1]?.textContent)).toEqual(["gpt-5-codex"]);
+    expect($("#stats").classList.contains("loading")).toBe(false);
+  });
+
+  test("a member answer that arrives after going back to the team is ignored", async () => {
+    await boot(json(statsFixture()));
+    const slow = pending();
+    replies.push(slow.reply);
+    await goTo("#/member/1");
+    replies.push(json(statsFixture()));
+    await goTo("#/");
+    expect(calls.at(-1)?.url).toBe(statsUrl(range(90)));
+
+    slow.release(json(memberStatsFixture()));
+    await flush();
+    expect(doc.querySelectorAll("#members tbody tr")).toHaveLength(3);
+    expect(doc.querySelector("#member-heading")).toBeNull();
+    expect(doc.querySelector("#member-search")).not.toBeNull();
+    expect(doc.title).toBe("teamusage — team usage");
+    expect($("#stats").classList.contains("loading")).toBe(false);
+  });
+});
+
+describe("page title", () => {
+  test("a member name with markup reaches the title as literal text and creates no element", async () => {
+    const evil = `<img src=x onerror=alert(1)>`;
+    const stats = memberStatsFixture({ name: evil, email: evil, agent: "aider", model: "some-model" });
+    await bootAt("http://localhost:8787/#/member/1", json(stats));
+    expect(doc.title).toBe(`${evil} — teamusage`);
+    expect(doc.querySelector("title")?.textContent).toBe(`${evil} — teamusage`);
+    expect(doc.querySelector("title")?.children).toHaveLength(0);
+    expect(doc.querySelector("img")).toBeNull();
+    expect($("#member-heading").textContent).toBe(evil);
   });
 });
