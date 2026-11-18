@@ -8,6 +8,7 @@ import { clientVersion } from "./codex.js";
 import { collect } from "./collect.js";
 import { loadConfig } from "./config.js";
 import { clean } from "./text.js";
+import { readClaudeAccount } from "./account.js";
 import { assertTokenBound, errorMessage, localToday, sync, SyncError, type Deps as SyncDeps } from "./sync.js";
 
 export type Range = "1m" | "3m" | "6m"; // 30, 90, 180 days
@@ -65,6 +66,7 @@ export const defaults = (): Deps => ({
   collect,
   env: process.env,
   today: () => localToday(),
+  account: () => readClaudeAccount(),
   log: (line) => process.stderr.write(`${line}\n`),
   fetchStats,
   loadConfig,

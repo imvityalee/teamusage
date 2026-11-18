@@ -64,6 +64,7 @@ function deps(over: Partial<Deps> = {}): Partial<Deps> & { log: ReturnType<typeo
     collect: vi.fn(async () => many(3)),
     env: envFor(srv.url),
     today: () => "2026-11-18",
+    account: () => null,
     log: vi.fn(),
     ...over,
   } as Partial<Deps> & { log: ReturnType<typeof vi.fn> };
@@ -134,6 +135,50 @@ test("the upload body is exactly {records} with only UsageRecord fields", async 
   expect(Object.keys(body)).toEqual(["records"]);
   expect(Object.keys(body.records[0]).sort()).toEqual(RECORD_KEYS);
   expect(JSON.stringify(body)).not.toContain("secret-repo");
+});
+
+describe("account label", () => {
+  const acct = { kind: "team", org: "Devcats" } as const;
+  const recs = () => [
+    rec(0, { date: "2026-11-18", agent: "claude" }),
+    rec(1, { date: "2026-11-18", agent: "codex" }),
+    rec(2, { date: "2026-11-10", agent: "claude" }),
+  ];
+
+  test("the upload carries account on recent Claude records only", async () => {
+    const d = deps({ collect: async () => recs(), account: () => acct });
+    await sync({ deps: d });
+    const body = calls("/api/usage")[0];
+    expect(body.records[0].account).toEqual(acct);
+    expect("account" in body.records[1]).toBe(false);
+    expect("account" in body.records[2]).toBe(false);
+  });
+
+  test("a ccusage-supplied account is dropped", async () => {
+    const leaky = { ...rec(0, { date: "2026-11-18", agent: "claude" }), account: { kind: "api" } } as UsageRecord;
+    await sync({ deps: deps({ collect: async () => [leaky], account: () => null }) });
+    expect("account" in calls("/api/usage")[0].records[0]).toBe(false);
+  });
+
+  test("the login is read once per sync", async () => {
+    const account = vi.fn(() => acct);
+    await sync({ deps: deps({ collect: async () => recs(), account }) });
+    expect(account).toHaveBeenCalledTimes(1);
+  });
+
+  test("dry run shows the label", async () => {
+    const d = deps({ collect: async () => recs(), account: () => acct });
+    await sync({ dryRun: true, deps: d });
+    const all = d.log.mock.calls.map(([l]) => String(l)).join("\n");
+    expect(all).toContain('"account"');
+    expect(all).toContain("Devcats");
+  });
+
+  test("no login means no account keys", async () => {
+    const d = deps({ collect: async () => recs(), account: () => null });
+    await sync({ deps: d });
+    expect(JSON.stringify(calls("/api/usage")[0])).not.toContain("account");
+  });
 });
 
 test("dry run sends nothing and returns the records", async () => {

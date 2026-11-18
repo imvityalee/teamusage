@@ -1,7 +1,8 @@
 import { randomBytes } from "node:crypto";
 import { chmodSync, closeSync, openSync, readFileSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs";
 import path from "node:path";
-import type { UsageRecord } from "@teamusage/shared";
+import type { AccountLabel, UsageRecord } from "@teamusage/shared";
+import { labelRecords, readClaudeAccount } from "./account.js";
 import { ApiError, health, register, upload } from "./api.js";
 import { collect, CollectError } from "./collect.js";
 import {
@@ -22,6 +23,8 @@ export interface Deps {
   collect: typeof collect;
   env: NodeJS.ProcessEnv;
   today: () => string; // local YYYY-MM-DD
+  /** The current Claude login, read once per sync. */
+  account: () => AccountLabel | null;
   log: (line: string) => void;
 }
 
@@ -59,6 +62,7 @@ const defaults = (): Deps => ({
   collect,
   env: process.env,
   today: () => localToday(),
+  account: () => readClaudeAccount(),
   log: (line) => process.stdout.write(`${line}\n`),
 });
 
@@ -213,8 +217,9 @@ async function run(deps: Deps, dryRun: boolean, quiet: boolean): Promise<SyncRes
 async function collectAndUpload(deps: Deps, cfg: Config, dryRun: boolean, quiet: boolean): Promise<SyncResult> {
   const today = deps.today();
   const since = syncSince(cfg.lastSuccessfulSync);
+  const account = deps.account();
   const gather = async (from: string | undefined) => {
-    const records = (await deps.collect(from)).map(onlyRecordFields);
+    const records = labelRecords((await deps.collect(from)).map(onlyRecordFields), account, today);
     const summary: SyncResult = {
       ...empty(),
       days: new Set(records.map((r) => r.date)).size,

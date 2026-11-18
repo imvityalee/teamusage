@@ -52,7 +52,7 @@ const mk = (over: Partial<Deps> = {}) => {
   const d = {
     fetchStats,
     loadConfig: vi.fn(() => cfg),
-    today: () => "2026-11-18",
+    today: () => "2026-11-18", account: () => null,
     env: {},
     log: vi.fn(),
     collect: vi.fn(async () => []),
@@ -215,7 +215,7 @@ test("sync_usage runs a sync in-process; log output never reaches stdout", async
   try {
     const r = await handleTool("sync_usage", {}, {
       collect: vi.fn(async () => [rec]),
-      today: () => "2026-11-18",
+      today: () => "2026-11-18", account: () => null,
       log: vi.fn(),
       env: {
         TEAMUSAGE_SERVER_URL: srv.url,
@@ -285,7 +285,7 @@ test("sync_usage: a second call within 60 s returns the previous result as cache
   const srv = await startServer(INVITE);
   const collect = vi.fn(async () => [rec]);
   const d = {
-    collect, log: vi.fn(), today: () => "2026-11-18", nowMs: () => now,
+    collect, log: vi.fn(), today: () => "2026-11-18", account: () => null, nowMs: () => now,
     env: { TEAMUSAGE_SERVER_URL: srv.url, TEAMUSAGE_INVITE_CODE: INVITE, TEAMUSAGE_NAME: "Ann", TEAMUSAGE_EMAIL: "ann@example.com" },
   };
   try {
@@ -312,7 +312,7 @@ test("sync_usage with the real logger writes its line to stderr and nothing to s
   try {
     await handleTool("sync_usage", {}, {
       collect: vi.fn(async () => [rec]),
-      today: () => "2026-11-18",
+      today: () => "2026-11-18", account: () => null,
       env: { TEAMUSAGE_SERVER_URL: srv.url, TEAMUSAGE_INVITE_CODE: INVITE, TEAMUSAGE_NAME: "Ann", TEAMUSAGE_EMAIL: "ann@example.com" },
     });
     expect(out).not.toHaveBeenCalled();

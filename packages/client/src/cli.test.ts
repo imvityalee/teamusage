@@ -43,7 +43,7 @@ const deps = (env: NodeJS.ProcessEnv = {}): Partial<Deps> & { log: ReturnType<ty
     TEAMUSAGE_EMAIL: "ann@example.com",
     ...env,
   },
-  today: () => "2026-11-18",
+  today: () => "2026-11-18", account: () => null,
   log: vi.fn(),
 });
 
