@@ -407,7 +407,7 @@ describe("GET /api/stats", () => {
     await post("/api/usage", { records: [record({ total: 10 })] }, bearer(token));
     const res = await getStatsReq(RANGE, bearer(token));
     const body = (await res.json()) as Record<string, unknown>;
-    expect(Object.keys(body).sort()).toEqual(["daily", "from", "members", "models", "to", "totals"]);
+    expect(Object.keys(body).sort()).toEqual(["available", "daily", "from", "members", "models", "to", "totals"]);
     expect((body.totals as { tokens: number; memberCount: number }).tokens).toBe(10);
     expect((body.totals as { memberCount: number }).memberCount).toBe(2);
     const text = JSON.stringify(body);
@@ -688,5 +688,106 @@ describe("hardening details", () => {
     const res = await getStatsReq(RANGE, cookie);
     expect(res.status).toBe(500);
     expect(await res.json()).toEqual({ error: "internal error" });
+  });
+});
+
+describe("agent and model filters", () => {
+  const seedUsage = async () => {
+    const ann = await register();
+    await post(
+      "/api/usage",
+      {
+        records: [
+          record({ agent: "claude", model: "opus-4-7" }),
+          record({ agent: "codex", model: "gpt", total: 20, input: 11 }),
+          record({ agent: "x", model: "a:b", total: 10 }),
+        ],
+      },
+      bearer(ann.token),
+    );
+    return { cookie: { Cookie: sessionCookie(await login()) } };
+  };
+  const stats = async (qs: string, headers: Record<string, string>) => {
+    const res = await getStatsReq(`${RANGE}${qs}`, headers);
+    return { res, body: (await res.json()) as { totals: { tokens: number }; models: { agent: string; model: string }[]; available: { agents: string[] } } };
+  };
+
+  test("repeated agent and model parameters work", async () => {
+    const { cookie } = await seedUsage();
+    expect((await stats("&agent=claude&agent=codex", cookie)).body.totals.tokens).toBe(30);
+    const m = await stats("&model=claude:opus-4-7", cookie);
+    expect(m.res.status).toBe(200);
+    expect(m.body.totals.tokens).toBe(10);
+    expect(m.body.available.agents.sort()).toEqual(["claude", "codex", "x"]);
+    expect((await stats("&agent=claude&model=codex:gpt", cookie)).body.totals.tokens).toBe(0);
+  });
+
+  test("a model name containing a colon splits on the first colon", async () => {
+    const { cookie } = await seedUsage();
+    const r = await stats("&model=x:a:b", cookie);
+    expect(r.body.totals.tokens).toBe(10);
+    expect(r.body.models).toEqual([expect.objectContaining({ agent: "x", model: "a:b" })]);
+  });
+
+  test("duplicates are collapsed and filters work with member and bearer auth", async () => {
+    const { cookie } = await seedUsage();
+    expect((await stats("&agent=claude&agent=claude&model=claude:opus-4-7&model=claude:opus-4-7", cookie)).body.totals.tokens).toBe(10);
+  });
+
+  test("invalid agent and model values are 400 invalid query and never echoed", async () => {
+    const { cookie } = await seedUsage();
+    const many = (k: string, n: number) => Array.from({ length: n }, (_, i) => `&${k}=${k === "model" ? `a${i}:m` : `a${i}`}`).join("");
+    const bad = [
+      many("agent", 21),
+      many("model", 51),
+      "&agent=",
+      "&model=",
+      "&agent=a%0Ab",
+      "&agent=a%00b",
+      "&agent=a%7Fb",
+      "&model=a:b%0Ac",
+      `&agent=${"a".repeat(65)}`,
+      `&model=${"a".repeat(65)}:m`,
+      `&model=a:${"m".repeat(129)}`,
+      "&model=nocolon",
+      "&model=:m",
+      "&model=a:",
+      "&model=:",
+    ];
+    for (const qs of bad) {
+      const res = await getStatsReq(`${RANGE}${qs}`, cookie);
+      expect(res.status, qs.slice(0, 40)).toBe(400);
+      expect(await res.json(), qs.slice(0, 40)).toEqual({ error: "invalid query" });
+    }
+    expect((await getStatsReq(`${RANGE}${many("agent", 20)}${many("model", 50)}`, cookie)).status).toBe(200);
+    expect((await getStatsReq(`${RANGE}&agent=${"a".repeat(64)}&model=${"a".repeat(64)}:${"m".repeat(128)}`, cookie)).status).toBe(200);
+  });
+
+  test("injection-looking values are bound as data and match nothing", async () => {
+    const { cookie } = await seedUsage();
+    for (const v of ["claude' or '1'='1", "claude\" or 1=1 --", "%", "x'); drop table usage; --"]) {
+      const a = await stats(`&agent=${encodeURIComponent(v)}`, cookie);
+      expect(a.res.status).toBe(200);
+      expect(a.body.totals.tokens).toBe(0);
+      const m = await stats(`&model=${encodeURIComponent(`${v}:${v}`)}`, cookie);
+      expect(m.body.totals.tokens).toBe(0);
+    }
+    expect((await stats("", cookie)).body.totals.tokens).toBe(40);
+  });
+
+  test("filters are validated before the member lookup; the repeat rule for from, to and member stays", async () => {
+    const { cookie } = await seedUsage();
+    expect((await getStatsReq(`${RANGE}&member=999999&agent=`, cookie)).status).toBe(400);
+    expect((await getStatsReq(`${RANGE}&member=999999&agent=claude`, cookie)).status).toBe(404);
+    for (const qs of ["&from=2026-11-02&agent=claude", "&member=me&member=me&agent=a", "&to=2026-11-09&model=a:b"]) {
+      const res = await getStatsReq(`${RANGE}${qs}`, cookie);
+      expect(res.status, qs).toBe(400);
+      expect(await res.json()).toEqual({ error: "invalid query" });
+    }
+  });
+
+  test("filters do not bypass authentication", async () => {
+    await seedUsage();
+    expect((await getStatsReq(`${RANGE}&agent=claude`, {})).status).toBe(401);
   });
 });

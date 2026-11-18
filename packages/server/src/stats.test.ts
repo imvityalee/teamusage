@@ -239,3 +239,167 @@ describe("member ids and machines", () => {
     expect(memberExists(db, 999999)).toBe(false);
   });
 });
+
+describe("agent and model filters", () => {
+  const M4 = "4".repeat(32);
+  /** Ann (two machines) and Bob; three agents. In range: claude/opus 110, codex/gpt 41, claude/sonnet 20, gemini/g 5, codex/other 2. */
+  function seedFilters(): { db: Db; ann: number; bob: number } {
+    const db = openDb(":memory:");
+    const a1 = registerMachine(db, { name: "Ann", email: "ann@x.com", machineId: M1, machineLabel: "mbp" });
+    registerMachine(db, { name: "Ann", email: "ann@x.com", machineId: M4, machineLabel: "desk" });
+    const b = registerMachine(db, { name: "Bob", email: "bob@x.com", machineId: M3, machineLabel: "box" });
+    upsertUsage(db, { memberId: a1.memberId, machineId: M1 }, [
+      rec("2026-11-02", "claude", "opus", 10),
+      rec("2026-11-02", "claude", "sonnet", 20),
+      rec("2026-11-03", "codex", "gpt", 40),
+    ]);
+    upsertUsage(db, { memberId: b.memberId, machineId: M3 }, [
+      rec("2026-11-02", "claude", "opus", 100),
+      rec("2026-11-03", "gemini", "g", 5),
+      rec("2026-11-04", "codex", "gpt", 1),
+      rec("2026-11-04", "codex", "other", 2),
+      rec("2026-10-01", "claude", "opus", 1000), // outside range
+    ]);
+    db.prepare("update machines set last_sync_at = ? where id = ?").run("2026-11-05T00:00:00.000Z", M1);
+    db.prepare("update machines set last_sync_at = ? where id = ?").run("2026-11-06T00:00:00.000Z", M4);
+    return { db, ann: a1.memberId, bob: b.memberId };
+  }
+  const fullAvailable = {
+    agents: ["claude", "codex", "gemini"],
+    models: [
+      { agent: "claude", model: "opus" },
+      { agent: "codex", model: "gpt" },
+      { agent: "claude", model: "sonnet" },
+      { agent: "gemini", model: "g" },
+      { agent: "codex", model: "other" },
+    ],
+  };
+
+  test("no filters: available lists everything in range, sorted by tokens", () => {
+    const { db } = seedFilters();
+    const s = getStats(db, Q);
+    expect(s.available).toEqual(fullAvailable);
+    expect(s.totals.tokens).toBe(178);
+  });
+
+  test("an agent filter keeps only that agent in totals, daily, members and models", () => {
+    const { db } = seedFilters();
+    const s = getStats(db, { ...Q, agents: ["codex"] });
+    expect(s.totals).toEqual({ tokens: 43, costUsd: 0.43, activeMembers: 2, memberCount: 2 });
+    expect(s.members.map((m) => [m.name, m.tokens, m.costUsd])).toEqual([["Ann", 40, 0.4], ["Bob", 3, 0.03]]);
+    expect(s.daily.filter((d) => Object.keys(d.byAgent).length > 0)).toEqual([
+      { date: "2026-11-03", byAgent: { codex: 40 } },
+      { date: "2026-11-04", byAgent: { codex: 3 } },
+    ]);
+    expect(s.models.map((m) => [m.agent, m.model, m.total, m.costUsd])).toEqual([
+      ["codex", "gpt", 41, 0.41],
+      ["codex", "other", 2, 0.02],
+    ]);
+    expect(s.available).toEqual(fullAvailable);
+  });
+
+  test("several agents are alternatives", () => {
+    const { db } = seedFilters();
+    const s = getStats(db, { ...Q, agents: ["gemini", "claude"] });
+    expect(s.totals.tokens).toBe(135);
+    expect(s.models.map((m) => m.model)).toEqual(["opus", "sonnet", "g"]);
+  });
+
+  test("a model filter matches the exact (agent, model) pair", () => {
+    const { db } = seedFilters();
+    const s = getStats(db, { ...Q, models: [{ agent: "claude", model: "opus" }, { agent: "gemini", model: "g" }] });
+    expect(s.totals).toEqual({ tokens: 115, costUsd: 1.15, activeMembers: 2, memberCount: 2 });
+    expect(s.members.map((m) => [m.name, m.tokens])).toEqual([["Bob", 105], ["Ann", 10]]);
+    expect(s.models.map((m) => [m.agent, m.model, m.total])).toEqual([["claude", "opus", 110], ["gemini", "g", 5]]);
+    expect(s.daily[1]?.byAgent).toEqual({ claude: 110 });
+    expect(s.daily[2]?.byAgent).toEqual({ gemini: 5 });
+    expect(s.available).toEqual(fullAvailable);
+    // the same model name under another agent is not matched
+    expect(getStats(db, { ...Q, models: [{ agent: "codex", model: "opus" }] }).totals.tokens).toBe(0);
+  });
+
+  test("agent and model filters combine with AND", () => {
+    const { db } = seedFilters();
+    const s = getStats(db, {
+      ...Q,
+      agents: ["claude"],
+      models: [{ agent: "claude", model: "opus" }, { agent: "codex", model: "gpt" }],
+    });
+    expect(s.totals.tokens).toBe(110);
+    expect(s.models.map((m) => [m.agent, m.model])).toEqual([["claude", "opus"]]);
+    expect(s.available).toEqual(fullAvailable);
+  });
+
+  test("a filter that matches nothing gives zeros, no models, members with zeros and a full available", () => {
+    const { db } = seedFilters();
+    for (const f of [{ agents: ["Claude"] }, { agents: ["claude' or '1'='1"] }, { models: [{ agent: "claude", model: "gpt" }] }]) {
+      const s = getStats(db, { ...Q, ...f });
+      expect(s.totals).toEqual({ tokens: 0, costUsd: 0, activeMembers: 0, memberCount: 2 });
+      expect(s.models).toEqual([]);
+      expect(s.members.map((m) => [m.name, m.tokens, m.costUsd, m.machines])).toEqual([["Ann", 0, 0, 2], ["Bob", 0, 0, 1]]);
+      expect(s.daily.every((d) => Object.keys(d.byAgent).length === 0)).toBe(true);
+      expect(s.available).toEqual(fullAvailable);
+    }
+  });
+
+  test("a member without matching usage stays listed and is not active", () => {
+    const { db } = seedFilters();
+    const s = getStats(db, { ...Q, agents: ["gemini"] });
+    expect(s.totals).toEqual({ tokens: 5, costUsd: 0.05, activeMembers: 1, memberCount: 2 });
+    expect(s.members.map((m) => [m.name, m.tokens])).toEqual([["Bob", 5], ["Ann", 0]]);
+  });
+
+  test("filters combine with memberId; machines and lastSyncAt ignore them; available is the member's", () => {
+    const { db, ann } = seedFilters();
+    const s = getStats(db, { ...Q, memberId: ann, agents: ["claude"] });
+    expect(s.totals).toEqual({ tokens: 30, costUsd: 0.3, activeMembers: 1, memberCount: 1 });
+    expect(s.models.map((m) => [m.model, m.total])).toEqual([["sonnet", 20], ["opus", 10]]);
+    expect(s.members[0]).toMatchObject({ tokens: 30, machines: 2, lastSyncAt: "2026-11-06T00:00:00.000Z" });
+    expect(s.machines).toEqual([
+      { label: "desk", lastSyncAt: "2026-11-06T00:00:00.000Z" },
+      { label: "mbp", lastSyncAt: "2026-11-05T00:00:00.000Z" },
+    ]);
+    expect(s.available).toEqual({
+      agents: ["codex", "claude"],
+      models: [
+        { agent: "codex", model: "gpt" },
+        { agent: "claude", model: "sonnet" },
+        { agent: "claude", model: "opus" },
+      ],
+    });
+    const none = getStats(db, { ...Q, memberId: ann, agents: ["gemini"] });
+    expect(none.totals.tokens).toBe(0);
+    expect(none.machines).toHaveLength(2);
+  });
+
+  test("available respects the date range and is empty when nothing is in range", () => {
+    const { db } = seedFilters();
+    expect(getStats(db, { from: "2026-11-04", to: "2026-11-04" }).available).toEqual({
+      agents: ["codex"],
+      models: [{ agent: "codex", model: "other" }, { agent: "codex", model: "gpt" }],
+    });
+    expect(getStats(db, { from: "2026-12-01", to: "2026-12-02", agents: ["claude"] }).available).toEqual({ agents: [], models: [] });
+  });
+
+  test("names with quotes, percent signs and __proto__ are plain data", () => {
+    const db = openDb(":memory:");
+    const r = registerMachine(db, { name: "Cy", email: "cy@x.com", machineId: M1, machineLabel: "l" });
+    upsertUsage(db, { memberId: r.memberId, machineId: M1 }, [rec("2026-11-02", "__proto__", "a'b%", 5), rec("2026-11-02", "x", "y", 7)]);
+    const s = getStats(db, { ...Q, models: [{ agent: "__proto__", model: "a'b%" }] });
+    expect(s.totals.tokens).toBe(5);
+    expect(s.available.agents).toEqual(["x", "__proto__"]);
+    expect(getStats(db, { ...Q, agents: ["%"] }).totals.tokens).toBe(0);
+  });
+
+  test("a filter run issues a bounded number of queries", () => {
+    const { db } = seedFilters();
+    let n = 0;
+    const orig = db.prepare.bind(db);
+    (db as unknown as { prepare: unknown }).prepare = (sql: string) => { n++; return orig(sql); };
+    getStats(db, { ...Q, agents: ["claude", "codex"], models: [{ agent: "claude", model: "opus" }] });
+    expect(n).toBe(4);
+    n = 0;
+    getStats(db, { ...Q, memberId: 1, agents: ["claude"] });
+    expect(n).toBe(5);
+  });
+});

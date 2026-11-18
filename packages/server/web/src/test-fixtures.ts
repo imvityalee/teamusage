@@ -36,6 +36,15 @@ export function statsFixture(names: FixtureNames = PLAIN): Stats {
       { agent: "claude", model: "claude-opus-4-1", input: 10, output: 10, cacheCreate: 10, cacheRead: 24_970, total: 25_000, costUsd: 3, unpriced: false },
       { agent: names.agent, model: names.model, input: 100, output: 100, cacheCreate: 100, cacheRead: 200, total: 500, costUsd: 0, unpriced: true },
     ],
+    available: {
+      agents: ["claude", "codex", names.agent],
+      models: [
+        { agent: "claude", model: "claude-sonnet-4-5" },
+        { agent: "codex", model: "gpt-5-codex" },
+        { agent: "claude", model: "claude-opus-4-1" },
+        { agent: names.agent, model: names.model },
+      ],
+    },
   };
 }
 

@@ -15,18 +15,45 @@ function datesBetween(from: string, to: string): string[] {
   return out;
 }
 
+/**
+ * SQL condition on `usage` alias `u` for the agent and model filters, with its bound values. Only the number of
+ * placeholders depends on the input; every value is bound by name, never written into the SQL text.
+ * Combination rule: a row is included when (no agent filter OR its agent is listed) AND
+ * (no model filter OR its (agent, model) pair is listed).
+ */
+function usageFilter(agents: string[], models: { agent: string; model: string }[]): { sql: string; params: Record<string, string> } {
+  const params: Record<string, string> = {};
+  const parts: string[] = [];
+  if (agents.length > 0) {
+    parts.push(`u.agent in (${agents.map((_, i) => `@fa${i}`).join(", ")})`);
+    agents.forEach((a, i) => (params[`fa${i}`] = a));
+  }
+  if (models.length > 0) {
+    parts.push(`(u.agent, u.model) in (values ${models.map((_, i) => `(@fm${i}a, @fm${i}m)`).join(", ")})`);
+    models.forEach((m, i) => {
+      params[`fm${i}a`] = m.agent;
+      params[`fm${i}m`] = m.model;
+    });
+  }
+  return { sql: parts.length > 0 ? parts.join(" and ") : "1", params };
+}
+
 /** Aggregates usage for the range. Does not validate; every value reaches SQL as a bound parameter. */
-export function getStats(db: Db, q: { from: string; to: string; memberId?: number }): Stats {
+export function getStats(
+  db: Db,
+  q: { from: string; to: string; memberId?: number; agents?: string[]; models?: { agent: string; model: string }[] },
+): Stats {
   const memberId = q.memberId ?? null;
-  const p = { from: q.from, to: q.to, memberId };
+  const filter = usageFilter(q.agents ?? [], q.models ?? []);
+  const p = { from: q.from, to: q.to, memberId, ...filter.params };
 
   const memberRows = db
     .prepare(
       `select m.id as id, m.name as name, m.email as email,
          (select coalesce(total(u.total), 0) from usage u
-            where u.member_id = m.id and u.date between @from and @to) as tokens,
+            where u.member_id = m.id and u.date between @from and @to and ${filter.sql}) as tokens,
          (select coalesce(sum(u.cost_usd), 0) from usage u
-            where u.member_id = m.id and u.date between @from and @to) as cost,
+            where u.member_id = m.id and u.date between @from and @to and ${filter.sql}) as cost,
          (select count(*) from machines x where x.member_id = m.id) as machines,
          (select max(x.last_sync_at) from machines x where x.member_id = m.id) as lastSyncAt
        from members m
@@ -39,8 +66,8 @@ export function getStats(db: Db, q: { from: string; to: string; memberId?: numbe
     .prepare(
       `select agent, model, total(input) as input, total(output) as output, total(cache_create) as cacheCreate,
          total(cache_read) as cacheRead, total(total) as total, sum(cost_usd) as cost, max(unpriced) as unpriced
-       from usage
-       where date between @from and @to and (@memberId is null or member_id = @memberId)
+       from usage u
+       where date between @from and @to and (@memberId is null or member_id = @memberId) and ${filter.sql}
        group by agent, model
        order by total desc, agent, model`,
     )
@@ -59,11 +86,29 @@ export function getStats(db: Db, q: { from: string; to: string; memberId?: numbe
   const dayRows = db
     .prepare(
       `select date, agent, total(total) as total
-       from usage
-       where date between @from and @to and (@memberId is null or member_id = @memberId)
+       from usage u
+       where date between @from and @to and (@memberId is null or member_id = @memberId) and ${filter.sql}
        group by date, agent`,
     )
     .all(p) as { date: string; agent: string; total: number }[];
+
+  // Filter controls: the same range and member, but never the agent/model filters. One query for both lists.
+  const availRows = db
+    .prepare(
+      `select agent, model, total(total) as total from usage
+       where date between @from and @to and (@memberId is null or member_id = @memberId)
+       group by agent, model`,
+    )
+    .all({ from: q.from, to: q.to, memberId }) as { agent: string; model: string; total: number }[];
+  const agentTotals = new Map<string, number>();
+  for (const r of availRows) agentTotals.set(r.agent, (agentTotals.get(r.agent) ?? 0) + finite(r.total));
+  const cmp = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+  const available = {
+    agents: [...agentTotals].sort((a, b) => b[1] - a[1] || cmp(a[0], b[0])).map(([a]) => a),
+    models: [...availRows]
+      .sort((a, b) => finite(b.total) - finite(a.total) || cmp(a.agent, b.agent) || cmp(a.model, b.model))
+      .map((r) => ({ agent: r.agent, model: r.model })),
+  };
 
   // Agent ids are data: a Map plus fromEntries makes `__proto__` an ordinary own property.
   const byDate = new Map<string, Map<string, number>>(datesBetween(q.from, q.to).map((d) => [d, new Map()]));
@@ -107,6 +152,7 @@ export function getStats(db: Db, q: { from: string; to: string; memberId?: numbe
       lastSyncAt: m.lastSyncAt,
     })),
     ...(machines ? { machines } : {}),
+    available,
     models: modelRows.map((m) => ({
       agent: m.agent,
       model: m.model,

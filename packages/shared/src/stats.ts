@@ -14,6 +14,11 @@ export interface Stats {
   }[]; // sorted by tokens desc
   /** Present only when a single member was requested: that member's machines, most recently synced first. */
   machines?: { label: string; lastSyncAt: string | null }[];
+  /**
+   * Everything present in the date range (and for the member, when one is requested), IGNORING the agent and
+   * model filters, sorted by total tokens descending. It feeds the filter controls.
+   */
+  available: { agents: string[]; models: { agent: string; model: string }[] };
   models: {
     agent: string;
     model: string;

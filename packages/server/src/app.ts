@@ -2,7 +2,7 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { getCookie, setCookie } from "hono/cookie";
-import { APP_NAME, validateBatch } from "@teamusage/shared";
+import { APP_NAME, MAX_AGENT_CHARS, MAX_MODEL_CHARS, NAME_CONTROL_CHARS, validateBatch } from "@teamusage/shared";
 import { authenticate, createSession, hasSession, registerMachine, upsertUsage, type Db } from "./db.js";
 import { createLimiter } from "./limiter.js";
 import { getStats, memberExists } from "./stats.js";
@@ -14,6 +14,8 @@ const CONTROL_CHARS = /[\x00-\x1f\x7f]/;
 const SESSION_COOKIE = "tu_session";
 const SESSION_MAX_AGE_S = 30 * 24 * 60 * 60;
 const MAX_RANGE_DAYS = 730;
+const MAX_AGENT_FILTERS = 20;
+const MAX_MODEL_FILTERS = 50;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 const digest = (s: string): Buffer => createHash("sha256").update(s).digest();
@@ -21,6 +23,28 @@ const digest = (s: string): Buffer => createHash("sha256").update(s).digest();
 /** Constant-time: both sides are hashed first, so neither content nor length leaks through timing. */
 function safeEqual(a: string, b: string): boolean {
   return timingSafeEqual(digest(a), digest(b));
+}
+
+/** One well-formed name: 1..max characters, no control characters. */
+const validName = (v: string, max: number): boolean => v.length > 0 && v.length <= max && !NAME_CONTROL_CHARS.test(v);
+
+/** Parses repeated `agent` and `model` (`<agent>:<model>`, split on the first colon). Undefined when malformed. */
+function parseFilters(
+  agentValues: string[] = [],
+  modelValues: string[] = [],
+): { agents: string[]; models: { agent: string; model: string }[] } | undefined {
+  if (agentValues.length > MAX_AGENT_FILTERS || modelValues.length > MAX_MODEL_FILTERS) return undefined;
+  if (!agentValues.every((a) => validName(a, MAX_AGENT_CHARS))) return undefined;
+  const models = new Map<string, { agent: string; model: string }>();
+  for (const v of modelValues) {
+    const i = v.indexOf(":");
+    if (i < 0) return undefined;
+    const agent = v.slice(0, i);
+    const model = v.slice(i + 1);
+    if (!validName(agent, MAX_AGENT_CHARS) || !validName(model, MAX_MODEL_CHARS)) return undefined;
+    models.set(v, { agent, model });
+  }
+  return { agents: [...new Set(agentValues)], models: [...models.values()] };
 }
 
 const fail = (c: Context, status: 400 | 401 | 403 | 404 | 409 | 413 | 429 | 500, error: string) => c.json({ error }, status);
@@ -187,6 +211,7 @@ export function createApp(
 
     const { from, to, member } = c.req.query();
     // Repeated parameters are ambiguous, so they are rejected rather than resolved by position.
+    // Only `agent` and `model` are lists and may repeat.
     const repeated = ["from", "to", "member"].some((k) => (c.req.queries(k)?.length ?? 0) > 1);
     if (repeated) return fail(c, 400, "invalid query");
     const f = parseDate(from);
@@ -194,7 +219,9 @@ export function createApp(
     if (f === undefined || t === undefined || f > t || (t - f) / 86_400_000 + 1 > MAX_RANGE_DAYS) {
       return fail(c, 400, "invalid date range");
     }
-    const range = { from: from as string, to: to as string };
+    const filters = parseFilters(c.req.queries("agent"), c.req.queries("model"));
+    if (!filters) return fail(c, 400, "invalid query");
+    const range = { from: from as string, to: to as string, ...filters };
     if (member === undefined) return c.json(getStats(db, range));
     if (member === "me") {
       // `me` is the token's member; a cookie or demo session has no member of its own.

@@ -31,6 +31,7 @@ const stats = (over: Partial<Stats> = {}): Stats => ({
   models: [
     { agent: "claude", model: "opus", input: 1, output: 2, cacheCreate: 3, cacheRead: 4, total: 10, costUsd: 0.5, unpriced: false },
   ],
+  available: { agents: ["claude"], models: [{ agent: "claude", model: "opus" }] },
   ...over,
 });
 
