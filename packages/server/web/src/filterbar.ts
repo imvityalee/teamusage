@@ -1,5 +1,5 @@
 import type { Stats } from "@teamusage/shared";
-import { accountName } from "./accounts.js";
+import { accountName, planName } from "./accounts.js";
 import { agentIcon, agentLogo, agentName } from "./agents.js";
 import { h, icon } from "./dom.js";
 import { agentTotals, canFilterModel, cleanAvailable, isActive, summary, withSelection, type Filters, type ModelRef } from "./filters.js";
@@ -7,14 +7,14 @@ import { compact } from "./format.js";
 import { count, t, type Lang, type MessageKey } from "./i18n.js";
 
 /**
- * The Agents, Models and Accounts buttons, their popovers and the chips under the bar. Agent ids, model names and
+ * The Agents, Models, Accounts and Plans buttons, their popovers and the chips under the bar. Agent ids, model names and
  * account names are shown as text only and reach the handlers through closures: they never become an attribute,
  * class, id or URL.
  */
 
-export type PopoverKind = "agents" | "models" | "accounts";
+export type PopoverKind = "agents" | "models" | "accounts" | "plans";
 
-const TITLES = { agents: "agentsTitle", models: "modelsTitle", accounts: "accountsTitle" } as const satisfies Record<PopoverKind, MessageKey>;
+const TITLES = { agents: "agentsTitle", models: "modelsTitle", accounts: "accountsTitle", plans: "plansTitle" } as const satisfies Record<PopoverKind, MessageKey>;
 
 export interface FilterBarModel {
   available: Stats["available"];
@@ -31,6 +31,7 @@ export interface FilterBarHandlers {
   toggleAgent(id: string): void;
   toggleModel(ref: ModelRef): void;
   toggleAccount(key: string): void;
+  togglePlan(key: string): void;
   showAll(kind: PopoverKind): void;
   modelQuery(query: string): void;
   clear(): void;
@@ -92,7 +93,24 @@ function accountsPopover(doc: Document, lang: Lang, m: FilterBarModel, on: Filte
   return popover(doc, "accounts", lang, m, on, list);
 }
 
-const POPOVERS = { agents: agentsPopover, models: modelsPopover, accounts: accountsPopover } as const;
+/** One row per plan in the period, largest first as the server sends them; names only. */
+function plansPopover(doc: Document, lang: Lang, m: FilterBarModel, on: FilterBarHandlers): HTMLElement {
+  const selected = new Set(m.filters.plans);
+  const rows = m.available.plans.map((p) =>
+    checkRow(
+      doc,
+      selected.has(p.key),
+      false,
+      () => on.togglePlan(p.key),
+      h(doc, "span", { class: "pop-name" }, planName(p.key, lang)),
+      h(doc, "span", { class: "pop-num" }, compact(p.tokens)),
+    ),
+  );
+  const list = rows.length > 0 ? h(doc, "ul", { class: "pop-list" }, ...rows) : h(doc, "p", { class: "pop-empty" }, t(lang, "nothingInPeriod"));
+  return popover(doc, "plans", lang, m, on, list);
+}
+
+const POPOVERS = { agents: agentsPopover, models: modelsPopover, accounts: accountsPopover, plans: plansPopover } as const;
 
 /** Agents whose models the popover lists, in `available` order: the selected agents, or all of them. */
 function modelAgents(m: FilterBarModel): string[] {
@@ -176,20 +194,22 @@ function filterButton(doc: Document, kind: PopoverKind, text: string, selected: 
   return wrap;
 }
 
-/** The three filter buttons (with the open popover right after its button) and, when a filter is on, Clear filters. */
+/** The four filter buttons (with the open popover right after its button) and, when a filter is on, Clear filters. */
 export function renderFilterControls(doc: Document, model: FilterBarModel, lang: Lang, on: FilterBarHandlers): DocumentFragment {
   // Well-formed entries only, plus any selection this period or member lacks, so it can be seen and unticked.
   const m = { ...model, available: withSelection(cleanAvailable(model.available), model.filters) };
-  const { agents, models, accounts } = m.filters;
+  const { agents, models, accounts, plans } = m.filters;
   const agentsText = summary(agents.length, m.available.agents.length) === "all" ? t(lang, "allAgents") : count(lang, "agents", agents.length);
   const modelsText = summary(models.length, m.available.models.length) === "all" ? t(lang, "allModels") : count(lang, "models", models.length);
   const accountsText =
     summary(accounts.length, m.available.accounts.length) === "all" ? t(lang, "allAccounts") : count(lang, "accounts", accounts.length);
+  const plansText = summary(plans.length, m.available.plans.length) === "all" ? t(lang, "allPlans") : count(lang, "plans", plans.length);
   const out = doc.createDocumentFragment();
   out.append(
     filterButton(doc, "agents", agentsText, agents.length > 0, m, on, lang),
     filterButton(doc, "models", modelsText, models.length > 0, m, on, lang),
     filterButton(doc, "accounts", accountsText, accounts.length > 0, m, on, lang),
+    filterButton(doc, "plans", plansText, plans.length > 0, m, on, lang),
   );
   if (isActive(m.filters)) {
     const clear = h(doc, "button", { type: "button", id: "clear-filters", class: "link" }, t(lang, "clearFilters"));
@@ -217,6 +237,10 @@ export function renderChips(doc: Document, f: Filters, lang: Lang, on: FilterBar
     ...f.accounts.map((key) => {
       const name = accountName(key, lang);
       return chip(doc, name, t(lang, "removeFilter", { name }), () => on.toggleAccount(key), null);
+    }),
+    ...f.plans.map((key) => {
+      const name = planName(key, lang);
+      return chip(doc, name, t(lang, "removeFilter", { name }), () => on.togglePlan(key), null);
     }),
   ];
 }

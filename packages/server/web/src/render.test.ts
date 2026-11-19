@@ -8,7 +8,7 @@ import { applyMemberSearch, renderBackLink, renderMember, renderMemberHead, rend
 import { emptyStatsFixture, HOSTILE_IDS, memberStatsFixture, statsFixture } from "./test-fixtures.js";
 
 const TODAY = "2026-11-18";
-const CODEX_ONLY: Filters = { agents: ["codex"], models: [], accounts: [] };
+const CODEX_ONLY: Filters = { agents: ["codex"], models: [], accounts: [], plans: [] };
 
 function newDocument(): Document {
   const window = new Window({ settings: { disableJavaScriptEvaluation: true, disableJavaScriptFileLoading: true } });
@@ -134,9 +134,9 @@ describe("tiles", () => {
       ["Active members", "2 of 3", "used the selected agents"],
       ["Most used agent", "Codex", "100% of filtered tokens"],
     ]);
-    const models: Filters = { agents: [], models: [{ agent: "codex", model: "gpt-5-codex" }], accounts: [] };
+    const models: Filters = { agents: [], models: [{ agent: "codex", model: "gpt-5-codex" }], accounts: [], plans: [] };
     expect(tileTexts(render(codexOnly(), "en", models))[2]).toEqual(["Active members", "2 of 3", "used the selected models"]);
-    const accounts: Filters = { agents: [], models: [], accounts: ["personal"] };
+    const accounts: Filters = { agents: [], models: [], accounts: ["personal"], plans: [] };
     expect(tileTexts(render(codexOnly(), "en", accounts))[2]).toEqual(["Active members", "2 of 3", "used the selected accounts"]);
     expect(tileTexts(render(codexOnly(), "en", accounts))[0]?.[0]).toBe("Total tokens · filtered");
     expect(tileTexts(render(codexOnly(), "ru", CODEX_ONLY)).map((t) => t[0])).toEqual([
@@ -156,7 +156,7 @@ describe("members table", () => {
       ["BN", "Bao Nguyen", "bao@example.com"],
       ["CM", "Carla Mendes", "carla@example.com"],
     ]);
-    expect(cells(r[0] as Element).slice(1)).toEqual(["40,000", "$9.00", "", "Team · Devcats 78%Unknown 13%+1", "today", ""]);
+    expect(cells(r[0] as Element).slice(1)).toEqual(["40,000", "$9.00", "", "Team · Devcats · Premium 78%Unknown 13%+1", "today", ""]);
     expect(cells(r[1] as Element)[5]).toBe("8 days ago");
     expect(cells(r[2] as Element)[5]).toBe("—");
     expect(r.map((row) => row.querySelector(".avatar")?.getAttribute("aria-hidden"))).toEqual(["true", "true", "true"]);
@@ -252,21 +252,21 @@ describe("members table: accounts", () => {
       "Accounts",
       "Last sync",
     ]);
-    expect(accountLines(root)).toEqual([["Team · Devcats 78%", "Unknown 13%", "+1"], ["Team · Devcats 98%", "Unknown 2%"], "—"]);
+    expect(accountLines(root)).toEqual([["Team · Devcats · Premium 78%", "Unknown 13%", "+1"], ["Team · Devcats · Premium 98%", "Unknown 2%"], "—"]);
     expect(render(statsFixture(), "ru").querySelectorAll("#members thead th")[4]?.textContent).toBe("Аккаунты");
-    expect(accountLines(render(statsFixture(), "ru"))[0]).toEqual(["Команда · Devcats 78%", "Неизвестно 13%", "+1"]);
+    expect(accountLines(render(statsFixture(), "ru"))[0]).toEqual(["Команда · Devcats · Premium 78%", "Неизвестно 13%", "+1"]);
   });
 
   test("many accounts: two lines and the count of the rest; ties keep a fixed order", () => {
     const stats = statsFixture();
-    (stats.members[0] as Stats["members"][number]).byAccount = { api: 10, personal: 10, "team:": 30, "enterprise:": 40, unknown: 10 };
+    (stats.members[0] as Stats["members"][number]).byAccountPlan = [{ account: "api", plan: "none", tokens: 10 }, { account: "personal", plan: "none", tokens: 10 }, { account: "team:", plan: "none", tokens: 30 }, { account: "enterprise:", plan: "claude:enterprise", tokens: 40 }, { account: "unknown", plan: "none", tokens: 10 }];
     expect(accountLines(render(stats))[0]).toEqual(["Enterprise 40%", "Team 30%", "+3"]);
   });
 
   test("text only: no colour, no bar, no style; malformed keys and numbers are left out", () => {
     const stats = statsFixture();
-    (stats.members[0] as Stats["members"][number]).byAccount = { boss: 999, "team:A": 3, personal: Number.NaN, api: -1, unknown: 1 } as Record<string, number>;
-    delete (stats.members[1] as { byAccount?: unknown }).byAccount;
+    (stats.members[0] as Stats["members"][number]).byAccountPlan = [{ account: "boss", plan: "none", tokens: 999 }, { account: "team:A", plan: "none", tokens: 3 }, { account: "personal", plan: "none", tokens: Number.NaN }, { account: "api", plan: "none", tokens: -1 }, { account: "unknown", plan: "none", tokens: 1 }, { account: "unknown", plan: "claude:gold", tokens: 50 }, { account: "unknown", plan: 7, tokens: 50 }, null, "x"] as unknown as Stats["members"][number]["byAccountPlan"];
+    delete (stats.members[1] as { byAccountPlan?: unknown }).byAccountPlan;
     const root = render(stats);
     expect(accountLines(root)).toEqual([["Team · A 75%", "Unknown 25%"], "—", "—"]);
     for (const el of root.querySelectorAll("td.accts-cell, td.accts-cell *")) {
@@ -279,13 +279,27 @@ describe("members table: accounts", () => {
     const evil = "<img src=x onerror=alert(1)>";
     const withOrg = (org: string) => {
       const stats = statsFixture();
-      (stats.members[0] as Stats["members"][number]).byAccount = { [`team:${org}`]: 3, [`enterprise:${org}`]: 1 };
+      (stats.members[0] as Stats["members"][number]).byAccountPlan = [{ account: `team:${org}`, plan: "none", tokens: 3 }, { account: `enterprise:${org}`, plan: "none", tokens: 1 }];
       return render(stats);
     };
     const root = withOrg(evil);
     expect(tags(root)).toEqual(tags(withOrg("Plain")));
     expect(root.querySelector("#members img, script")).toBeNull();
     expect(accountLines(root)[0]).toEqual([`Team · ${evil} 75%`, `Enterprise · ${evil} 25%`]);
+  });
+});
+
+describe("members table: account and plan", () => {
+  test("Codex accounts, Other agents, plan suffix; enterprise plans and no plan add none; same label merged", () => {
+    const stats = statsFixture();
+    (stats.members[0] as Stats["members"][number]).byAccountPlan = [
+      { account: "chatgpt:personal", plan: "codex:plus", tokens: 50 },
+      { account: "other", plan: "none", tokens: 30 },
+      { account: "enterprise:Acme", plan: "claude:enterprise", tokens: 10 },
+      { account: "enterprise:Acme", plan: "none", tokens: 10 },
+    ];
+    const lines = [...(rows(render(stats), "members")[0] as Element).querySelectorAll("td.accts-cell li")].map((li) => li.textContent);
+    expect(lines).toEqual(["Personal · ChatGPT · Plus 50%", "Other agents 30%", "+1"]);
   });
 });
 
@@ -510,9 +524,9 @@ describe("member page", () => {
     const root = renderPage();
     expect(root.querySelector("#accounts-heading")?.textContent).toBe("By account");
     expect(byAccount(root)).toEqual([
-      ["Team · Devcats", "31,000", "78%"],
+      ["Team · Devcats · Premium", "31,000", "78%"],
       ["Unknown", "5,000", "13%"],
-      ["Personal", "4,000", "10%"],
+      ["Personal · Pro", "4,000", "10%"],
     ]);
     // After the models, before the machines.
     const headings = [...root.querySelectorAll("section.panel h2")].map((h) => h.id);
@@ -521,12 +535,12 @@ describe("member page", () => {
     expect(root.querySelector("#accounts .agent-icon, #accounts [style]")).toBeNull();
     const ru = renderPage(memberStatsFixture(), "ru");
     expect(ru.querySelector("#accounts-heading")?.textContent).toBe("По аккаунтам");
-    expect(byAccount(ru)[2]).toEqual(["Личный", "4,000", "10%"]);
+    expect(byAccount(ru)[2]).toEqual(["Личный · Pro", "4,000", "10%"]);
   });
 
   test("By account is left out when the member has no account numbers or no usage", () => {
     const stats = memberStatsFixture();
-    (stats.members[0] as Stats["members"][number]).byAccount = {};
+    (stats.members[0] as Stats["members"][number]).byAccountPlan = [];
     expect(renderPage(stats).querySelector("#accounts-heading")).toBeNull();
     const empty = { ...emptyStatsFixture(), members: memberStatsFixture().members, machines: memberStatsFixture().machines };
     expect(renderPage(empty).querySelector("#accounts")).toBeNull();
@@ -536,7 +550,7 @@ describe("member page", () => {
     const evil = "<img src=x onerror=alert(1)>";
     const withOrg = (org: string) => {
       const stats = memberStatsFixture();
-      (stats.members[0] as Stats["members"][number]).byAccount = { [`enterprise:${org}`]: 9, personal: 1 };
+      (stats.members[0] as Stats["members"][number]).byAccountPlan = [{ account: `enterprise:${org}`, plan: "none", tokens: 9 }, { account: "personal", plan: "none", tokens: 1 }];
       return renderPage(stats);
     };
     const root = withOrg(evil);

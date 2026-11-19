@@ -1,5 +1,5 @@
-import { parseAccountKey, type Stats } from "@teamusage/shared";
-import { accountName } from "./accounts.js";
+import { parseAccountKey, parsePlanKey, type Stats } from "@teamusage/shared";
+import { accountPlanName, planShort } from "./accounts.js";
 import { agentIcon, agentName, OTHER_SERIES, SERIES, SERIES_CLASS, otherAgentsIcon, seriesOf } from "./agents.js";
 import { agentTotals, buckets, drawChart, presentSeries, rankAgents, WEEKLY_AFTER_DAYS } from "./chart.js";
 import { h, icon, type Child } from "./dom.js";
@@ -75,26 +75,36 @@ function byAgentOf(m: Stats["members"][number]): Map<string, number> | null {
 }
 
 /**
- * A member's tokens by account, largest first (ties by key, so the order never depends on the server's), with
- * malformed keys and numbers left out.
+ * A member's tokens by account and plan, largest first (ties by label, so the order never depends on the server's).
+ * Entries with a malformed account or plan key or a bad number are left out; entries that show the same name
+ * (for example a plan with no short name and no plan) are added together. Each is `[account, plan, tokens]`.
  */
-function byAccountOf(m: Stats["members"][number]): [string, number][] {
-  const v = (m as { byAccount?: unknown }).byAccount;
-  if (typeof v !== "object" || v === null || Array.isArray(v)) return [];
-  const out: [string, number][] = [];
-  for (const [key, n] of Object.entries(v)) {
-    if (parseAccountKey(key) !== undefined && typeof n === "number" && Number.isFinite(n) && n > 0) out.push([key, n]);
+function byAccountPlanOf(m: Stats["members"][number]): [string, string, number][] {
+  const v = (m as { byAccountPlan?: unknown }).byAccountPlan;
+  if (!Array.isArray(v)) return [];
+  const merged = new Map<string, [string, string, number]>();
+  for (const e of v as unknown[]) {
+    if (typeof e !== "object" || e === null) continue;
+    const { account, plan, tokens: n } = e as { account?: unknown; plan?: unknown; tokens?: unknown };
+    if (typeof account !== "string" || typeof plan !== "string") continue;
+    if (parseAccountKey(account) === undefined || parsePlanKey(plan) === undefined) continue;
+    if (typeof n !== "number" || !Number.isFinite(n) || n <= 0) continue;
+    const id = `${account}\u0000${planShort(plan)}`;
+    const old = merged.get(id);
+    if (old) old[2] = Math.min(old[2] + n, Number.MAX_VALUE);
+    else merged.set(id, [account, plan, n]);
   }
-  return out.sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+  const label = (e: [string, string, number]) => accountPlanName(e[0], e[1], "en");
+  return [...merged.values()].sort((a, b) => b[2] - a[2] || (label(a) < label(b) ? -1 : label(a) > label(b) ? 1 : 0));
 }
 
-const sumOf = (parts: [string, number][]): number => parts.reduce((s, [, n]) => s + n, 0);
+const sumOf = (parts: [string, string, number][]): number => parts.reduce((s, [, , n]) => s + n, 0);
 /** Accounts shown per member in the table; the rest are counted as "+N". */
 const ACCOUNT_LINES = 2;
 
 /** "Team · Devcats 78%" lines, at most two, then "+N"; a dash when there is nothing to show. Text only. */
 function accountsCell(doc: Document, lang: Lang, m: Stats["members"][number]): HTMLElement {
-  const parts = byAccountOf(m);
+  const parts = byAccountPlanOf(m);
   const cell = h(doc, "td", { class: "l accts-cell" });
   if (parts.length === 0) {
     cell.textContent = "—";
@@ -103,7 +113,7 @@ function accountsCell(doc: Document, lang: Lang, m: Stats["members"][number]): H
   const total = sumOf(parts);
   const lines = parts
     .slice(0, ACCOUNT_LINES)
-    .map(([key, n]) => h(doc, "li", {}, h(doc, "span", { class: "acct-name" }, accountName(key, lang)), " ", h(doc, "span", { class: "acct-share" }, `${pct(n, total)}%`)));
+    .map(([key, plan, n]) => h(doc, "li", {}, h(doc, "span", { class: "acct-name" }, accountPlanName(key, plan, lang)), " ", h(doc, "span", { class: "acct-share" }, `${pct(n, total)}%`)));
   if (parts.length > ACCOUNT_LINES) lines.push(h(doc, "li", { class: "acct-more" }, `+${parts.length - ACCOUNT_LINES}`));
   cell.append(h(doc, "ul", { class: "accts" }, ...lines));
   return cell;
@@ -340,7 +350,8 @@ function activeSub(f: Filters): MessageKey {
   if (!isActive(f)) return "sentUsage";
   if (f.models.length > 0) return "usedSelectedModels";
   if (f.agents.length > 0) return "usedSelectedAgents";
-  return "usedSelectedAccounts";
+  if (f.accounts.length > 0) return "usedSelectedAccounts";
+  return "usedSelectedPlans";
 }
 
 /** The team view: tiles, then the chart and tables, or the empty state when nothing matches. */
@@ -416,15 +427,15 @@ function machinesPanel(doc: Document, stats: Stats, lang: Lang, today: string): 
 /** "By account" on a member's page: name, tokens and share of the member's tokens, largest first; null when none. */
 function accountsPanel(doc: Document, stats: Stats, id: number, lang: Lang): HTMLElement | null {
   const member = stats.members.find((m) => m.id === id);
-  const parts = member === undefined ? [] : byAccountOf(member);
+  const parts = member === undefined ? [] : byAccountPlanOf(member);
   if (parts.length === 0) return null;
   const total = sumOf(parts);
-  const items = parts.map(([key, n]) =>
+  const items = parts.map(([key, plan, n]) =>
     h(
       doc,
       "li",
       {},
-      h(doc, "span", { class: "acct-name" }, accountName(key, lang)),
+      h(doc, "span", { class: "acct-name" }, accountPlanName(key, plan, lang)),
       h(doc, "span", { class: "acct-tokens" }, full(n)),
       h(doc, "span", { class: "acct-share" }, `${pct(n, total)}%`),
     ),

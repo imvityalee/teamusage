@@ -67,7 +67,7 @@ async function errorMessage(res: Response): Promise<string> {
 }
 
 /**
- * The team's stats for the range, or one member's when `member` is given, narrowed by the agent, model and account filters.
+ * The team's stats for the range, or one member's when `member` is given, narrowed by the agent, model, account and plan filters.
  * Every value is encoded by URLSearchParams; the path is fixed.
  */
 export async function fetchStats(

@@ -10,10 +10,12 @@ import {
   MAX_ACCOUNTS,
   MAX_AGENTS,
   MAX_MODELS,
+  MAX_PLANS,
   NO_FILTERS,
   prune,
   summary,
   toggleAccount,
+  togglePlan,
   toggleAgent,
   toggleModel,
   toQuery,
@@ -43,6 +45,7 @@ describe("toQuery", () => {
       agents: ["codex", "claude"],
       models: [{ agent: "claude", model: "opus-4-7" }, { agent: "codex", model: "gpt-5" }],
       accounts: ["team:Devcats", "unknown"],
+      plans: [],
     };
     expect(toQuery(f)).toEqual([
       ["agent", "codex"],
@@ -58,7 +61,7 @@ describe("toQuery", () => {
   });
 
   test("an account key with an org containing a colon or markup is sent as it is", () => {
-    expect(toQuery({ agents: [], models: [], accounts: ["team:a:b", "enterprise:<b>x</b>", "team:"] })).toEqual([
+    expect(toQuery({ agents: [], models: [], accounts: ["team:a:b", "enterprise:<b>x</b>", "team:"], plans: [] })).toEqual([
       ["account", "team:a:b"],
       ["account", "enterprise:<b>x</b>"],
       ["account", "team:"],
@@ -66,7 +69,7 @@ describe("toQuery", () => {
   });
 
   test("a model name containing a colon is kept whole after the first colon", () => {
-    expect(toQuery({ agents: [], models: [{ agent: "x", model: "a:b" }], accounts: [] })).toEqual([["model", "x:a:b"]]);
+    expect(toQuery({ agents: [], models: [{ agent: "x", model: "a:b" }], accounts: [], plans: [] })).toEqual([["model", "x:a:b"]]);
   });
 
   test("no filters, no parameters", () => {
@@ -78,6 +81,7 @@ describe("toQuery", () => {
       agents: Array.from({ length: 30 }, (_, i) => `a${i}`),
       models: Array.from({ length: 70 }, (_, i) => ({ agent: "a", model: `m${i}` })),
       accounts: Array.from({ length: 70 }, (_, i) => `team:o${i}`),
+      plans: [],
     };
     const q = toQuery(f);
     expect(q.filter(([k]) => k === "agent")).toHaveLength(MAX_AGENTS);
@@ -93,32 +97,34 @@ describe("prune", () => {
       agents: ["gemini", "codex", "claude"],
       models: [{ agent: "claude", model: "opus-4-7" }, { agent: "claude", model: "gone" }, { agent: "codex", model: "opus-4-7" }],
       accounts: ["api", "team:Devcats", "personal", "team:"],
+      plans: [],
     };
     expect(prune(f, available)).toEqual({
       agents: ["codex", "claude"],
       models: [{ agent: "claude", model: "opus-4-7" }],
       accounts: ["team:Devcats", "personal"],
+      plans: [],
     });
   });
 
   test("an empty available clears everything; nothing selected stays nothing", () => {
-    expect(prune({ agents: ["claude"], models: [{ agent: "claude", model: "opus-4-7" }], accounts: ["personal"] }, { agents: [], models: [], accounts: [], plans: [] })).toEqual(NO_FILTERS);
+    expect(prune({ agents: ["claude"], models: [{ agent: "claude", model: "opus-4-7" }], accounts: ["personal"], plans: [] }, { agents: [], models: [], accounts: [], plans: [] })).toEqual(NO_FILTERS);
     expect(prune(NO_FILTERS, available)).toEqual(NO_FILTERS);
   });
 
   test("ids that look like object keys are compared as plain strings", () => {
     const odd: Stats["available"] = { agents: ["__proto__"], models: [{ agent: "__proto__", model: "constructor", tokens: 1 }], accounts: [], plans: [] };
-    const f: Filters = { agents: ["__proto__", "constructor"], models: [{ agent: "__proto__", model: "constructor" }, { agent: "toString", model: "x" }], accounts: [] };
-    expect(prune(f, odd)).toEqual({ agents: ["__proto__"], models: [{ agent: "__proto__", model: "constructor" }], accounts: [] });
+    const f: Filters = { agents: ["__proto__", "constructor"], models: [{ agent: "__proto__", model: "constructor" }, { agent: "toString", model: "x" }], accounts: [], plans: [] };
+    expect(prune(f, odd)).toEqual({ agents: ["__proto__"], models: [{ agent: "__proto__", model: "constructor" }], accounts: [], plans: [] });
   });
 });
 
 describe("isActive, summary, equalFilters", () => {
   test("isActive is true when either list has a selection", () => {
     expect(isActive(NO_FILTERS)).toBe(false);
-    expect(isActive({ agents: ["claude"], models: [], accounts: [] })).toBe(true);
-    expect(isActive({ agents: [], models: [{ agent: "claude", model: "m" }], accounts: [] })).toBe(true);
-    expect(isActive({ agents: [], models: [], accounts: ["unknown"] })).toBe(true);
+    expect(isActive({ agents: ["claude"], models: [], accounts: [], plans: [] })).toBe(true);
+    expect(isActive({ agents: [], models: [{ agent: "claude", model: "m" }], accounts: [], plans: [] })).toBe(true);
+    expect(isActive({ agents: [], models: [], accounts: ["unknown"], plans: [] })).toBe(true);
   });
 
   test("summary is all only when nothing is selected, so the button never says All while chips show", () => {
@@ -130,27 +136,27 @@ describe("isActive, summary, equalFilters", () => {
   });
 
   test("equalFilters compares contents, not identity", () => {
-    expect(equalFilters({ agents: ["a"], models: [], accounts: [] }, { agents: ["a"], models: [], accounts: [] })).toBe(true);
-    expect(equalFilters({ agents: ["a"], models: [], accounts: [] }, { agents: ["b"], models: [], accounts: [] })).toBe(false);
-    expect(equalFilters({ agents: [], models: [{ agent: "a", model: "b:c" }], accounts: [] }, { agents: [], models: [{ agent: "a:b", model: "c" }], accounts: [] })).toBe(false);
-    expect(equalFilters({ agents: [], models: [], accounts: ["api"] }, { agents: [], models: [], accounts: ["api"] })).toBe(true);
-    expect(equalFilters({ agents: [], models: [], accounts: ["api"] }, { agents: [], models: [], accounts: ["personal"] })).toBe(false);
-    expect(equalFilters({ agents: [], models: [], accounts: ["api"] }, { agents: [], models: [], accounts: [] })).toBe(false);
+    expect(equalFilters({ agents: ["a"], models: [], accounts: [], plans: [] }, { agents: ["a"], models: [], accounts: [], plans: [] })).toBe(true);
+    expect(equalFilters({ agents: ["a"], models: [], accounts: [], plans: [] }, { agents: ["b"], models: [], accounts: [], plans: [] })).toBe(false);
+    expect(equalFilters({ agents: [], models: [{ agent: "a", model: "b:c" }], accounts: [], plans: [] }, { agents: [], models: [{ agent: "a:b", model: "c" }], accounts: [], plans: [] })).toBe(false);
+    expect(equalFilters({ agents: [], models: [], accounts: ["api"], plans: [] }, { agents: [], models: [], accounts: ["api"], plans: [] })).toBe(true);
+    expect(equalFilters({ agents: [], models: [], accounts: ["api"], plans: [] }, { agents: [], models: [], accounts: ["personal"], plans: [] })).toBe(false);
+    expect(equalFilters({ agents: [], models: [], accounts: ["api"], plans: [] }, { agents: [], models: [], accounts: [], plans: [] })).toBe(false);
   });
 });
 
 describe("toggling", () => {
   test("toggleAgent adds and removes without touching the input", () => {
-    const start: Filters = { agents: ["claude"], models: [], accounts: [] };
+    const start: Filters = { agents: ["claude"], models: [], accounts: [], plans: [] };
     const added = toggleAgent(start, "codex");
-    expect(added).toEqual({ filters: { agents: ["claude", "codex"], models: [], accounts: [] }, limited: false });
-    expect(start).toEqual({ agents: ["claude"], models: [], accounts: [] });
-    expect(toggleAgent(added.filters, "claude").filters).toEqual({ agents: ["codex"], models: [], accounts: [] });
+    expect(added).toEqual({ filters: { agents: ["claude", "codex"], models: [], accounts: [], plans: [] }, limited: false });
+    expect(start).toEqual({ agents: ["claude"], models: [], accounts: [], plans: [] });
+    expect(toggleAgent(added.filters, "claude").filters).toEqual({ agents: ["codex"], models: [], accounts: [], plans: [] });
   });
 
   test("narrowing the agents drops selected models of agents that are no longer listed", () => {
-    const f: Filters = { agents: [], models: [{ agent: "claude", model: "opus-4-7" }, { agent: "codex", model: "gpt-5" }], accounts: [] };
-    expect(toggleAgent(f, "codex").filters).toEqual({ agents: ["codex"], models: [{ agent: "codex", model: "gpt-5" }], accounts: [] });
+    const f: Filters = { agents: [], models: [{ agent: "claude", model: "opus-4-7" }, { agent: "codex", model: "gpt-5" }], accounts: [], plans: [] };
+    expect(toggleAgent(f, "codex").filters).toEqual({ agents: ["codex"], models: [{ agent: "codex", model: "gpt-5" }], accounts: [], plans: [] });
   });
 
   test("toggleModel adds and removes the exact (agent, model) pair", () => {
@@ -165,16 +171,16 @@ describe("toggling", () => {
     expect(canFilterModel({ agent: "x:a", model: "b" })).toBe(false);
     expect(canFilterModel({ agent: "x", model: "a:b" })).toBe(true);
     expect(toggleModel(NO_FILTERS, { agent: "x:a", model: "b" })).toEqual({ filters: NO_FILTERS, limited: false });
-    expect(toQuery({ agents: ["x:a"], models: [{ agent: "x:a", model: "b" }, { agent: "x", model: "a:b" }], accounts: [] })).toEqual([
+    expect(toQuery({ agents: ["x:a"], models: [{ agent: "x:a", model: "b" }, { agent: "x", model: "a:b" }], accounts: [], plans: [] })).toEqual([
       ["agent", "x:a"],
       ["model", "x:a:b"],
     ]);
   });
 
   test("toggleAccount adds and removes a key and leaves agents and models alone", () => {
-    const start: Filters = { agents: ["claude"], models: [{ agent: "claude", model: "opus-4-7" }], accounts: [] };
+    const start: Filters = { agents: ["claude"], models: [{ agent: "claude", model: "opus-4-7" }], accounts: [], plans: [] };
     const added = toggleAccount(start, "team:Devcats");
-    expect(added).toEqual({ filters: { ...start, accounts: ["team:Devcats"] }, limited: false });
+    expect(added).toEqual({ filters: { ...start, accounts: ["team:Devcats"], plans: [] }, limited: false });
     expect(start.accounts).toEqual([]);
     const two = toggleAccount(added.filters, "unknown").filters;
     expect(two.accounts).toEqual(["team:Devcats", "unknown"]);
@@ -271,7 +277,7 @@ describe("cleanAvailable accounts", () => {
 
 describe("withSelection", () => {
   test("a selected account the period lacks is added at zero tokens, once, after the period's accounts", () => {
-    const f: Filters = { agents: [], models: [], accounts: ["api", "personal", "api", "enterprise:Acme"] };
+    const f: Filters = { agents: [], models: [], accounts: ["api", "personal", "api", "enterprise:Acme"], plans: [] };
     expect(withSelection(available, f).accounts).toEqual([
       { key: "team:Devcats", tokens: 80 },
       { key: "personal", tokens: 20 },
@@ -284,9 +290,49 @@ describe("withSelection", () => {
 
   test("keys that look like object keys are compared as plain strings", () => {
     const odd: Stats["available"] = { agents: [], models: [], accounts: [{ key: "team:__proto__", tokens: 3 }], plans: [] };
-    expect(withSelection(odd, { agents: [], models: [], accounts: ["team:__proto__", "team:constructor"] }).accounts).toEqual([
+    expect(withSelection(odd, { agents: [], models: [], accounts: ["team:__proto__", "team:constructor"], plans: [] }).accounts).toEqual([
       { key: "team:__proto__", tokens: 3 },
       { key: "team:constructor", tokens: 0 },
+    ]);
+  });
+});
+
+describe("plans filter", () => {
+  test("query has plan= after accounts, capped at MAX_PLANS", () => {
+    expect(toQuery({ agents: ["claude"], models: [], accounts: ["personal"], plans: ["claude:pro", "none"] })).toEqual([
+      ["agent", "claude"],
+      ["account", "personal"],
+      ["plan", "claude:pro"],
+      ["plan", "none"],
+    ]);
+    const many = toQuery({ ...NO_FILTERS, plans: Array.from({ length: 70 }, (_, i) => `claude:p${i}`) });
+    expect(many.filter(([k]) => k === "plan")).toHaveLength(MAX_PLANS);
+  });
+
+  test("togglePlan adds, removes, respects the limit; isActive and equalFilters see plans", () => {
+    const added = togglePlan(NO_FILTERS, "claude:pro");
+    expect(added).toEqual({ filters: { ...NO_FILTERS, plans: ["claude:pro"] }, limited: false });
+    expect(togglePlan(added.filters, "claude:pro").filters.plans).toEqual([]);
+    let f: Filters = NO_FILTERS;
+    for (let i = 0; i < MAX_PLANS; i++) f = togglePlan(f, `claude:p${i}`).filters;
+    expect(togglePlan(f, "none")).toEqual({ filters: f, limited: true });
+    expect(isActive(added.filters)).toBe(true);
+    expect(equalFilters(added.filters, NO_FILTERS)).toBe(false);
+    expect(equalFilters(added.filters, togglePlan(NO_FILTERS, "claude:pro").filters)).toBe(true);
+  });
+
+  test("prune, cleanAvailable and withSelection carry plans", () => {
+    const available: Stats["available"] = { agents: [], models: [], accounts: [], plans: [{ key: "claude:pro", tokens: 5 }] };
+    expect(prune({ ...NO_FILTERS, plans: ["none", "claude:pro"] }, available).plans).toEqual(["claude:pro"]);
+    const raw = {
+      agents: [], models: [], accounts: [],
+      plans: [{ key: "claude:pro", tokens: 5 }, { key: "none", tokens: 1 }, { key: "claude:gold", tokens: 1 }, { key: "codex:plus", tokens: "x" }, { key: "codex:plus", tokens: -1 }, null, 3],
+    };
+    expect(cleanAvailable(raw).plans).toEqual([{ key: "claude:pro", tokens: 5 }, { key: "none", tokens: 1 }]);
+    expect(cleanAvailable({ agents: [], models: [] }).plans).toEqual([]);
+    expect(withSelection(available, { ...NO_FILTERS, plans: ["none", "claude:pro", "none"] }).plans).toEqual([
+      { key: "claude:pro", tokens: 5 },
+      { key: "none", tokens: 0 },
     ]);
   });
 });

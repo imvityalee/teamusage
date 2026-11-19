@@ -13,6 +13,7 @@ const handlers: FilterBarHandlers = {
   toggleAgent: (id) => calls.push(`agent:${id}`),
   toggleModel: (ref) => calls.push(`model:${ref.agent}|${ref.model}`),
   toggleAccount: (key) => calls.push(`account:${key}`),
+  togglePlan: (key) => calls.push(`plan:${key}`),
   showAll: (kind) => calls.push(`all:${kind}`),
   modelQuery: (q) => calls.push(`query:${q}`),
   clear: () => calls.push("clear"),
@@ -52,13 +53,14 @@ const input = (el: HTMLInputElement, v: string) => {
 };
 
 describe("filter buttons", () => {
-  test("closed: three real buttons that announce a popup, reading All agents, All models and All accounts", () => {
+  test("closed: four real buttons that announce a popup, reading All agents, All models, All accounts and All plans", () => {
     const root = controls(model());
     const buttons = [...root.querySelectorAll("button.pill")];
     expect(buttons.map((b) => [b.id, text(b), b.getAttribute("aria-haspopup"), b.getAttribute("aria-expanded")])).toEqual([
       ["agents-btn", "All agents", "dialog", "false"],
       ["models-btn", "All models", "dialog", "false"],
       ["accounts-btn", "All accounts", "dialog", "false"],
+      ["plans-btn", "All plans", "dialog", "false"],
     ]);
     expect(text(controls(model(), "ru").querySelector("#accounts-btn"))).toBe("Все аккаунты");
     expect(root.querySelector(".popover")).toBeNull();
@@ -67,7 +69,7 @@ describe("filter buttons", () => {
   });
 
   test("with a selection: counts with plural forms, the selected style and Clear filters", () => {
-    const filters: Filters = { agents: ["claude", "codex"], models: [{ agent: "claude", model: "claude-opus-4-1" }], accounts: [] };
+    const filters: Filters = { agents: ["claude", "codex"], models: [{ agent: "claude", model: "claude-opus-4-1" }], accounts: [], plans: [] };
     const root = controls(model({ filters }));
     expect(text(root.querySelector("#agents-btn"))).toBe("2 agents");
     expect(text(root.querySelector("#models-btn"))).toBe("1 model");
@@ -83,11 +85,11 @@ describe("filter buttons", () => {
   test("an account selection: counts with plural forms, the selected style and Clear filters on its own", () => {
     const label = (n: number, lang: "en" | "ru") => {
       const accounts = Array.from({ length: n }, (_, i) => `team:o${i}`);
-      return text(controls(model({ filters: { agents: [], models: [], accounts } }), lang).querySelector("#accounts-btn"));
+      return text(controls(model({ filters: { agents: [], models: [], accounts, plans: [] } }), lang).querySelector("#accounts-btn"));
     };
     expect([1, 2, 5].map((n) => label(n, "en"))).toEqual(["1 account", "2 accounts", "5 accounts"]);
     expect([1, 3, 5, 11, 21].map((n) => label(n, "ru"))).toEqual(["1 аккаунт", "3 аккаунта", "5 аккаунтов", "11 аккаунтов", "21 аккаунт"]);
-    const root = controls(model({ filters: { agents: [], models: [], accounts: ["personal"] } }));
+    const root = controls(model({ filters: { agents: [], models: [], accounts: ["personal"], plans: [] } }));
     expect(root.querySelector("#accounts-btn")?.classList.contains("selected")).toBe(true);
     expect(root.querySelector("#agents-btn")?.classList.contains("selected")).toBe(false);
     expect(text(root.querySelector("#clear-filters"))).toBe("Clear filters");
@@ -97,7 +99,7 @@ describe("filter buttons", () => {
   });
 
   test("clicking a button asks to open its popover; Clear filters clears", () => {
-    const filters: Filters = { agents: ["codex"], models: [], accounts: [] };
+    const filters: Filters = { agents: ["codex"], models: [], accounts: [], plans: [] };
     const root = controls(model({ filters }));
     (root.querySelector("#models-btn") as HTMLButtonElement).click();
     (root.querySelector("#clear-filters") as HTMLButtonElement).click();
@@ -107,7 +109,7 @@ describe("filter buttons", () => {
 
 describe("agents popover", () => {
   test("lists available agents with icon, name and total, reflecting the selection", () => {
-    const root = controls(model({ open: "agents", filters: { agents: ["codex"], models: [], accounts: [] } }));
+    const root = controls(model({ open: "agents", filters: { agents: ["codex"], models: [], accounts: [], plans: [] } }));
     const btn = root.querySelector("#agents-btn") as HTMLElement;
     expect(btn.getAttribute("aria-expanded")).toBe("true");
     expect(btn.querySelector(".chev")?.classList.contains("up")).toBe(true);
@@ -144,7 +146,7 @@ describe("agents popover", () => {
 
 describe("accounts popover", () => {
   test("lists available accounts by name with their compact total, reflecting the selection, text only", () => {
-    const root = controls(model({ open: "accounts", filters: { agents: [], models: [], accounts: ["unknown"] } }));
+    const root = controls(model({ open: "accounts", filters: { agents: [], models: [], accounts: ["unknown"], plans: [] } }));
     const btn = root.querySelector("#accounts-btn") as HTMLElement;
     expect(btn.getAttribute("aria-expanded")).toBe("true");
     const pop = root.querySelector(".popover") as HTMLElement;
@@ -182,8 +184,8 @@ describe("accounts popover", () => {
   });
 
   test("a selected account this period or member lacks stays listed, ticked, at zero, so it can be unticked", () => {
-    const memberAvailable: Stats["available"] = { ...statsFixture().available, accounts: [{ key: "personal", tokens: 7 }] };
-    const root = controls(model({ open: "accounts", available: memberAvailable, filters: { agents: [], models: [], accounts: ["team:Devcats"] } }));
+    const memberAvailable: Stats["available"] = { ...statsFixture().available, accounts: [{ key: "personal", tokens: 7 }], plans: [] };
+    const root = controls(model({ open: "accounts", available: memberAvailable, filters: { agents: [], models: [], accounts: ["team:Devcats"], plans: [] } }));
     expect(rowsOf(root).map((r) => [text(r.querySelector(".pop-name")), text(r.querySelector(".pop-num")), (r.querySelector("input") as HTMLInputElement).checked])).toEqual([
       ["Personal", "7", false],
       ["Team · Devcats", "0", true],
@@ -194,10 +196,10 @@ describe("accounts popover", () => {
 
   test("renders org as text", () => {
     const evil = "<img src=x onerror=alert(1)>";
-    const available = (org: string): Stats["available"] => ({ ...statsFixture().available, accounts: [{ key: `team:${org}`, tokens: 9 }, { key: `enterprise:${org}`, tokens: 3 }] });
-    const filters: Filters = { agents: [], models: [], accounts: [`team:${evil}`] };
+    const available = (org: string): Stats["available"] => ({ ...statsFixture().available, accounts: [{ key: `team:${org}`, tokens: 9 }, { key: `enterprise:${org}`, tokens: 3 }], plans: [] });
+    const filters: Filters = { agents: [], models: [], accounts: [`team:${evil}`], plans: [] };
     const hostile = controls(model({ open: "accounts", available: available(evil), filters }));
-    const plain = controls(model({ open: "accounts", available: available("Plain"), filters: { ...filters, accounts: ["team:Plain"] } }));
+    const plain = controls(model({ open: "accounts", available: available("Plain"), filters: { ...filters, accounts: ["team:Plain"], plans: [] } }));
     expect(tags(hostile)).toEqual(tags(plain));
     expect(hostile.querySelector("img, script")).toBeNull();
     expect(rowsOf(hostile).map((r) => r.querySelector(".pop-name")?.textContent)).toEqual([`Team · ${evil}`, `Enterprise · ${evil}`]);
@@ -233,13 +235,13 @@ describe("models popover", () => {
   });
 
   test("with an agent filter only those agents' models are listed, and it says so", () => {
-    const root = controls(model({ open: "models", filters: { agents: ["codex"], models: [], accounts: [] } }));
+    const root = controls(model({ open: "models", filters: { agents: ["codex"], models: [], accounts: [], plans: [] } }));
     expect([...root.querySelectorAll(".pop-group-name")].map(text)).toEqual(["Codex"]);
     expect(text(root.querySelector(".popover .pop-hint"))).toBe("Only models of the selected agents are listed.");
   });
 
   test("ticking a model reports the exact pair; a selected model is checked", () => {
-    const root = controls(model({ open: "models", filters: { agents: [], models: [{ agent: "claude", model: "claude-opus-4-1" }], accounts: [] } }));
+    const root = controls(model({ open: "models", filters: { agents: [], models: [{ agent: "claude", model: "claude-opus-4-1" }], accounts: [], plans: [] } }));
     const rows = rowsOf(root);
     expect(rows.map((r) => (r.querySelector("input") as HTMLInputElement).checked)).toEqual([false, true, false, false]);
     change(rows[2]?.querySelector("input") as Element);
@@ -294,8 +296,8 @@ describe("hostile agent ids and model names", () => {
 
   test("create exactly the elements plain ids do, show literal text and load only fixed images", () => {
     for (const open of ["agents", "models"] as const) {
-      const hostile = controls(model({ open, available: hostileAvailable(), filters: { agents: HOSTILE_IDS.slice(0, 3), models: [], accounts: [] } }));
-      const plain = controls(model({ open, available: plainAvailable(), filters: { agents: ["plain0", "plain1", "plain2"], models: [], accounts: [] } }));
+      const hostile = controls(model({ open, available: hostileAvailable(), filters: { agents: HOSTILE_IDS.slice(0, 3), models: [], accounts: [], plans: [] } }));
+      const plain = controls(model({ open, available: plainAvailable(), filters: { agents: ["plain0", "plain1", "plain2"], models: [], accounts: [], plans: [] } }));
       expect(tags(hostile)).toEqual(tags(plain));
       for (const tag of ["script", "iframe"]) expect(hostile.querySelector(tag)).toBeNull();
       for (const img of hostile.querySelectorAll("img")) expect(LOGO_PATHS.has(img.getAttribute("src") ?? "")).toBe(true);
@@ -327,7 +329,7 @@ describe("chips", () => {
   });
 
   test("Showing only, then one removable chip per selection", () => {
-    const root = chips({ agents: ["claude", "codex"], models: [{ agent: "claude", model: "opus-4-7" }], accounts: [] });
+    const root = chips({ agents: ["claude", "codex"], models: [{ agent: "claude", model: "opus-4-7" }], accounts: [], plans: [] });
     expect(text(root.querySelector(".chips-label"))).toBe("Showing only");
     const buttons = [...root.querySelectorAll("button.chip")];
     expect(buttons.map((b) => [text(b), b.getAttribute("aria-label")])).toEqual([
@@ -340,11 +342,11 @@ describe("chips", () => {
     (buttons[1] as HTMLButtonElement).click();
     (buttons[2] as HTMLButtonElement).click();
     expect(calls).toEqual(["agent:codex", "model:claude|opus-4-7"]);
-    expect(text(chips({ agents: ["codex"], models: [], accounts: [] }, "ru").querySelector(".chips-label"))).toBe("Показаны только");
+    expect(text(chips({ agents: ["codex"], models: [], accounts: [], plans: [] }, "ru").querySelector(".chips-label"))).toBe("Показаны только");
   });
 
   test("account chips come after agents and models, by display name, and remove that account", () => {
-    const root = chips({ agents: ["codex"], models: [{ agent: "claude", model: "opus-4-7" }], accounts: ["team:Devcats", "api"] });
+    const root = chips({ agents: ["codex"], models: [{ agent: "claude", model: "opus-4-7" }], accounts: ["team:Devcats", "api"], plans: [] });
     const buttons = [...root.querySelectorAll("button.chip")];
     expect(buttons.map((b) => [text(b), b.getAttribute("aria-label")])).toEqual([
       ["Codex", "Remove filter: Codex"],
@@ -355,20 +357,20 @@ describe("chips", () => {
     expect(buttons[2]?.querySelector("img")).toBeNull();
     (buttons[2] as HTMLButtonElement).click();
     expect(calls).toEqual(["account:team:Devcats"]);
-    const only = chips({ agents: [], models: [], accounts: ["personal"] }, "ru");
+    const only = chips({ agents: [], models: [], accounts: ["personal"], plans: [] }, "ru");
     expect(text(only.querySelector(".chips-label"))).toBe("Показаны только");
     expect([...only.querySelectorAll("button.chip")].map((b) => [text(b), b.getAttribute("aria-label")])).toEqual([["Личный", "Убрать фильтр: Личный"]]);
   });
 
   test("an org with markup is literal text in its chip", () => {
     const evil = "<img src=x onerror=alert(1)>";
-    const root = chips({ agents: [], models: [], accounts: [`enterprise:${evil}`] });
+    const root = chips({ agents: [], models: [], accounts: [`enterprise:${evil}`], plans: [] });
     expect(text(root.querySelector("button.chip"))).toBe(`Enterprise · ${evil}`);
     expect(root.querySelector("img, script")).toBeNull();
   });
 
   test("hostile ids are literal text in chips and their labels", () => {
-    const root = chips({ agents: HOSTILE_IDS, models: [{ agent: HOSTILE_IDS[3] as string, model: "<b>m</b>" }], accounts: [] });
+    const root = chips({ agents: HOSTILE_IDS, models: [{ agent: HOSTILE_IDS[3] as string, model: "<b>m</b>" }], accounts: [], plans: [] });
     expect([...root.querySelectorAll("button.chip")].map((b) => text(b))).toEqual([...HOSTILE_IDS.map((id) => id.replace(/\s+/g, " ").trim()), "<b>m</b>"]);
     expect(root.querySelector("img, b, script")).toBeNull();
   });
@@ -394,7 +396,7 @@ describe("edge cases", () => {
     const label = (n: number) =>
       text(
         controls(
-          model({ available: available(n), filters: { agents: many(Math.min(n, 20)), models: many(n).map((a) => ({ agent: a, model: "m" })), accounts: [] } }),
+          model({ available: available(n), filters: { agents: many(Math.min(n, 20)), models: many(n).map((a) => ({ agent: a, model: "m" })), accounts: [], plans: [] } }),
           "ru",
         ).querySelector("#models-btn"),
       );
@@ -409,13 +411,13 @@ describe("edge cases", () => {
   });
 
   test("every available agent ticked still reads as a count, not All", () => {
-    const root = controls(model({ filters: { agents: ["claude", "codex", "aider"], models: [], accounts: [] } }));
+    const root = controls(model({ filters: { agents: ["claude", "codex", "aider"], models: [], accounts: [], plans: [] } }));
     expect(text(root.querySelector("#agents-btn"))).toBe("3 agents");
   });
 
   test("a selection this member does not have stays listed, ticked, with a zero total, so it can be unticked", () => {
     const memberAvailable: Stats["available"] = { agents: ["claude"], models: [{ agent: "claude", model: "claude-opus-4-1", tokens: 7 }], accounts: [], plans: [] };
-    const filters: Filters = { agents: ["claude", "codex"], models: [{ agent: "codex", model: "gpt-5-codex" }], accounts: [] };
+    const filters: Filters = { agents: ["claude", "codex"], models: [{ agent: "codex", model: "gpt-5-codex" }], accounts: [], plans: [] };
     const agents = controls(model({ open: "agents", available: memberAvailable, filters }));
     expect(rowsOf(agents).map((r) => [text(r.querySelector(".pop-name")), text(r.querySelector(".pop-num")), (r.querySelector("input") as HTMLInputElement).checked])).toEqual([
       ["Claude Code", "7", true],
@@ -435,6 +437,7 @@ describe("edge cases", () => {
       agents: [null, "claude"],
       models: [null, { agent: "claude", model: "m", tokens: "x" }, { agent: "claude", model: "n", tokens: Number.NaN }],
       accounts: [null, { key: "api", tokens: Number.NaN }, { key: "boss", tokens: 1 }],
+      plans: [],
     } as unknown as Stats["available"];
     for (const open of ["agents", "models", "accounts"] as const) {
       const root = controls(model({ open, available: bad }));
@@ -447,5 +450,58 @@ describe("edge cases", () => {
     expect(controls(model({ open: "accounts" })).querySelectorAll(".popover")).toHaveLength(1);
     expect(controls(model({ open: "accounts" })).querySelector("#models-btn")?.getAttribute("aria-expanded")).toBe("false");
     expect(controls(model({ open: "models" })).querySelector("#agents-btn")?.getAttribute("aria-expanded")).toBe("false");
+  });
+});
+
+describe("plans filter bar", () => {
+  test("button reads All plans / N plans and Clear appears", () => {
+    const closed = controls(model());
+    expect(text(closed.querySelector("#plans-btn"))).toBe("All plans");
+    expect(text(controls(model(), "ru").querySelector("#plans-btn"))).toBe("Все тарифы");
+    const label = (n: number, lang: "en" | "ru") =>
+      text(controls(model({ filters: { ...NO_FILTERS, plans: Array.from({ length: n }, (_, i) => `claude:p${i}`) } }), lang).querySelector("#plans-btn"));
+    expect([1, 2, 5].map((n) => label(n, "en"))).toEqual(["1 plan", "2 plans", "5 plans"]);
+    expect([1, 2, 5].map((n) => label(n, "ru"))).toEqual(["1 тариф", "2 тарифа", "5 тарифов"]);
+    const root = controls(model({ filters: { ...NO_FILTERS, plans: ["none"] } }));
+    expect(root.querySelector("#plans-btn")?.classList.contains("selected")).toBe(true);
+    (root.querySelector("#clear-filters") as HTMLButtonElement).click();
+    expect(calls).toEqual(["clear"]);
+  });
+
+  test("popover lists plans by name with totals, reflecting the selection; ticking and Show all report keys", () => {
+    const root = controls(model({ open: "plans", filters: { ...NO_FILTERS, plans: ["none"] } }));
+    const pop = root.querySelector(".popover") as HTMLElement;
+    expect(pop.id).toBe("plans-pop");
+    expect(doc.getElementById(pop.getAttribute("aria-labelledby") ?? "")?.textContent).toBe("Plans in this period");
+    expect(rowsOf(root).map((r) => [text(r.querySelector(".pop-name")), text(r.querySelector(".pop-num")), (r.querySelector("input") as HTMLInputElement).checked])).toEqual([
+      ["Claude Team Premium", "51,000", false],
+      ["No plan", "5,500", true],
+      ["Claude Pro", "4,000", false],
+    ]);
+    change(rowsOf(root)[0]?.querySelector("input") as Element);
+    (pop.querySelector(".pop-head button") as HTMLButtonElement).click();
+    expect(calls).toEqual(["plan:claude:team_premium", "all:plans"]);
+    expect(text(controls(model({ open: "plans" }), "ru").querySelector(".popover .pop-title"))).toBe("Тарифы за этот период");
+  });
+
+  test("limit note, empty, and a selected plan the period lacks stays listed at zero", () => {
+    const note = controls(model({ open: "plans", note: { key: "planLimit", vars: { n: 50 } } }));
+    expect(text(note.querySelector(".pop-note"))).toBe("You can select up to 50 plans.");
+    const empty = controls(model({ open: "plans", available: { agents: [], models: [], accounts: [], plans: [] } }));
+    expect(text(empty.querySelector(".pop-empty"))).toBe("Nothing in this period");
+    const lacking = controls(model({ open: "plans", available: { ...statsFixture().available, plans: [] }, filters: { ...NO_FILTERS, plans: ["codex:plus"] } }));
+    expect(rowsOf(lacking).map((r) => [text(r.querySelector(".pop-name")), text(r.querySelector(".pop-num"))])).toEqual([["ChatGPT Plus", "0"]]);
+  });
+
+  test("chips: one per plan, named, removable", () => {
+    const chips = renderChips(doc, { ...NO_FILTERS, plans: ["claude:pro", "none"] }, "en", handlers);
+    const host = doc.createElement("div");
+    host.append(...chips);
+    expect([...host.querySelectorAll("button.chip")].map((c) => [text(c), c.getAttribute("aria-label")])).toEqual([
+      ["Claude Pro", "Remove filter: Claude Pro"],
+      ["No plan", "Remove filter: No plan"],
+    ]);
+    (host.querySelector("button.chip") as HTMLButtonElement).click();
+    expect(calls).toEqual(["plan:claude:pro"]);
   });
 });

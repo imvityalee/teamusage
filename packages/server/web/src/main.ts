@@ -6,11 +6,13 @@ import {
   equalFilters,
   isActive,
   MAX_ACCOUNTS,
+  MAX_PLANS,
   MAX_AGENTS,
   MAX_MODELS,
   NO_FILTERS,
   prune,
   toggleAccount,
+  togglePlan,
   toggleAgent,
   toggleModel,
   type Filters,
@@ -279,7 +281,8 @@ async function load(): Promise<void> {
         const emptied =
           (filters.agents.length > 0 && pruned.agents.length === 0) ||
           (filters.models.length > 0 && pruned.models.length === 0) ||
-          (filters.accounts.length > 0 && pruned.accounts.length === 0);
+          (filters.accounts.length > 0 && pruned.accounts.length === 0) ||
+          (filters.plans.length > 0 && pruned.plans.length === 0);
         if (emptied) {
           void load();
           return;
@@ -368,6 +371,7 @@ const handlers: FilterBarHandlers = {
   toggleAgent: (id) => applyToggle(toggleAgent(state.filters, id), "agentLimit", MAX_AGENTS),
   toggleModel: (ref) => applyToggle(toggleModel(state.filters, ref), "modelLimit", MAX_MODELS),
   toggleAccount: (key) => applyToggle(toggleAccount(state.filters, key), "accountLimit", MAX_ACCOUNTS),
+  togglePlan: (key) => applyToggle(togglePlan(state.filters, key), "planLimit", MAX_PLANS),
   showAll: (kind) => setFilters({ ...state.filters, [kind]: [] }),
   modelQuery: (query) => {
     state.modelQuery = query;

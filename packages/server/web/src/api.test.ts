@@ -128,6 +128,7 @@ describe("fetchStats with filters", () => {
       agents: ["codex", `claude"><img src=x>`],
       models: [{ agent: "claude", model: "opus 4/7&member=2#x" }, { agent: "x", model: "a:b" }],
       accounts: ["team:a&member=2#x", "unknown"],
+      plans: ["claude:pro", "none"],
     };
     await fetchStats("2026-01-01", "2026-01-31", undefined, 1, filters);
     const [url] = fetch.mock.calls[0] as unknown as [string];
@@ -143,18 +144,21 @@ describe("fetchStats with filters", () => {
       ["model", "x:a:b"],
       ["account", "team:a&member=2#x"],
       ["account", "unknown"],
+      ["plan", "claude:pro"],
+      ["plan", "none"],
     ]);
     expect(q.getAll("member")).toEqual(["1"]);
   });
 
   test("no filters, no filter parameters; never more than 20 agents and 50 models", async () => {
     const fetch = stubFetch(json(statsFixture()), json(statsFixture()));
-    await fetchStats("2026-01-01", "2026-01-31", undefined, undefined, { agents: [], models: [], accounts: [] });
+    await fetchStats("2026-01-01", "2026-01-31", undefined, undefined, { agents: [], models: [], accounts: [], plans: [] });
     expect((fetch.mock.calls[0] as unknown as [string])[0]).toBe("/api/stats?from=2026-01-01&to=2026-01-31");
     const many = {
       agents: Array.from({ length: 25 }, (_, i) => `a${i}`),
       models: Array.from({ length: 60 }, (_, i) => ({ agent: "a", model: `m${i}` })),
       accounts: [],
+      plans: [],
     };
     await fetchStats("2026-01-01", "2026-01-31", undefined, undefined, many);
     const q = new URLSearchParams((fetch.mock.calls[1] as unknown as [string])[0].split("?")[1]);

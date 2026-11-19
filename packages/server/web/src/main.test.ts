@@ -460,8 +460,8 @@ describe("page title", () => {
 describe("filters", () => {
   const withFilters = (url: string, params: [string, string][]) =>
     params.length === 0 ? url : `${url}&${new URLSearchParams(params).toString()}`;
-  const open = (kind: "agents" | "models" | "accounts") => $(`#${kind}-btn`).click();
-  const rowBoxes = (kind: "agents" | "models" | "accounts") =>
+  const open = (kind: "agents" | "models" | "accounts" | "plans") => $(`#${kind}-btn`).click();
+  const rowBoxes = (kind: "agents" | "models" | "accounts" | "plans") =>
     [...doc.querySelectorAll<HTMLInputElement>(`#${kind}-pop label.pop-row input`)].filter((b) => !(b.closest("li") as HTMLElement).hidden);
   function tick(box: HTMLInputElement | undefined): void {
     if (!box) throw new Error("no checkbox");
@@ -855,6 +855,25 @@ describe("filters", () => {
     expect(win.location.href).toBe("http://localhost:8787/");
   });
 
+  test("the plan filter: select, query, chip, limit-free clear, and a plan the next period lacks is dropped", async () => {
+    await boot(json(statsFixture()));
+    expect($("#plans-btn").textContent?.trim()).toBe("All plans");
+    open("plans");
+    replies.push(json(statsFixture()));
+    tick(rowBoxes("plans")[0]); // Claude Team Premium
+    await flush();
+    expect(calls.at(-1)?.url).toBe(withFilters(statsUrl(range(90)), [["plan", "claude:team_premium"]]));
+    expect($("#plans-btn").textContent?.trim()).toBe("1 plan");
+    expect(chipTexts()).toEqual(["Claude Team Premium"]);
+
+    const noPlan = { ...statsFixture(), available: { ...statsFixture().available, plans: [{ key: "none", tokens: 5 }] } };
+    replies.push(json(noPlan), json(noPlan));
+    $('#range button[data-days="30"]').click();
+    await flush();
+    expect(calls.slice(-2).map((c) => c.url)).toEqual([withFilters(statsUrl(range(30)), [["plan", "claude:team_premium"]]), statsUrl(range(30))]);
+    expect($("#plans-btn").textContent?.trim()).toBe("All plans");
+  });
+
   test("the account filter survives a range change and a language switch; a range without it drops it and asks again", async () => {
     await boot(json(statsFixture()));
     open("accounts");
@@ -933,7 +952,7 @@ describe("filters", () => {
     await boot(json(statsFixture()));
     replies.push(json(memberStatsFixture()));
     await goTo("#/member/1");
-    expect([...doc.querySelectorAll("#accounts .acct-name")].map((n) => n.textContent)).toEqual(["Team · Devcats", "Unknown", "Personal"]);
+    expect([...doc.querySelectorAll("#accounts .acct-name")].map((n) => n.textContent)).toEqual(["Team · Devcats · Premium", "Unknown", "Personal · Pro"]);
   });
 
   test("past 50 accounts the page stops adding, says so and sends nothing", async () => {

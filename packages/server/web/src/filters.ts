@@ -1,4 +1,4 @@
-import { MAX_ACCOUNTS, parseAccountKey, type Stats } from "@teamusage/shared";
+import { MAX_ACCOUNTS, MAX_PLANS, parseAccountKey, parsePlanKey, type Stats } from "@teamusage/shared";
 
 /**
  * The agent, model and account filters. They live only in memory: they are never stored and never put in the URL,
@@ -16,18 +16,21 @@ export interface Filters {
   models: ModelRef[];
   /** Account keys (`accountKey` values), in selection order. */
   accounts: string[];
+  /** Plan keys (`claude:team_premium`, `codex:plus`, `none`), in selection order. */
+  plans: string[];
 }
 
 export const NO_FILTERS: Filters = Object.freeze({
   agents: Object.freeze([]),
   models: Object.freeze([]),
   accounts: Object.freeze([]),
+  plans: Object.freeze([]),
 }) as unknown as Filters;
 
 /** The server's limits; the page never asks for more. */
 export const MAX_AGENTS = 20;
 export const MAX_MODELS = 50;
-export { MAX_ACCOUNTS };
+export { MAX_ACCOUNTS, MAX_PLANS };
 
 /**
  * Whether a model can be filtered on. The server reads `<agent>:<model>` up to the first colon, so a model of an
@@ -37,7 +40,7 @@ export function canFilterModel(ref: ModelRef): boolean {
   return !String(ref.agent).includes(":");
 }
 
-/** Query parameters, agents first in selection order, then models as `<agent>:<model>`, then account keys. */
+/** Query parameters, agents first in selection order, then models as `<agent>:<model>`, then account keys, then plan keys. */
 export function toQuery(f: Filters): [string, string][] {
   return [
     ...f.agents.slice(0, MAX_AGENTS).map((a): [string, string] => ["agent", a]),
@@ -46,6 +49,7 @@ export function toQuery(f: Filters): [string, string][] {
       .slice(0, MAX_MODELS)
       .map((m): [string, string] => ["model", `${m.agent}:${m.model}`]),
     ...f.accounts.slice(0, MAX_ACCOUNTS).map((k): [string, string] => ["account", k]),
+    ...f.plans.slice(0, MAX_PLANS).map((k): [string, string] => ["plan", k]),
   ];
 }
 
@@ -67,15 +71,17 @@ export function prune(f: Filters, available: Stats["available"]): Filters {
   const agents = new Set(available.agents);
   const models = modelIndex(available);
   const accounts = new Set(available.accounts.map((a) => a.key));
+  const plans = new Set(available.plans.map((a) => a.key));
   return {
     agents: f.agents.filter((a) => agents.has(a)),
     models: f.models.filter((m) => models.get(m.agent)?.has(m.model) === true),
     accounts: f.accounts.filter((k) => accounts.has(k)),
+    plans: f.plans.filter((k) => plans.has(k)),
   };
 }
 
 export function isActive(f: Filters): boolean {
-  return f.agents.length > 0 || f.models.length > 0 || f.accounts.length > 0;
+  return f.agents.length > 0 || f.models.length > 0 || f.accounts.length > 0 || f.plans.length > 0;
 }
 
 /**
@@ -93,7 +99,9 @@ export function equalFilters(a: Filters, b: Filters): boolean {
     a.models.length === b.models.length &&
     a.models.every((x, i) => sameModel(x, b.models[i] as ModelRef)) &&
     a.accounts.length === b.accounts.length &&
-    a.accounts.every((x, i) => x === b.accounts[i])
+    a.accounts.every((x, i) => x === b.accounts[i]) &&
+    a.plans.length === b.plans.length &&
+    a.plans.every((x, i) => x === b.plans[i])
   );
 }
 
@@ -130,13 +138,21 @@ export function toggleAccount(f: Filters, key: string): Toggled {
   return { filters: { ...f, accounts }, limited: false };
 }
 
+/** Adds or removes a plan key. Agents, models and accounts are left as they are. */
+export function togglePlan(f: Filters, key: string): Toggled {
+  const has = f.plans.includes(key);
+  if (!has && f.plans.length >= MAX_PLANS) return { filters: f, limited: true };
+  const plans = has ? f.plans.filter((k) => k !== key) : [...f.plans, key];
+  return { filters: { ...f, plans }, limited: false };
+}
+
 /**
  * The filter lists from an answer, keeping only well-formed entries: agent ids that are strings, and models with a
  * string agent and model and a finite, non-negative total, and accounts with a well-formed key and such a total.
  * Anything else is dropped, so a `null` cannot make `prune` throw and no total can show as NaN.
  */
 export function cleanAvailable(raw: unknown): Stats["available"] {
-  const r = (typeof raw === "object" && raw !== null ? raw : {}) as { agents?: unknown; models?: unknown; accounts?: unknown };
+  const r = (typeof raw === "object" && raw !== null ? raw : {}) as { agents?: unknown; models?: unknown; accounts?: unknown; plans?: unknown };
   const agents = Array.isArray(r.agents) ? r.agents.filter((a): a is string => typeof a === "string") : [];
   const models = (Array.isArray(r.models) ? r.models : []).flatMap((m: unknown) => {
     if (typeof m !== "object" || m === null) return [];
@@ -152,7 +168,15 @@ export function cleanAvailable(raw: unknown): Stats["available"] {
     if (typeof n !== "number" || !Number.isFinite(n) || n < 0) return [];
     return [{ key, tokens: n }];
   });
-  return { agents, models, accounts, plans: [] }; // plans: a later task
+  // And for plans, with a well-formed plan key.
+  const plans = (Array.isArray(r.plans) ? r.plans : []).flatMap((a: unknown) => {
+    if (typeof a !== "object" || a === null) return [];
+    const { key, tokens: n } = a as { key?: unknown; tokens?: unknown };
+    if (typeof key !== "string" || parsePlanKey(key) === undefined) return [];
+    if (typeof n !== "number" || !Number.isFinite(n) || n < 0) return [];
+    return [{ key, tokens: n }];
+  });
+  return { agents, models, accounts, plans };
 }
 
 /**
@@ -182,7 +206,14 @@ export function withSelection(available: Stats["available"], f: Filters): Stats[
     accounts.push({ key, tokens: 0 });
     keys.add(key);
   }
-  return { agents, models, accounts, plans: [] }; // plans: a later task
+  const plans = [...available.plans];
+  const planKeys = new Set(plans.map((p) => p.key));
+  for (const key of f.plans) {
+    if (planKeys.has(key)) continue;
+    plans.push({ key, tokens: 0 });
+    planKeys.add(key);
+  }
+  return { agents, models, accounts, plans };
 }
 
 const tokens = (n: unknown): number => (typeof n === "number" && Number.isFinite(n) && n > 0 ? n : 0);
