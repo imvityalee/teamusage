@@ -63,12 +63,15 @@ select `teamusage` on the Installed tab and choose Update now. A third-party mar
 auto-update by default. The running session keeps the old version until the next session or
 `/reload-plugins`.
 
-A client upgraded before the server still uploads; it just loses the account labels for the days synced
-before the server upgrade.
+A 0.3.0 client against an older server: machines with a Codex login have every upload refused until the
+server is upgraded. Nothing is lost; it is sent again after the upgrade. Claude-only machines still upload,
+without plans.
 
-An existing Codex MCP registration stays on the version it was registered with. Re-run
-`teamusage setup --codex` to move it to 0.3.0. Codex plugin users update the plugin and trust its hooks
-again (see [Codex](#codex)).
+An existing Codex MCP registration stays on the version it was registered with (0.2.0 `setup` registered
+one by default). A registration like that also hides the plugin's own MCP server, so anyone who registered
+teamusage with Codex before and now uses the plugin runs `codex mcp remove teamusage` first. People who do
+not use the plugin re-run `teamusage setup --codex` to move the registration to 0.3.0. To upgrade the Codex
+plugin, see [Codex](#codex).
 
 After upgrading, a member can give past days their plan and account label once: see
 [Labelling past usage](#labelling-past-usage).
@@ -221,13 +224,14 @@ teamusage: connect your machine (about 5 minutes)
      Server URL:  https://usage.example.com
      Invite code: the code I sent you privately
      Your name and Your email: your work name and work email
-4. Start a new Claude Code session. From now on your usage is sent automatically
+4. Start a new Claude Code session. From now on Claude Code sends your usage automatically
    when a session starts and when it ends, and at most every 4 hours after a reply.
 5. Check it: ask Claude "send my usage", then find yourself on https://usage.example.com
 
 Using Codex? In a terminal, once:
      npx -y teamusage@0.3.0 setup
-   (server URL, invite code, your name and email), then:
+   (server URL, invite code, your name and email). If you registered teamusage with Codex
+   before, first run: codex mcp remove teamusage (the plugin brings its own MCP server). Then:
      codex plugin marketplace add imvityalee/teamusage
      codex plugin add teamusage@teamusage
    Then in Codex type /hooks and trust the teamusage hooks. Trust them again after
@@ -246,13 +250,15 @@ teamusage: подключите свой компьютер (около 5 мин
      Server URL:  https://usage.example.com
      Invite code: код, присланный вам лично
      Your name и Your email: рабочие имя и почта
-4. Начните новую сессию Claude Code. Дальше статистика отправляется сама
+4. Начните новую сессию Claude Code. Дальше Claude Code отправляет статистику сам
    при начале и при завершении каждой сессии, а также не чаще раза в 4 часа после ответа.
 5. Проверка: попросите Claude «отправь статистику» и найдите себя на https://usage.example.com
 
 Используете Codex? В терминале, один раз:
      npx -y teamusage@0.3.0 setup
-   (адрес сервера, код приглашения, ваши имя и почта), затем:
+   (адрес сервера, код приглашения, ваши имя и почта). Если вы раньше регистрировали
+   teamusage в Codex, сначала выполните: codex mcp remove teamusage (плагин приносит
+   собственный MCP-сервер). Затем:
      codex plugin marketplace add imvityalee/teamusage
      codex plugin add teamusage@teamusage
    Потом в Codex введите /hooks и доверьте хуки teamusage. После каждого обновления
@@ -293,6 +299,7 @@ Other commands (`npx teamusage ...`; from source `node packages/client/dist/cli.
 ```sh
 teamusage sync              # collect and upload now
 teamusage sync --dry-run    # print exactly what would be sent; send nothing
+teamusage sync --label-history  # label all your past Claude and Codex days (see "Labelling past usage")
 teamusage sync --quiet      # print nothing, always exit 0; failures go to sync.log in the config directory
 teamusage sync --detach     # run "sync --quiet" in the background and return at once
 teamusage sync --throttle 4h  # do nothing if a sync attempt started less than 4 hours ago (1m to 24h, or 1m to 1440m)
@@ -321,7 +328,8 @@ history stay on the server, and both count in the team totals, until an operator
 `teamusage mcp` serves three tools to any MCP client over stdio:
 
 - `sync_usage`: collect and upload now, as `teamusage sync` does. A second call within a minute returns
-  the previous result marked `cached` instead of running again.
+  the previous result marked `cached` instead of running again. Its optional `labelHistory: true` is the
+  same as `--label-history`; use it only when you explicitly ask to label past usage.
 - `get_my_usage` and `get_team_usage`: your usage per model, or the team's per member and per model,
   for the last `1m`, `3m` or `6m` (default `1m`), with the note that cost is an estimate.
 
@@ -551,12 +559,13 @@ column in the members table, and a "By account" breakdown on each member's page.
 At each sync the client reads `oauthAccount.organizationType`, `organizationName`, `seatTier` and
 `userRateLimitTier` from Claude Code's `.claude.json` (`$CLAUDE_CONFIG_DIR/.claude.json` when that
 variable is an absolute path, otherwise `~/.claude.json`) and reads nothing else from that file. For
-Codex it reads `auth.json` in the Codex home (`$CODEX_HOME` when that is an absolute path, otherwise `~/.codex`) and takes only whether
-`OPENAI_API_KEY` is a non-empty string and the `chatgpt_plan_type` claim of the login token. The kinds:
+Codex it reads `auth.json` in the Codex home (`$CODEX_HOME` when that is an absolute path, otherwise
+`~/.codex`) and takes only whether `OPENAI_API_KEY` is a non-empty string and the `chatgpt_plan_type`
+claim of the login token. The kinds:
 
-- `personal`: Claude Pro, Max or Free; Codex with a Plus or Pro ChatGPT login.
-- `team` and `enterprise`: sent with the organisation name for Claude; for Codex, a Team or Enterprise
-  ChatGPT login.
+- `personal`: Claude Pro, Max or Free; Codex with a Free, Plus or Pro ChatGPT login.
+- `team` and `enterprise`: sent with the organisation name for Claude. For Codex, `team` is a Business
+  (or "team") ChatGPT login, and `enterprise` is an Enterprise or Edu login.
 - `api`: no login in the file but an API key, so the agent is using an API key.
 
 If the file is missing or unreadable, or the account type is not one of these, no label is sent. A plan
@@ -570,7 +579,7 @@ What the dashboard shows:
 | Personal · ChatGPT, Team · ChatGPT, Enterprise · ChatGPT, API key · ChatGPT | Codex accounts |
 | Unknown | Claude usage with no account label |
 | Other agents | Usage of non-Claude agents with no account label |
-| No plan | Usage with an account label but no recognised plan |
+| No plan | All usage without a recognised plan, including Unknown and Other agents |
 
 The plan is appended to the name, for example "Team · Example Co · Premium" or "Personal · Max 5x".
 
@@ -586,9 +595,11 @@ The label is best effort and per day:
 ### Labelling past usage
 
 `teamusage sync --label-history` sends all your history again and labels every Claude and Codex day with
-the account you are logged in to now. It is your own statement that the current logins were used for all
-past usage, so run it once, and only if that is true. It never overwrites a label that is already stored,
-and it fills in plans that are missing. It cannot be combined with `--detach` or `--throttle`.
+the account you are logged in to now. It applies to this machine only, so run it on each machine. It is
+your own statement that the current logins were used for all past usage, so run it once, and only if that
+is true. It never overwrites a label that is already stored, and it fills in plans that are missing.
+`--dry-run` previews it. It cannot be combined with `--detach` or `--throttle`. In Claude Code or Codex you
+can say "label my history" («отметь мою историю») and the skill runs it for you.
 
 ## Security model and limits
 
@@ -663,6 +674,17 @@ codex plugin add teamusage@teamusage
 
 Then, in Codex, type `/hooks` and trust the teamusage hooks. Codex does not run hooks you have not
 trusted. Trust them again after every plugin upgrade.
+
+**Upgrading the plugin.** In a terminal, refresh the marketplace snapshot and install the new version:
+
+```sh
+codex plugin marketplace upgrade teamusage
+codex plugin add teamusage@teamusage
+```
+
+Then, in Codex, type `/hooks` and trust the hooks again. If you registered teamusage with Codex before
+(0.2.0 `setup` did that by default), run `codex mcp remove teamusage` first: that registration hides the
+plugin's own MCP server.
 
 `teamusage setup` no longer offers to register the MCP tools with Codex; when `codex` is on your `PATH`
 it prints these plugin steps instead.
