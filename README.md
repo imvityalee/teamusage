@@ -47,12 +47,16 @@ instead, make the directory writable by uid 10001.
 
 Upgrade the server first. Rebuild the image, run `docker rm -f teamusage`, and start it again with the
 same `docker run` command and the same volume. Members, tokens and dashboard sessions are kept. The first
-start with this release adds two columns to the usage table in place; there is nothing for you to run.
+start with this release adds columns to the usage table in place; there is nothing for you to run.
 
-Clients on 0.1.0 keep working against the new server. Their usage shows as "Unknown" in the account
-views, because they send no account label. After the server, members update the Claude Code plugin to
-this release, which runs `teamusage@0.3.0`. Anyone who installed the client globally runs
-`npm install -g teamusage@0.3.0`.
+Upgrade the server before the clients: an older server rejects uploads that carry Codex account labels.
+Clients on 0.1.0 and 0.2.0 keep working against the new server. Their usage shows as "Unknown" in the
+account views when they send no account label. After the server, members update the Claude Code plugin to
+this release, which runs `teamusage@0.3.0`, and Codex users install the Codex plugin (see
+[Codex](#codex)). Anyone who installed the client globally runs `npm install -g teamusage@0.3.0`.
+
+"Unknown" now means unlabelled Claude usage only. Usage of other agents without an account label shows
+as "Other agents", and the `unknown` account filter matches Claude usage only.
 
 To update the plugin, run `claude plugin update teamusage@teamusage` in your shell, or open `/plugin`,
 select `teamusage` on the Installed tab and choose Update now. A third-party marketplace does not
@@ -63,7 +67,11 @@ A client upgraded before the server still uploads; it just loses the account lab
 before the server upgrade.
 
 An existing Codex MCP registration stays on the version it was registered with. Re-run
-`teamusage setup --codex` to move it to 0.2.0.
+`teamusage setup --codex` to move it to 0.3.0. Codex plugin users update the plugin and trust its hooks
+again (see [Codex](#codex)).
+
+After upgrading, a member can give past days their plan and account label once: see
+[Labelling past usage](#labelling-past-usage).
 
 ### Put it behind HTTPS (recommended)
 
@@ -217,10 +225,14 @@ teamusage: connect your machine (about 5 minutes)
    when a session starts and when it ends, and at most every 4 hours after a reply.
 5. Check it: ask Claude "send my usage", then find yourself on https://usage.example.com
 
-No Claude Code (Codex only, for example)? In a terminal:
-     npm install -g teamusage
-     teamusage setup --schedule
-This sends your usage every 4 hours (macOS and Linux).
+Using Codex? In a terminal, once:
+     npx -y teamusage@0.3.0 setup
+   (server URL, invite code, your name and email), then:
+     codex plugin marketplace add imvityalee/teamusage
+     codex plugin add teamusage@teamusage
+   Then in Codex type /hooks and trust the teamusage hooks. Trust them again after
+   each plugin upgrade. Codex usage is sent when a session starts and at most every
+   4 hours after a reply. On Windows, run "npx -y teamusage@0.3.0 sync" yourself.
 ```
 
 ```text
@@ -238,10 +250,15 @@ teamusage: подключите свой компьютер (около 5 мин
    при начале и при завершении каждой сессии, а также не чаще раза в 4 часа после ответа.
 5. Проверка: попросите Claude «отправь статистику» и найдите себя на https://usage.example.com
 
-Без Claude Code (например, только Codex)? В терминале:
-     npm install -g teamusage
-     teamusage setup --schedule
-Статистика будет отправляться каждые 4 часа (macOS и Linux).
+Используете Codex? В терминале, один раз:
+     npx -y teamusage@0.3.0 setup
+   (адрес сервера, код приглашения, ваши имя и почта), затем:
+     codex plugin marketplace add imvityalee/teamusage
+     codex plugin add teamusage@teamusage
+   Потом в Codex введите /hooks и доверьте хуки teamusage. После каждого обновления
+   плагина доверьте их снова. Статистика Codex отправляется при начале сессии и не
+   чаще раза в 4 часа после ответа. В Windows запускайте
+   «npx -y teamusage@0.3.0 sync» сами.
 ```
 
 If something does not arrive, the person runs `npx -y teamusage@0.3.0 status` in a terminal and reads
@@ -479,9 +496,11 @@ teamusage считает только ту работу, которая выпо
   журналы через 30 дней. Хуки плагина и синхронизация по расписанию делают это автоматически.
 
 Тип аккаунта Claude (личный, team, enterprise или API-ключ) клиент определяет по локальному файлу
-`.claude.json` и отправляет только для записей Claude за сегодня и вчера; название организации
-отправляется только для team и enterprise, почта и ID аккаунта не отправляются никогда. У более
-старых дней, у других агентов и у клиентов версии 0.1.0 в дашборде стоит «Неизвестно».
+`.claude.json`, а аккаунта Codex (Личный · ChatGPT, Команда · ChatGPT, Enterprise · ChatGPT,
+API-ключ · ChatGPT) по локальному файлу `auth.json`. Название организации отправляется только для team и
+enterprise Claude, тариф (например, Premium) только если он распознан; почта, ID аккаунта и токены не
+отправляются никогда. У записей Claude без метки в дашборде стоит «Неизвестно», у других агентов без
+метки «Другие агенты», у записей без тарифа «Без тарифа».
 
 ## Exactly what is sent
 
@@ -490,9 +509,12 @@ For each day, agent and model, one record:
 - date (your local day), agent, model
 - input, output, cache-create and cache-read token counts, and their total
 - estimated cost in US dollars, and a flag saying the model had no known price
-- on Claude records dated your local today or yesterday only, an account label: a kind (`personal`,
-  `team`, `enterprise` or `api`) and, for `team` and `enterprise` only, the organisation name (see
-  [Account labels](#account-labels))
+- on Claude and Codex records dated your local today or yesterday (all days with `--label-history`), an
+  account label: a kind (`personal`, `team`, `enterprise` or `api`) and, for Claude `team` and `enterprise`
+  only, the organisation name (see [Account labels](#account-labels))
+- the account's plan, when it is recognised: `free`, `pro`, `max_5x`, `max_20x`, `team_standard`,
+  `team_premium`, `plus`, `business`, `edu` or `enterprise`. Nothing is sent for a plan that is not one of
+  these
 
 The server refuses a record with more than 10^12 tokens in any count or 4 × 10^12 in total, a cost above
 $10,000,000, an agent name over 64 or a model name over 128 characters, or control characters in a name;
@@ -508,8 +530,13 @@ When a machine registers, once:
 - the hostname, as a label. It is shown to the team on the member's page, together with the time of
   that machine's last sync.
 
-Nothing else. Never your account email, account IDs or plan. No prompts, no file paths, no project or repository names, no session contents.
+Nothing else. Never your account email, account IDs, workspace IDs or tokens. No prompts, no file paths, no project or repository names, no session contents.
 `teamusage sync --dry-run` prints the exact payload and sends nothing, so you can check for yourself.
+
+From Claude Code's `~/.claude.json` the client reads only `oauthAccount.organizationType`,
+`organizationName`, `seatTier` and `userRateLimitTier`. From Codex's `auth.json` it reads only whether
+`OPENAI_API_KEY` is set (not its value) and the plan claim (`chatgpt_plan_type`) inside the login token;
+no token, account id or email is read or sent.
 
 Usage is read by [ccusage](https://github.com/ryoppippi/ccusage) (a pinned version) from each agent's
 local logs. It supports several agents, for example Claude Code and Codex; see the ccusage project for
@@ -518,26 +545,50 @@ plan charges you.
 
 ## Account labels
 
-The dashboard can show which kind of Claude account the usage ran on: an Accounts filter, an Accounts
+The dashboard can show which kind of account the usage ran on: an Accounts filter, an Accounts
 column in the members table, and a "By account" breakdown on each member's page.
 
-At each sync the client reads `oauthAccount.organizationType` and `organizationName` from Claude Code's
-`.claude.json` (`$CLAUDE_CONFIG_DIR/.claude.json` when that variable is an absolute path, otherwise
-`~/.claude.json`) and reads nothing else from that file. The kinds:
+At each sync the client reads `oauthAccount.organizationType`, `organizationName`, `seatTier` and
+`userRateLimitTier` from Claude Code's `.claude.json` (`$CLAUDE_CONFIG_DIR/.claude.json` when that
+variable is an absolute path, otherwise `~/.claude.json`) and reads nothing else from that file. For
+Codex it reads `auth.json` in the Codex home (`$CODEX_HOME` when that is an absolute path, otherwise `~/.codex`) and takes only whether
+`OPENAI_API_KEY` is a non-empty string and the `chatgpt_plan_type` claim of the login token. The kinds:
 
-- `personal`: Pro, Max or Free.
-- `team` and `enterprise`: sent with the organisation name.
-- `api`: no Claude login in the file, so Claude Code is using an API key.
+- `personal`: Claude Pro, Max or Free; Codex with a Plus or Pro ChatGPT login.
+- `team` and `enterprise`: sent with the organisation name for Claude; for Codex, a Team or Enterprise
+  ChatGPT login.
+- `api`: no login in the file but an API key, so the agent is using an API key.
 
-If the file is missing or unreadable, or the plan type is not one of these, no label is sent.
+If the file is missing or unreadable, or the account type is not one of these, no label is sent. A plan
+that is not recognised is not sent either; nothing is guessed.
+
+What the dashboard shows:
+
+| Name | Meaning |
+| --- | --- |
+| Claude keys as before | Personal, Team (with organisation), Enterprise (with organisation), API key |
+| Personal · ChatGPT, Team · ChatGPT, Enterprise · ChatGPT, API key · ChatGPT | Codex accounts |
+| Unknown | Claude usage with no account label |
+| Other agents | Usage of non-Claude agents with no account label |
+| No plan | Usage with an account label but no recognised plan |
+
+The plan is appended to the name, for example "Team · Example Co · Premium" or "Personal · Max 5x".
 
 The label is best effort and per day:
 
-- Only Claude records dated your machine's local today or yesterday carry it. Older days, days sent by a
-  0.1.0 client, and every other agent have no label, and the dashboard shows "Unknown" for them.
+- Claude records dated your machine's local today or yesterday carry a label, and so do Codex records of
+  those days. Older days, days sent by a 0.1.0 client, and other agents have none, and the dashboard shows
+  "Unknown" (Claude) or "Other agents" for them.
 - The server changes a day's label only when that day's tokens grow (or when the day has no label yet).
   A resend without a label never clears one.
 - If you switch accounts during a day, that day keeps the label of the last sync that added tokens.
+
+### Labelling past usage
+
+`teamusage sync --label-history` sends all your history again and labels every Claude and Codex day with
+the account you are logged in to now. It is your own statement that the current logins were used for all
+past usage, so run it once, and only if that is true. It never overwrites a label that is already stored,
+and it fills in plans that are missing. It cannot be combined with `--detach` or `--throttle`.
 
 ## Security model and limits
 
@@ -563,7 +614,7 @@ Read this before you deploy. This version is deliberately simple.
 
 ## Scheduled sync
 
-For agents that have no session hook (Codex, for example), a scheduled job runs `teamusage sync --quiet`
+For agents that have no session hook, or if you do not use the plugins, a scheduled job runs `teamusage sync --quiet`
 every four hours, and once when it is installed. It is installed only when you ask:
 
 ```sh
@@ -600,15 +651,40 @@ teamusage status                  # shows "Scheduled sync: installed" or "not in
 
 ## Codex
 
-If `codex` is on your `PATH`, an interactive `teamusage setup` asks (default yes) whether to register the
-MCP tools with it, by running
+This repository is also a Codex plugin marketplace. The plugin sends your Codex usage automatically and
+adds two skills and the MCP tools. It runs the client from npm at a pinned version
+(`npx -y teamusage@0.3.0`), so Node.js 22 or newer is required. Set up once, in a terminal:
+
+```sh
+npx -y teamusage@0.3.0 setup                      # server URL, invite code, your name and email
+codex plugin marketplace add imvityalee/teamusage
+codex plugin add teamusage@teamusage
+```
+
+Then, in Codex, type `/hooks` and trust the teamusage hooks. Codex does not run hooks you have not
+trusted. Trust them again after every plugin upgrade.
+
+`teamusage setup` no longer offers to register the MCP tools with Codex; when `codex` is on your `PATH`
+it prints these plugin steps instead.
+
+**When it sends.** The hooks start the sync in the background and never make Codex wait. Codex 0.141 has
+no session-end event, so Codex usage is sent when a session starts and, during a session, at most every
+4 hours after a reply. (The plugin also has a session-end hook, for later Codex versions.) The hooks work
+on macOS and Linux. On Windows the hook commands are not valid, so Windows Codex users run
+`teamusage sync` themselves or use the `sync_usage` MCP tool.
+
+**Troubleshooting.** The hooks print nothing. To see what is wrong, run `npx -y teamusage@0.3.0 status`
+or `teamusage sync` in a terminal, and read `sync.log` in the config directory.
+
+**Without the plugin.** `teamusage setup --codex` registers only the MCP tools with Codex, by running
 
 ```sh
 codex mcp add teamusage -- npx -y teamusage@<this client's version> mcp
 ```
 
-Use `--codex` to say yes without being asked (also for a non-interactive setup), or `--no-codex` to skip the
-question. Without `codex` on `PATH`, setup says nothing about it. To undo it: `codex mcp remove teamusage`.
+It is for people who do not want the plugin, and it needs `codex` on `PATH`. `--no-codex` says nothing
+about Codex. To undo it: `codex mcp remove teamusage`. You can also use the
+[scheduled sync](#scheduled-sync) instead of hooks.
 
 ## Development
 

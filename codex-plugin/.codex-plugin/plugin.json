@@ -1,7 +1,7 @@
 {
   "name": "teamusage",
   "version": "0.3.0",
-  "description": "Sends this machine's coding-agent token counts to your team's self-hosted teamusage server when a Codex session starts and ends and during one at most every 4 hours, and adds skills and MCP tools to send and view usage",
+  "description": "Sends this machine's coding-agent token counts to your team's self-hosted teamusage server when a Codex session starts and, during a session, at most every 4 hours after a reply, and adds skills and MCP tools to send and view usage",
   "author": {
     "name": "imvityalee"
   },
