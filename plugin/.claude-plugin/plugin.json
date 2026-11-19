@@ -1,6 +1,6 @@
 {
   "name": "teamusage",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Sends this machine's coding-agent token counts to your team's self-hosted teamusage server after each session and during one at most every 4 hours, and adds skills and MCP tools to send and view usage",
   "author": {
     "name": "imvityalee"

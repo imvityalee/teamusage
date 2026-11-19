@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Checks the Claude Code plugin and marketplace files. Prints one line per failure and exits 1 on any.
+// Checks the Claude Code and Codex plugins and their marketplace files. Prints one line per failure and exits 1 on any.
 // Usage: node scripts/check-plugin.mjs [repo-root]   (default: the repository this script lives in)
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
@@ -22,6 +22,12 @@ const MCP_ENV = {
 };
 const HOOK_EVENTS = ["SessionEnd", "SessionStart", "Stop"];
 const STOP_ARGS = ["--throttle", "4h"];
+const SESSION_START_MATCHER = "startup|resume";
+// Codex 0.141 has no SessionEnd event (it ignores the key without a warning; OpenAI's hook docs list it for later
+// versions) and skips every hook marked async ("async hooks are not supported yet"), so the Codex hooks are plain
+// synchronous commands; --detach makes each one return at once.
+const CODEX_POLICY = { installation: "AVAILABLE", authentication: "ON_INSTALL" };
+const CODEX_CATEGORY = "Developer Tools";
 const SKILLS = ["usage-stats", "usage-sync"];
 const ALLOWED_EXT = new Set([".json", ".md"]);
 const MAX_DESCRIPTION = 1536; // Claude Code truncates longer skill descriptions in its listing
@@ -67,8 +73,8 @@ export function checkPlugin(root) {
     if (typeof clientPkg.license !== "string" || clientPkg.license === "") fail("packages/client/package.json: needs a license");
   }
 
-  const pluginFiles = listFiles(pluginDir);
-  const files = [...listFiles(path.join(root, ".claude-plugin")), ...pluginFiles];
+  const pluginFiles = [...listFiles(pluginDir), ...listFiles(path.join(root, "codex-plugin"))];
+  const files = [...listFiles(path.join(root, ".claude-plugin")), ...listFiles(path.join(root, ".agents/plugins")), ...pluginFiles];
   const json = new Map();
   for (const f of files.filter((f) => f.endsWith(".json"))) {
     try {
@@ -175,9 +181,92 @@ export function checkPlugin(root) {
     }
   }
 
-  // Skills
-  for (const name of SKILLS) {
-    const file = `plugin/skills/${name}/SKILL.md`;
+  // Codex marketplace
+  const codexMarket = need(".agents/plugins/marketplace.json");
+  if (codexMarket) {
+    const M = ".agents/plugins/marketplace.json";
+    if (codexMarket.name !== PLUGIN) fail(`${M}: name must be "${PLUGIN}"`);
+    const entries = Array.isArray(codexMarket.plugins) ? codexMarket.plugins : [];
+    const e = entries[0];
+    const ok =
+      entries.length === 1 &&
+      e?.name === PLUGIN &&
+      e.source?.source === "local" &&
+      e.source?.path === "./codex-plugin" &&
+      e.policy?.installation === CODEX_POLICY.installation &&
+      e.policy?.authentication === CODEX_POLICY.authentication &&
+      e.category === CODEX_CATEGORY;
+    if (!ok) {
+      fail(
+        `${M}: must list exactly one plugin {name: "${PLUGIN}", source: {source: "local", path: "./codex-plugin"}, ` +
+          `policy: ${JSON.stringify(CODEX_POLICY)}, category: "${CODEX_CATEGORY}"}`,
+      );
+    }
+  }
+
+  // Codex manifest
+  const C_MANIFEST = "codex-plugin/.codex-plugin/plugin.json";
+  const cManifest = need(C_MANIFEST);
+  if (cManifest) {
+    if (cManifest.name !== PLUGIN) fail(`${C_MANIFEST}: name must be "${PLUGIN}"`);
+    if (version !== undefined && cManifest.version !== version) {
+      fail(`${C_MANIFEST}: version ${cManifest.version} differs from the client version ${version}`);
+    }
+    for (const k of ["description", "repository"]) {
+      if (typeof cManifest[k] !== "string" || cManifest[k] === "") fail(`${C_MANIFEST}: ${k} is missing`);
+    }
+    if (typeof cManifest.author?.name !== "string" || cManifest.author.name === "") fail(`${C_MANIFEST}: author.name is missing`);
+    if (cManifest.license !== "MIT") fail(`${C_MANIFEST}: license must be "MIT"`);
+    const kw = cManifest.keywords;
+    if (!Array.isArray(kw) || kw.length === 0 || !kw.every((k) => typeof k === "string" && k !== "")) {
+      fail(`${C_MANIFEST}: keywords must be a list of words`);
+    }
+    if (cManifest.skills !== "./skills/") fail(`${C_MANIFEST}: skills must be "./skills/"`);
+    if (cManifest.interface?.displayName !== PLUGIN) fail(`${C_MANIFEST}: interface.displayName must be "${PLUGIN}"`);
+    // Codex reads hooks/hooks.json and .mcp.json by default; a path here would add a second source.
+    for (const k of ["hooks", "mcpServers", "apps"]) {
+      if (k in cManifest) fail(`${C_MANIFEST}: must not declare "${k}"; use the default locations`);
+    }
+  }
+
+  // Codex MCP server: no env, the client reads its own config file
+  const C_MCP = "codex-plugin/.mcp.json";
+  const cMcp = need(C_MCP);
+  if (cMcp) {
+    const want = { mcpServers: { [PLUGIN]: { command: "npx", args: clientArgs("mcp") } } };
+    if (JSON.stringify(cMcp) !== JSON.stringify(want)) fail(`${C_MCP}: must be exactly ${JSON.stringify(want)}`);
+  }
+
+  // Codex hooks: one command string each
+  const C_HOOKS = "codex-plugin/hooks/hooks.json";
+  const cHooks = need(C_HOOKS);
+  if (cHooks) {
+    const events = cHooks.hooks;
+    if (typeof events !== "object" || events === null || Array.isArray(events)) {
+      fail(`${C_HOOKS}: the event map must sit under a top-level "hooks" key`);
+    } else {
+      if (!sameArray(Object.keys(events).sort(), HOOK_EVENTS)) {
+        fail(`${C_HOOKS}: hooks must be exactly ${HOOK_EVENTS.slice(0, -1).join(", ")} and ${HOOK_EVENTS.at(-1)}`);
+      }
+      for (const ev of Object.keys(events)) {
+        const groups = Array.isArray(events[ev]) ? events[ev] : [];
+        if (ev === "SessionStart" && (groups.length !== 1 || groups[0]?.matcher !== SESSION_START_MATCHER)) {
+          fail(`${C_HOOKS}: SessionStart must match "${SESSION_START_MATCHER}"`);
+        }
+        const handlers = groups.flatMap((g) => (Array.isArray(g?.hooks) ? g.hooks : [null]));
+        if (handlers.length !== 1) fail(`${C_HOOKS}: ${ev} must have exactly one hook`);
+        const args = clientArgs("sync", "--quiet", "--detach", ...(ev === "Stop" ? STOP_ARGS : []));
+        const want = { type: "command", command: ["npx", ...args].join(" ") };
+        for (const h of handlers) {
+          if (JSON.stringify(h) !== JSON.stringify(want)) fail(`${C_HOOKS}: ${ev} hook must be ${JSON.stringify(want)}`);
+        }
+      }
+    }
+  }
+
+  // Skills of both plugins
+  for (const [dir, name] of ["plugin", "codex-plugin"].flatMap((d) => SKILLS.map((s) => [d, s]))) {
+    const file = `${dir}/skills/${name}/SKILL.md`;
     let text;
     try {
       text = readFileSync(path.join(root, file), "utf8");
@@ -206,15 +295,14 @@ export function checkPlugin(root) {
   }
   for (const f of pluginFiles) {
     const r = rel(f);
-    if (r.startsWith("plugin/skills/") && !SKILLS.some((s) => r === `plugin/skills/${s}/SKILL.md`)) {
-      fail(`${r}: unexpected file under plugin/skills`);
-    }
+    const dir = ["plugin", "codex-plugin"].find((d) => r.startsWith(`${d}/skills/`));
+    if (dir && !SKILLS.some((s) => r === `${dir}/skills/${s}/SKILL.md`)) fail(`${r}: unexpected file under ${dir}/skills`);
   }
 
-  // Every file in the plugin: no scripts, pinned client only, user config only in the MCP env
+  // Every file in both plugins: no scripts, pinned client only, user config only in the MCP env
   for (const f of pluginFiles) {
     const r = rel(f);
-    if (!ALLOWED_EXT.has(path.extname(f))) fail(`${r}: only .json and .md files are allowed in the plugin`);
+    if (!ALLOWED_EXT.has(path.extname(f))) fail(`${r}: only .json and .md files are allowed in a plugin`);
     if ((statSync(f).mode & 0o111) !== 0) fail(`${r}: must not be executable`);
     const text = readFileSync(f, "utf8");
     if (r !== "plugin/.mcp.json" && text.includes("${user_config.")) {

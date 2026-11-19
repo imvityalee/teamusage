@@ -51,8 +51,8 @@ start with this release adds two columns to the usage table in place; there is n
 
 Clients on 0.1.0 keep working against the new server. Their usage shows as "Unknown" in the account
 views, because they send no account label. After the server, members update the Claude Code plugin to
-this release, which runs `teamusage@0.2.0`. Anyone who installed the client globally runs
-`npm install -g teamusage@0.2.0`.
+this release, which runs `teamusage@0.3.0`. Anyone who installed the client globally runs
+`npm install -g teamusage@0.3.0`.
 
 To update the plugin, run `claude plugin update teamusage@teamusage` in your shell, or open `/plugin`,
 select `teamusage` on the Installed tab and choose Update now. A third-party marketplace does not
@@ -244,7 +244,7 @@ teamusage: подключите свой компьютер (около 5 мин
 Статистика будет отправляться каждые 4 часа (macOS и Linux).
 ```
 
-If something does not arrive, the person runs `npx -y teamusage@0.2.0 status` in a terminal and reads
+If something does not arrive, the person runs `npx -y teamusage@0.3.0 status` in a terminal and reads
 `sync.log` in `~/.config/teamusage`. Details on each path follow below.
 
 ## Join as a team member
@@ -314,7 +314,7 @@ They use the same config as the other commands. The Claude Code plugin below reg
 
 This repository is also a Claude Code plugin marketplace. The plugin sends your usage automatically when
 Claude Code sessions start and end and during a session at most every 4 hours, and adds two skills and the MCP tools above. It runs the client from
-npm at a pinned version (`npx -y teamusage@0.2.0`). Inside Claude Code:
+npm at a pinned version (`npx -y teamusage@0.3.0`). Inside Claude Code:
 
 ```
 /plugin marketplace add imvityalee/teamusage
@@ -385,11 +385,11 @@ node packages/client/dist/cli.js sync
 ```
 
 You can instead install it from npm with
-`npm install -g teamusage@0.2.0` and use `teamusage setup`, `teamusage sync` and
+`npm install -g teamusage@0.3.0` and use `teamusage setup`, `teamusage sync` and
 `teamusage schedule install` (see [Scheduled sync](#scheduled-sync)).
 
 **Automatic sending.** When a session starts (new or resumed) and when it ends, the plugin runs
-`npx -y teamusage@0.2.0 sync --quiet --detach`. The client returns at once, the sync continues in the
+`npx -y teamusage@0.3.0 sync --quiet --detach`. The client returns at once, the sync continues in the
 background, the client prints nothing, and failures go to `sync.log` in the config directory.
 
 A `Stop` hook, which Claude Code runs after each reply, runs the same command with `--throttle 4h`. The

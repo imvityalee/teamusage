@@ -7,7 +7,7 @@
           {
             "type": "command",
             "command": "npx",
-            "args": ["-y", "teamusage@0.2.0", "sync", "--quiet", "--detach"],
+            "args": ["-y", "teamusage@0.3.0", "sync", "--quiet", "--detach"],
             "async": true
           }
         ]
@@ -19,7 +19,7 @@
           {
             "type": "command",
             "command": "npx",
-            "args": ["-y", "teamusage@0.2.0", "sync", "--quiet", "--detach"],
+            "args": ["-y", "teamusage@0.3.0", "sync", "--quiet", "--detach"],
             "async": true
           }
         ]
@@ -31,7 +31,7 @@
           {
             "type": "command",
             "command": "npx",
-            "args": ["-y", "teamusage@0.2.0", "sync", "--quiet", "--detach", "--throttle", "4h"],
+            "args": ["-y", "teamusage@0.3.0", "sync", "--quiet", "--detach", "--throttle", "4h"],
             "async": true
           }
         ]

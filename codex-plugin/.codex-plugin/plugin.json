@@ -1,0 +1,19 @@
+{
+  "name": "teamusage",
+  "version": "0.3.0",
+  "description": "Sends this machine's coding-agent token counts to your team's self-hosted teamusage server when a Codex session starts and ends and during one at most every 4 hours, and adds skills and MCP tools to send and view usage",
+  "author": {
+    "name": "imvityalee"
+  },
+  "homepage": "https://github.com/imvityalee/teamusage",
+  "repository": "https://github.com/imvityalee/teamusage",
+  "license": "MIT",
+  "keywords": ["usage", "tokens", "team", "mcp", "codex"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "teamusage",
+    "shortDescription": "Send token usage to your team's teamusage server and view it",
+    "developerName": "imvityalee",
+    "category": "Developer Tools"
+  }
+}

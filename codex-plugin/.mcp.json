@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "teamusage": {
+      "command": "npx",
+      "args": ["-y", "teamusage@0.3.0", "mcp"]
+    }
+  }
+}

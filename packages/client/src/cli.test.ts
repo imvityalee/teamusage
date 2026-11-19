@@ -205,7 +205,7 @@ const sched = () => {
   };
 };
 
-test("setup without --schedule or a Codex yes installs nothing and runs nothing", async () => {
+test("setup without --schedule or --codex installs nothing and runs nothing", async () => {
   const s = sched();
   const codexRun = vi.fn(okRun);
   expect(await main(SETUP(), { ...deps(), platform: "darwin", schedule: s.schedule, interactive: false, codex: { find: () => "/bin/codex", run: codexRun } })).toBe(0);
@@ -254,36 +254,42 @@ test("status says whether the schedule is installed", async () => {
   expect(printed(out)).toMatch(/Scheduled sync: +installed/);
 });
 
-test("setup asks about Codex (default yes) when it is on PATH, and registers with a pinned version", async () => {
-  const run = vi.fn(okRun);
-  const confirm = vi.fn(async () => true);
-  const codex = { find: () => "/bin/codex", run, version: () => "0.1.0" };
-  expect(await main(SETUP(), { ...deps(), interactive: true, confirm, codex })).toBe(0);
-  expect(confirm).toHaveBeenCalledOnce();
-  expect(run).toHaveBeenCalledWith("/bin/codex", ["mcp", "add", "teamusage", "--", "npx", "-y", "teamusage@0.1.0", "mcp"]);
-});
+const CODEX_HINT = [
+  "Codex found. To send Codex usage automatically, install the teamusage Codex plugin:",
+  "  codex plugin marketplace add imvityalee/teamusage",
+  "  codex plugin add teamusage@teamusage",
+  "then trust its hooks in Codex with /hooks.",
+].join("\n");
 
-test("a no at the Codex prompt, --no-codex, and non-interactive without --codex register nothing", async () => {
+test("setup with codex on PATH and no flag prints the plugin hint, asks nothing and registers nothing", async () => {
   const run = vi.fn(okRun);
   const codex = { find: () => "/bin/codex", run, version: () => "0.1.0" };
-  await main(SETUP(), { ...deps(), interactive: true, confirm: async () => false, codex });
-  const confirm = vi.fn(async () => true);
-  await main([...SETUP(), "--no-codex"], { ...deps(), interactive: true, confirm, codex });
-  await main(SETUP(), { ...deps(), interactive: false, confirm, codex });
+  for (const interactive of [false, true]) {
+    out.mockClear();
+    expect(await main(SETUP(), { ...deps(), interactive, codex })).toBe(0);
+    expect(printed(out)).toContain(`${CODEX_HINT}\n`);
+    expect(printed(out).indexOf("Codex found.")).toBeLessThan(printed(out).indexOf("Running the first sync..."));
+  }
   expect(run).not.toHaveBeenCalled();
-  expect(confirm).not.toHaveBeenCalled();
+  expect(printed(out)).not.toContain("Register the MCP tools with Codex?");
 });
 
-test("setup --codex registers without asking, and with codex absent setup says nothing about it", async () => {
+test("setup --no-codex prints no hint and registers nothing", async () => {
   const run = vi.fn(okRun);
-  const confirm = vi.fn(async () => true);
-  expect(await main([...SETUP(), "--codex"], { ...deps(), interactive: false, confirm, codex: { find: () => "/bin/codex", run, version: () => "0.1.0" } })).toBe(0);
+  expect(await main([...SETUP(), "--no-codex"], { ...deps(), interactive: true, codex: { find: () => "/bin/codex", run, version: () => "0.1.0" } })).toBe(0);
+  expect(run).not.toHaveBeenCalled();
+  expect(printed(out) + printed(err)).not.toMatch(/codex/i);
+});
+
+test("setup --codex registers with a pinned version and prints no hint; with codex absent setup says nothing about it", async () => {
+  const run = vi.fn(okRun);
+  expect(await main([...SETUP(), "--codex"], { ...deps(), interactive: false, codex: { find: () => "/bin/codex", run, version: () => "0.1.0" } })).toBe(0);
   expect(run).toHaveBeenCalledOnce();
-  expect(confirm).not.toHaveBeenCalled();
+  expect(run).toHaveBeenCalledWith("/bin/codex", ["mcp", "add", "teamusage", "--", "npx", "-y", "teamusage@0.1.0", "mcp"]);
+  expect(printed(out)).not.toContain("Codex found.");
   out.mockClear();
   err.mockClear();
-  expect(await main(SETUP(), { ...deps(), interactive: true, confirm, codex: { find: () => undefined } })).toBe(0);
-  expect(confirm).not.toHaveBeenCalled();
+  expect(await main(SETUP(), { ...deps(), interactive: true, codex: { find: () => undefined } })).toBe(0);
   expect(printed(out) + printed(err)).not.toMatch(/codex/i);
   expect(await main([...SETUP(), "--codex", "--no-codex"], deps())).toBe(2);
 });

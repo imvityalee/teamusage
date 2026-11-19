@@ -21,7 +21,6 @@ export type CliDeps = Partial<Deps> & {
   platform?: NodeJS.Platform;
   codex?: Partial<CodexDeps>;
   interactive?: boolean;
-  confirm?: (question: string) => Promise<boolean>;
 };
 
 const USAGE = `Usage: ${APP_NAME} <command> [options]
@@ -33,9 +32,10 @@ Commands:
       Asks for anything not given. The invite code is stored only with --save-invite.
       Plain http is accepted only for localhost unless --allow-insecure-http is given.
       --schedule   also install the scheduled sync (every 4 hours; macOS and Linux)
-      --codex      register the MCP tools with Codex without asking (needs \`codex\` on PATH)
-      --no-codex   do not offer to register with Codex
-      If \`codex\` is on PATH, an interactive setup asks (default yes) whether to register with it.
+      --codex      register the MCP tools with Codex by \`codex mcp add\` (needs \`codex\` on PATH);
+                   not needed with the ${APP_NAME} Codex plugin, which brings the MCP tools itself
+      --no-codex   say nothing about Codex
+      If \`codex\` is on PATH, setup prints how to install the ${APP_NAME} Codex plugin.
   schedule install|remove
       Install or remove the job that runs "sync --quiet" every 4 hours (launchd on macOS, cron on Linux).
       Install the client globally first: npm install -g ${APP_NAME}
@@ -161,7 +161,7 @@ async function runSetup(args: string[], deps: CliDeps): Promise<number> {
   const who = await setup(input, env);
   out(`Registered ${who.name} <${who.email}> with ${who.serverUrl}.\n`);
   let code = 0;
-  // Only what the user asked for: --schedule, --codex, or a yes at the Codex prompt.
+  // Only what the user asked for: --schedule or --codex. Without --codex, Codex only gets a hint.
   if (values.schedule) {
     try {
       out(`${await installSchedule(deps.platform, deps.schedule)}\n`);
@@ -170,7 +170,7 @@ async function runSetup(args: string[], deps: CliDeps): Promise<number> {
       code = 1;
     }
   }
-  if (!values["no-codex"]) code = (await offerCodex(values.codex === true, interactive, deps)) || code;
+  if (!values["no-codex"]) code = (await offerCodex(values.codex === true, deps)) || code;
   out("Running the first sync...\n");
   try {
     await sync({ deps });
@@ -181,7 +181,14 @@ async function runSetup(args: string[], deps: CliDeps): Promise<number> {
   return code;
 }
 
-async function offerCodex(flag: boolean, interactive: boolean, deps: CliDeps): Promise<number> {
+const CODEX_PLUGIN_HINT = `Codex found. To send Codex usage automatically, install the ${APP_NAME} Codex plugin:
+  codex plugin marketplace add imvityalee/${APP_NAME}
+  codex plugin add ${APP_NAME}@${APP_NAME}
+then trust its hooks in Codex with /hooks.
+`;
+
+/** With --codex: the old `codex mcp add` registration. Without it: only a hint about the Codex plugin. */
+async function offerCodex(flag: boolean, deps: CliDeps): Promise<number> {
   const codex = codexDeps(deps.codex, deps.env ?? process.env);
   if (!codex.find()) {
     if (!flag) return 0; // no Codex here: say nothing
@@ -189,18 +196,8 @@ async function offerCodex(flag: boolean, interactive: boolean, deps: CliDeps): P
     return 1;
   }
   if (!flag) {
-    if (!interactive) return 0;
-    let yes: boolean;
-    if (deps.confirm) yes = await deps.confirm("Register the MCP tools with Codex? [Y/n] ");
-    else {
-      const ask = prompter();
-      try {
-        yes = !/^n/i.test((await ask.text("Register the MCP tools with Codex? [Y/n] ")).trim());
-      } finally {
-        ask.close();
-      }
-    }
-    if (!yes) return 0;
+    out(CODEX_PLUGIN_HINT);
+    return 0;
   }
   try {
     await registerCodex(codex);

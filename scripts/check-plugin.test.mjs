@@ -1,7 +1,7 @@
 // Tests for check-plugin.mjs: each rule is broken in a temporary copy of the plugin and must be reported.
 // Run with: node --test scripts/check-plugin.test.mjs
 import assert from "node:assert/strict";
-import { chmodSync, cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { after, test } from "node:test";
@@ -12,12 +12,13 @@ const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const temps = [];
 after(() => temps.forEach((d) => rmSync(d, { recursive: true, force: true })));
 
-/** A fresh copy of the marketplace, the plugin, the client package.json and the README; `edit` breaks it. */
+/** A fresh copy of both marketplaces, both plugins, the client package.json and the README; `edit` breaks it. */
 function copy(edit = () => {}) {
   const root = mkdtempSync(path.join(os.tmpdir(), "check-plugin-"));
   temps.push(root);
-  cpSync(path.join(repo, ".claude-plugin"), path.join(root, ".claude-plugin"), { recursive: true });
-  cpSync(path.join(repo, "plugin"), path.join(root, "plugin"), { recursive: true });
+  for (const dir of [".claude-plugin", "plugin", ".agents", "codex-plugin"]) {
+    if (existsSync(path.join(repo, dir))) cpSync(path.join(repo, dir), path.join(root, dir), { recursive: true });
+  }
   mkdirSync(path.join(root, "packages/client"), { recursive: true });
   cpSync(path.join(repo, "packages/client/package.json"), path.join(root, "packages/client/package.json"));
   cpSync(path.join(repo, "README.md"), path.join(root, "README.md"));
@@ -238,3 +239,139 @@ test("SessionEnd must not carry --throttle", () =>
     copy(({ json }) => json(HOOKS, (h) => h.hooks.SessionEnd[0].hooks[0].args.push("--throttle", "4h"))),
     /SessionEnd hook must be/,
   ));
+
+// The Codex plugin and its marketplace
+
+const C_MANIFEST = "codex-plugin/.codex-plugin/plugin.json";
+const C_HOOKS = "codex-plugin/hooks/hooks.json";
+const C_MCP = "codex-plugin/.mcp.json";
+const C_SYNC_SKILL = "codex-plugin/skills/usage-sync/SKILL.md";
+const C_STATS_SKILL = "codex-plugin/skills/usage-stats/SKILL.md";
+const C_MARKET = ".agents/plugins/marketplace.json";
+
+test("the repository's Codex tree is checked: each of its files is required", () => {
+  for (const f of [C_MANIFEST, C_HOOKS, C_MCP, C_SYNC_SKILL, C_STATS_SKILL, C_MARKET]) {
+    expectFailure(copy(({ file }) => rmSync(file(f))), new RegExp(`${f.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")}: missing`));
+  }
+});
+
+test("the Codex plugin version differs from the client version", () =>
+  expectFailure(
+    copy(({ json }) => json(C_MANIFEST, (m) => (m.version = "0.0.9"))),
+    /codex-plugin\/\.codex-plugin\/plugin\.json: version 0\.0\.9 differs/,
+  ));
+
+test("the Codex manifest needs its name, skills path, licence and display name", () => {
+  expectFailure(copy(({ json }) => json(C_MANIFEST, (m) => (m.name = "other"))), /codex-plugin\/\.codex-plugin\/plugin\.json: name must be "teamusage"/);
+  expectFailure(copy(({ json }) => json(C_MANIFEST, (m) => (m.skills = "./other/"))), /plugin\.json: skills must be "\.\/skills\/"/);
+  expectFailure(copy(({ json }) => json(C_MANIFEST, (m) => (m.license = "GPL-3.0"))), /plugin\.json: license must be "MIT"/);
+  expectFailure(copy(({ json }) => json(C_MANIFEST, (m) => delete m.interface)), /plugin\.json: interface\.displayName must be "teamusage"/);
+  expectFailure(copy(({ json }) => json(C_MANIFEST, (m) => delete m.author)), /plugin\.json: author\.name is missing/);
+});
+
+test("the Codex manifest must not point hooks or MCP at another file", () =>
+  expectFailure(
+    copy(({ json }) => json(C_MANIFEST, (m) => (m.hooks = "./other.json"))),
+    /codex-plugin\/\.codex-plugin\/plugin\.json: must not declare "hooks"/,
+  ));
+
+test("a Codex hook pins another client version", () =>
+  expectFailure(
+    copy(({ json }) =>
+      json(C_HOOKS, (h) => (h.hooks.SessionEnd[0].hooks[0].command = "npx -y teamusage@0.0.9 sync --quiet --detach")),
+    ),
+    /codex-plugin\/hooks\/hooks\.json: teamusage@0\.0\.9 does not match/,
+  ));
+
+test("a Codex skill pins another client version", () =>
+  expectFailure(
+    copy(({ text }) => text(C_SYNC_SKILL, (s) => `${s}\nRun \`npx -y teamusage@0.0.9 setup\`.\n`)),
+    /codex-plugin\/skills\/usage-sync\/SKILL\.md: teamusage@0\.0\.9 does not match/,
+  ));
+
+test("the Codex Stop hook lacks --throttle 4h", () =>
+  expectFailure(
+    copy(({ json }) => json(C_HOOKS, (h) => (h.hooks.Stop[0].hooks[0].command = `npx -y teamusage@${version} sync --quiet --detach`))),
+    /codex-plugin\/hooks\/hooks\.json: Stop hook must be/,
+  ));
+
+test("the Codex hooks are exactly SessionStart, Stop and SessionEnd", () => {
+  expectFailure(copy(({ json }) => json(C_HOOKS, (h) => delete h.hooks.SessionEnd)), /codex-plugin\/hooks\/hooks\.json: hooks must be exactly/);
+  expectFailure(
+    copy(({ json }) => json(C_HOOKS, (h) => (h.hooks.UserPromptSubmit = h.hooks.Stop))),
+    /codex-plugin\/hooks\/hooks\.json: hooks must be exactly/,
+  );
+});
+
+test("a Codex hook in exec form, not one command string", () =>
+  expectFailure(
+    copy(({ json }) =>
+      json(C_HOOKS, (h) => {
+        const hook = h.hooks.SessionStart[0].hooks[0];
+        hook.command = "npx";
+        hook.args = ["-y", `teamusage@${version}`, "sync", "--quiet", "--detach"];
+      }),
+    ),
+    /codex-plugin\/hooks\/hooks\.json: SessionStart hook must be/,
+  ));
+
+test("the Codex SessionStart hook without its matcher", () =>
+  expectFailure(copy(({ json }) => json(C_HOOKS, (h) => delete h.hooks.SessionStart[0].matcher)), /SessionStart must match "startup\|resume"/));
+
+// Codex 0.141 skips every hook marked async ("async hooks are not supported yet"), so none may be.
+test("a Codex hook marked async", () => {
+  for (const ev of ["SessionStart", "Stop"]) {
+    expectFailure(
+      copy(({ json }) => json(C_HOOKS, (h) => (h.hooks[ev][0].hooks[0].async = true))),
+      new RegExp(`codex-plugin/hooks/hooks\\.json: ${ev} hook must be`),
+    );
+  }
+});
+
+test("the Codex SessionEnd hook carrying --throttle", () =>
+  expectFailure(
+    copy(({ json }) => json(C_HOOKS, (h) => (h.hooks.SessionEnd[0].hooks[0].command += " --throttle 4h"))),
+    /codex-plugin\/hooks\/hooks\.json: SessionEnd hook must be/,
+  ));
+
+test("the Codex MCP server with an env", () =>
+  expectFailure(
+    copy(({ json }) => json(C_MCP, (m) => (m.mcpServers.teamusage.env = { TEAMUSAGE_SERVER_URL: "https://usage.example.com" }))),
+    /codex-plugin\/\.mcp\.json: must be exactly/,
+  ));
+
+test("the Codex MCP server runs another version", () =>
+  expectFailure(
+    copy(({ json }) => json(C_MCP, (m) => (m.mcpServers.teamusage.args[1] = "teamusage@0.0.9"))),
+    /codex-plugin\/\.mcp\.json: must be exactly/,
+  ));
+
+test("a Codex skill without its front matter name", () =>
+  expectFailure(
+    copy(({ text }) => text(C_STATS_SKILL, (s) => s.replace("name: usage-stats\n", ""))),
+    /codex-plugin\/skills\/usage-stats\/SKILL\.md: frontmatter must have exactly name and description/,
+  ));
+
+test("user config interpolated into a Codex file", () =>
+  expectFailure(
+    copy(({ text }) => text(C_SYNC_SKILL, (s) => `${s}\nThe server is \${user_config.server_url}.\n`)),
+    /codex-plugin\/skills\/usage-sync\/SKILL\.md: \$\{user_config\.\*\} is allowed only/,
+  ));
+
+test("a script in the Codex plugin, or an extra skill file", () => {
+  expectFailure(copy(({ file }) => writeFileSync(file("codex-plugin/hooks/run.sh"), "#!/bin/sh\n")), /codex-plugin\/hooks\/run\.sh: only \.json and \.md/);
+  expectFailure(copy(({ file }) => writeFileSync(file("codex-plugin/skills/usage-sync/notes.md"), "x")), /notes\.md: unexpected file under codex-plugin\/skills/);
+});
+
+test("the Codex marketplace points at another source, or lacks its policy or category", () => {
+  expectFailure(
+    copy(({ json }) => json(C_MARKET, (m) => (m.plugins[0].source.path = "./plugin"))),
+    /\.agents\/plugins\/marketplace\.json: must list exactly one plugin/,
+  );
+  expectFailure(
+    copy(({ json }) => json(C_MARKET, (m) => (m.plugins[0].policy.installation = "INSTALLED_BY_DEFAULT"))),
+    /\.agents\/plugins\/marketplace\.json: must list exactly one plugin/,
+  );
+  expectFailure(copy(({ json }) => json(C_MARKET, (m) => delete m.plugins[0].category)), /\.agents\/plugins\/marketplace\.json: must list exactly one plugin/);
+  expectFailure(copy(({ json }) => json(C_MARKET, (m) => (m.name = "other"))), /\.agents\/plugins\/marketplace\.json: name must be "teamusage"/);
+});
