@@ -62,7 +62,10 @@ function parseFilters(
     if (!validName(agent, MAX_AGENT_CHARS) || !validName(model, MAX_MODEL_CHARS)) return undefined;
     models.set(v, { agent, model });
   }
-  return { agents: [...new Set(agentValues)], models: [...models.values()], accounts: [...new Set(accountValues)],
+  return {
+    agents: [...new Set(agentValues)],
+    models: [...models.values()],
+    accounts: [...new Set(accountValues)],
     plans: [...new Set(planValues)],
   };
 }

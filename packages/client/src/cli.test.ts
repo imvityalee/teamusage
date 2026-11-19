@@ -259,6 +259,7 @@ const CODEX_HINT = [
   "  codex plugin marketplace add imvityalee/teamusage",
   "  codex plugin add teamusage@teamusage",
   "then trust its hooks in Codex with /hooks.",
+  "If you registered teamusage with Codex before, run `codex mcp remove teamusage` first: the plugin brings its own MCP server.",
 ].join("\n");
 
 test("setup with codex on PATH and no flag prints the plugin hint, asks nothing and registers nothing", async () => {

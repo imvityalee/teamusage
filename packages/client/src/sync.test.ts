@@ -5,8 +5,7 @@ import { afterEach, beforeEach, describe, expect, test, vi, type MockInstance } 
 import type { UsageRecord } from "@teamusage/shared";
 import type { Db } from "../../server/src/db.js";
 import { CollectError } from "./collect.js";
-import { configPath, saveConfig, type Config } from "./config.js";
-import { updateConfigFile } from "./config.js";
+import { configPath, saveConfig, updateConfigFile, type Config } from "./config.js";
 import { getStatus, setup, sync, syncSince, type Deps } from "./sync.js";
 import { machineId } from "./machine.js";
 import { countRows, startServer as start, type TestServer } from "./test-server.js";
@@ -154,12 +153,27 @@ describe("label history", () => {
     const d = deps({ collect, accounts: () => ({ claude, codex }) });
     await sync({ labelHistory: true, deps: d });
     expect(collect).toHaveBeenCalledWith(undefined);
-    const body = calls("/api/usage")[0];
+    const body = calls("/api/usage")[1];
     expect(body.records[0].account).toEqual(claude);
     expect(body.records[1].account).toEqual(codex);
     expect("account" in body.records[2]).toBe(false);
     expect(lines(d)).toContain("Labels all Claude history as Team · O!Bank · Premium.");
     expect(lines(d)).toContain("Labels all Codex history as Personal · ChatGPT · Plus.");
+  });
+
+  test("uploads twice: a normal pass first (only today and yesterday labelled), then every day labelled", async () => {
+    updateConfigFile({ lastSuccessfulSync: "2026-11-18" });
+    const rows = () => [
+      rec(0, { date: "2025-03-01", agent: "claude" }),
+      rec(1, { date: "2025-03-01", agent: "codex" }),
+      rec(2, { date: "2026-11-18", agent: "claude" }),
+    ];
+    const d = deps({ collect: async () => rows(), accounts: () => ({ claude, codex }) });
+    await sync({ labelHistory: true, deps: d });
+    const bodies = calls("/api/usage");
+    expect(bodies).toHaveLength(2);
+    expect(bodies[0].records.map((r: { account?: unknown }) => r.account)).toEqual([undefined, undefined, claude]);
+    expect(bodies[1].records.map((r: { account?: unknown }) => r.account)).toEqual([claude, codex, claude]);
   });
 
   test("a missing login is reported and only agents present are mentioned", async () => {

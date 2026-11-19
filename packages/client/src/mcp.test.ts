@@ -270,7 +270,8 @@ test("results are capped: 150 members -> 100 (highest tokens first) with truncat
 });
 
 test("hand-written JSON schemas and zod schemas accept and reject the same inputs", () => {
-  const samples = [{}, { range: "1m" }, { range: "3m" }, { range: "6m" }, { range: "2m" }, { range: 1 }, { range: "1m", x: 1 }, { x: 1 }];
+  const samples = [{}, { range: "1m" }, { range: "3m" }, { range: "6m" }, { range: "2m" }, { range: 1 }, { range: "1m", x: 1 }, { x: 1 },
+    { labelHistory: true }, { labelHistory: "yes" }, { labelHistory: true, x: 1 }];
   for (const tool of TOOLS) {
     const zodSchema = tool.name === "sync_usage" ? syncInput : rangeInput;
     const js = z.fromJSONSchema(tool.inputSchema as never);
@@ -318,11 +319,12 @@ test("sync_usage labelHistory bypasses the cache; a non-boolean is invalid", asy
     now += 1000;
     const r = JSON.parse((await handleTool("sync_usage", { labelHistory: true }, d)).text);
     expect(r.cached).toBeUndefined();
-    expect(collect).toHaveBeenCalledTimes(2);
-    expect(collect).toHaveBeenLastCalledWith(undefined);
+    // history mode collects twice: the normal pass, then all history
+    expect(collect).toHaveBeenCalledTimes(3);
+    expect(collect).toHaveBeenCalledWith(undefined);
     const bad = await handleTool("sync_usage", { labelHistory: "yes" }, d);
     expect(bad.isError).toBe(true);
-    expect(collect).toHaveBeenCalledTimes(2);
+    expect(collect).toHaveBeenCalledTimes(3);
   } finally {
     await srv.close();
   }

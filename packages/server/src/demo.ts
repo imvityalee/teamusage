@@ -57,7 +57,7 @@ const MEMBERS: { name: string; email: string; agents: string[]; scale: number; l
 ];
 
 /**
- * Fills the database with deterministic made-up usage: 6 members, 4 agents, 180 days, some with Claude and Codex account labels and plans ending at `today`.
+ * Fills the database with deterministic made-up usage: 6 members, 4 agents, 180 days ending at `today`, some with Claude and Codex account labels and plans.
  * No real time or `Math.random`; rows go through the same write paths as real data.
  */
 export function seedDemo(db: Db, today: string): void {

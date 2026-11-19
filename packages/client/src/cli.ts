@@ -185,6 +185,7 @@ const CODEX_PLUGIN_HINT = `Codex found. To send Codex usage automatically, insta
   codex plugin marketplace add imvityalee/${APP_NAME}
   codex plugin add ${APP_NAME}@${APP_NAME}
 then trust its hooks in Codex with /hooks.
+If you registered ${APP_NAME} with Codex before, run \`codex mcp remove ${APP_NAME}\` first: the plugin brings its own MCP server.
 `;
 
 /** With --codex: the old `codex mcp add` registration. Without it: only a hint about the Codex plugin. */

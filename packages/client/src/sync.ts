@@ -268,7 +268,7 @@ async function collectAndUpload(
   history: boolean,
 ): Promise<SyncResult> {
   const today = deps.today();
-  const since = history ? undefined : syncSince(cfg.lastSuccessfulSync);
+  const since = syncSince(cfg.lastSuccessfulSync);
   // A login file must never fail a sync: a throwing reader means no label for that agent only.
   const logins = ((): Logins => {
     let all: Partial<Logins> = {};
@@ -279,17 +279,29 @@ async function collectAndUpload(
     }
     return { claude: all.claude ?? null, codex: all.codex ?? null };
   })();
+  const collectLabelled = async (from: string | undefined, hist: boolean) =>
+    labelRecords((await deps.collect(from)).map(onlyRecordFields), logins, today, { history: hist });
+  const summarize = (records: UsageRecord[]): SyncResult => ({
+    ...empty(),
+    days: new Set(records.map((r) => r.date)).size,
+    agents: [...new Set(records.map((r) => r.agent))].sort(),
+    records: records.length,
+  });
+  /**
+   * Upload passes, in order. A plain sync is one pass. With --label-history a normal pass goes first (labels only
+   * today and yesterday, as a plain sync does), so the totals on the server are already equal when the history pass
+   * (every day labelled) arrives: it can then only fill labels and plans that are missing, never replace one.
+   */
   const gather = async (from: string | undefined) => {
-    const records = labelRecords((await deps.collect(from)).map(onlyRecordFields), logins, today, { history });
-    const summary: SyncResult = {
-      ...empty(),
-      days: new Set(records.map((r) => r.date)).size,
-      agents: [...new Set(records.map((r) => r.agent))].sort(),
-      records: records.length,
-    };
-    return { records, summary };
+    if (!history) {
+      const plain = await collectLabelled(from, false);
+      return { passes: [plain], summary: summarize(plain) };
+    }
+    const all = await collectLabelled(undefined, true);
+    if (dryRun) return { passes: [all], summary: summarize(all) };
+    return { passes: [await collectLabelled(from, false), all], summary: summarize(all) };
   };
-  let { records, summary: result } = await gather(since);
+  let { passes, summary: result } = await gather(since);
   if (history && !quiet) {
     for (const [agent, title] of [["claude", "Claude"], ["codex", "Codex"]] as const) {
       if (!result.agents.includes(agent)) continue;
@@ -313,7 +325,7 @@ async function collectAndUpload(
   };
 
   if (dryRun) {
-    if (!quiet) printDryRun(deps.log, records, identity());
+    if (!quiet) printDryRun(deps.log, passes[0] as UsageRecord[], identity());
     return result;
   }
 
@@ -343,10 +355,12 @@ async function collectAndUpload(
   let reRegistered = false;
   for (;;) {
     try {
-      for (let i = 0; i < records.length; i += CHUNK) {
-        const res = await upload(cfg.serverUrl, token, records.slice(i, i + CHUNK));
-        result.stored += res.stored;
-        result.kept += res.kept;
+      for (const pass of passes) {
+        for (let i = 0; i < pass.length; i += CHUNK) {
+          const res = await upload(cfg.serverUrl, token, pass.slice(i, i + CHUNK));
+          result.stored += res.stored;
+          result.kept += res.kept;
+        }
       }
       break;
     } catch (e) {
@@ -358,7 +372,7 @@ async function collectAndUpload(
       token = await registerNow(inviteCode, true);
       // The server may have lost this machine's history (an operator removed it), so send all of it again,
       // from the first chunk.
-      if (since !== undefined) ({ records, summary: result } = await gather(undefined));
+      if (since !== undefined) ({ passes, summary: result } = await gather(undefined));
       else result = { ...result, stored: 0, kept: 0 };
     }
   }

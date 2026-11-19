@@ -297,6 +297,16 @@ describe("account plan", () => {
     expect(row()).toEqual({ account_kind: "team", account_org: "A", account_plan: "team_premium" });
   });
 
+  test("a row with no kind (0.1/0.2) takes the label and plan at the same total, then keeps them", () => {
+    const who = setup();
+    upsertUsage(db, who, [rec({ ...base, total: 100 })]);
+    expect(row()).toEqual({ account_kind: null, account_org: null, account_plan: null });
+    upsertUsage(db, who, [rec({ ...base, total: 100, account: { kind: "team", org: "A", plan: "team_premium" } })]);
+    expect(row()).toEqual({ account_kind: "team", account_org: "A", account_plan: "team_premium" });
+    upsertUsage(db, who, [rec({ ...base, total: 100 })]);
+    expect(row()).toEqual({ account_kind: "team", account_org: "A", account_plan: "team_premium" });
+  });
+
   test("a new account replaces the plan", () => {
     const who = setup();
     upsertUsage(db, who, [rec({ ...base, total: 100, account: { kind: "personal", plan: "pro" } })]);

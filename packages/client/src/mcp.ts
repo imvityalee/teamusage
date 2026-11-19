@@ -27,7 +27,6 @@ const GENERIC_ERROR = "the tool failed unexpectedly";
 const DAYS: Record<Range, 30 | 90 | 180> = { "1m": 30, "3m": 90, "6m": 180 };
 
 export const rangeInput = z.strictObject({ range: z.enum(["1m", "3m", "6m"]).default("1m") });
-export const noInput = z.strictObject({});
 export const syncInput = z.strictObject({ labelHistory: z.boolean().optional() });
 
 export const TOOLS = [
@@ -35,7 +34,9 @@ export const TOOLS = [
     name: "sync_usage",
     description:
       "Collect this machine's coding-agent token usage and upload it to the team server. " +
-      "labelHistory: true sends all history again and labels every Claude and Codex day with the current login.",
+      "labelHistory: true sends all history again and labels every Claude and Codex day with the current login. " +
+      "Use labelHistory only when the user explicitly asks to label past usage, because it states that the current " +
+      "logins were used for all past usage on this machine.",
     inputSchema: {
       type: "object" as const,
       properties: {
