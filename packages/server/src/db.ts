@@ -146,18 +146,21 @@ export function upsertUsage(
         when excluded.account_kind is not null and ${SAME_ACCOUNT} and excluded.account_plan is not null
           and (excluded.total > usage.total or usage.account_plan is null) then excluded.account_plan
         else usage.account_plan end`;
-  // A day's usage only grows, so a lower incoming total means local logs were pruned: keep the stored row.
+  // A day's usage only grows, so a lower incoming total means local logs were pruned: keep the stored counts. Such a
+  // record may still fill an empty label (and the same account's missing plan), so pruned days can be labelled too.
+  const GROWS = "excluded.total >= usage.total";
+  const keepOr = (col: string) => `${col} = case when ${GROWS} then excluded.${col} else usage.${col} end`;
+  const FILLS = `excluded.account_kind is not null and (usage.account_kind is null
+        or (${SAME_ACCOUNT} and usage.account_plan is null and excluded.account_plan is not null))`;
   const stmt = db.prepare(`
     insert into usage (member_id, machine_id, date, agent, model, input, output, cache_create, cache_read, total, cost_usd, unpriced, account_kind, account_org, account_plan)
     values (@memberId, @machineId, @date, @agent, @model, @input, @output, @cacheCreate, @cacheRead, @total, @costUsd, @unpriced, @accountKind, @accountOrg, @accountPlan)
     on conflict (machine_id, date, agent, model) do update set
-      member_id = excluded.member_id, input = excluded.input, output = excluded.output,
-      cache_create = excluded.cache_create, cache_read = excluded.cache_read, total = excluded.total,
-      cost_usd = excluded.cost_usd, unpriced = excluded.unpriced,
+      ${["member_id", "input", "output", "cache_create", "cache_read", "total", "cost_usd", "unpriced"].map(keepOr).join(",\n      ")},
       account_org = case when ${TAKE_LABEL} then excluded.account_org else usage.account_org end,
       account_kind = case when ${TAKE_LABEL} then excluded.account_kind else usage.account_kind end,
       account_plan = ${PLAN}
-    where excluded.total >= usage.total`);
+    where ${GROWS} or (${FILLS})`);
   return db.transaction(() => {
     let stored = 0;
     let kept = 0;

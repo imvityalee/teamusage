@@ -297,6 +297,32 @@ describe("account plan", () => {
     expect(row()).toEqual({ account_kind: "team", account_org: "A", account_plan: "team_premium" });
   });
 
+  test("a lower total (pruned logs) still fills an empty label and plan but keeps the stored tokens", () => {
+    const who = setup();
+    upsertUsage(db, who, [rec({ ...base, input: 100, total: 100 })]);
+    const res = upsertUsage(db, who, [rec({ ...base, input: 90, total: 90, account: { kind: "team", org: "A", plan: "team_premium" } })]);
+    expect(res).toEqual({ stored: 1, kept: 0 });
+    expect(row()).toEqual({ account_kind: "team", account_org: "A", account_plan: "team_premium" });
+    expect(db.prepare("select input, total from usage").get()).toEqual({ input: 100, total: 100 });
+  });
+
+  test("a lower total fills a missing plan for the same account only", () => {
+    const who = setup();
+    upsertUsage(db, who, [rec({ ...base, total: 100, account: { kind: "team", org: "A" } })]);
+    upsertUsage(db, who, [rec({ ...base, total: 90, account: { kind: "team", org: "A", plan: "team_premium" } })]);
+    expect(row()).toEqual({ account_kind: "team", account_org: "A", account_plan: "team_premium" });
+    upsertUsage(db, who, [rec({ ...base, total: 90, account: { kind: "personal", plan: "pro" } })]);
+    expect(row()).toEqual({ account_kind: "team", account_org: "A", account_plan: "team_premium" });
+    expect(db.prepare("select total from usage").get()).toEqual({ total: 100 });
+  });
+
+  test("a lower total without a label changes nothing", () => {
+    const who = setup();
+    upsertUsage(db, who, [rec({ ...base, total: 100 })]);
+    expect(upsertUsage(db, who, [rec({ ...base, total: 90 })])).toEqual({ stored: 0, kept: 1 });
+    expect(row()).toEqual({ account_kind: null, account_org: null, account_plan: null });
+  });
+
   test("a row with no kind (0.1/0.2) takes the label and plan at the same total, then keeps them", () => {
     const who = setup();
     upsertUsage(db, who, [rec({ ...base, total: 100 })]);
