@@ -6,6 +6,7 @@ import type { UsageRecord } from "@teamusage/shared";
 import type { Db } from "../../server/src/db.js";
 import { CollectError } from "./collect.js";
 import { configPath, saveConfig, updateConfigFile, type Config } from "./config.js";
+import { noticePath } from "./notice.js";
 import { getStatus, setup, sync, syncSince, type Deps } from "./sync.js";
 import { machineId } from "./machine.js";
 import { countRows, startServer as start, type TestServer } from "./test-server.js";
@@ -14,6 +15,20 @@ const osId = vi.hoisted(() => ({ value: "test-os-id" as string | null }));
 vi.mock("./machine.js", async (importOriginal) => {
   const real = await importOriginal<typeof import("./machine.js")>();
   return { ...real, readOsId: () => osId.value };
+});
+
+const lockFails = vi.hoisted(() => ({ value: false }));
+vi.mock("node:fs", async (importOriginal) => {
+  const real = await importOriginal<typeof import("node:fs")>();
+  return {
+    ...real,
+    openSync: ((file: import("node:fs").PathLike, ...rest: unknown[]) => {
+      if (lockFails.value && String(file).endsWith("sync.lock")) {
+        throw Object.assign(new Error("denied"), { code: "EACCES" });
+      }
+      return (real.openSync as (...a: unknown[]) => number)(file, ...rest);
+    }) as typeof real.openSync,
+  };
 });
 
 const realFetch = globalThis.fetch;
@@ -795,5 +810,59 @@ describe("plain http to a remote host", () => {
     const d = deps({ env: envFor(remote()) });
     await expect(sync({ deps: d })).rejects.toThrow("--allow-insecure-http");
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("codex notice", () => {
+  const hook = (over: Record<string, string> = {}) => deps({ env: { TEAMUSAGE_HOOK: "codex", ...over } });
+  const MSG = "teamusage could not send your usage: teamusage is not set up; run `teamusage setup`";
+
+  test("writes a notice for a missing setup under TEAMUSAGE_HOOK=codex", async () => {
+    await sync({ quiet: true, deps: hook() });
+    expect(JSON.parse(readFileSync(noticePath(), "utf8"))).toEqual({ systemMessage: MSG });
+    expect(statSync(noticePath()).mode & 0o777).toBe(0o600);
+  });
+
+  test("non-quiet runs write the notice and still reject", async () => {
+    await expect(sync({ deps: hook() })).rejects.toThrow(/not set up/);
+    expect(existsSync(noticePath())).toBe(true);
+  });
+
+  test("only Codex hook syncs write a notice", async () => {
+    await sync({ quiet: true, deps: deps({ env: {} }) });
+    expect(existsSync(noticePath())).toBe(false);
+  });
+
+  test("network errors write no notice", async () => {
+    const url = srv.url;
+    await srv.close();
+    saveConfig({ serverUrl: url, name: "Ann", email: "ann@example.com", token: TOKEN, ...bound(url) });
+    await sync({ quiet: true, deps: hook() });
+    expect(existsSync(noticePath())).toBe(false);
+  });
+
+  test("lock errors write no notice", async () => {
+    saveConfig({ serverUrl: srv.url, name: "Ann", email: "ann@example.com", token: TOKEN, ...bound(srv.url) });
+    lockFails.value = true;
+    try {
+      await expect(sync({ deps: hook() })).rejects.toThrow(/sync lock/);
+    } finally {
+      lockFails.value = false;
+    }
+    expect(existsSync(noticePath())).toBe(false);
+  });
+
+  test("any success deletes the notice", async () => {
+    await sync({ quiet: true, deps: hook() });
+    expect(existsSync(noticePath())).toBe(true);
+    await sync({ deps: deps({ env: envFor(srv.url) }) });
+    expect(existsSync(noticePath())).toBe(false);
+  });
+
+  test("a failing notice write is ignored", async () => {
+    const blocked = path.join(home, "blocked");
+    writeFileSync(blocked, "");
+    vi.stubEnv("XDG_CONFIG_HOME", blocked);
+    await expect(sync({ quiet: true, deps: hook() })).resolves.toMatchObject({ stored: 0 });
   });
 });

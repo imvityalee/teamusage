@@ -18,6 +18,7 @@ import {
   updateConfigFile,
   type Config,
 } from "./config.js";
+import { clearCodexNotice, isSetupProblem, writeCodexNotice } from "./notice.js";
 import { machineId, machineLabel, readOsId } from "./machine.js";
 
 export interface Deps {
@@ -41,9 +42,12 @@ export interface SyncResult {
 
 /** Its messages are fixed text and never include tokens or invite codes. */
 export class SyncError extends Error {
-  constructor(message: string) {
+  /** True for errors that are not a setup or token problem (the sync lock), so they get no Codex notice. */
+  readonly notSetup: boolean;
+  constructor(message: string, opts: { notSetup?: boolean } = {}) {
     super(message);
     this.name = "SyncError";
+    this.notSetup = opts.notSetup === true;
   }
 }
 
@@ -190,7 +194,7 @@ function acquireLock(): (() => void) | null {
         }
       };
     } catch (e) {
-      if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw new SyncError("could not create the sync lock");
+      if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw new SyncError("could not create the sync lock", { notSetup: true });
     }
     let age: number;
     try {
@@ -236,6 +240,7 @@ export async function sync(
   try {
     return await run(deps, opts.dryRun === true, quiet, opts.labelHistory === true);
   } catch (e) {
+    if (deps.env.TEAMUSAGE_HOOK === "codex" && isSetupProblem(e)) writeCodexNotice(errorMessage(e));
     if (!quiet) throw e;
     appendSyncLog(`sync failed: ${errorMessage(e)}`);
     return empty();
@@ -378,6 +383,7 @@ async function collectAndUpload(
   }
 
   updateConfigFile({ lastSuccessfulSync: today, lastSyncAgents: result.agents, ...binding });
+  clearCodexNotice();
   if (!quiet) {
     const agents = result.agents.length ? result.agents.join(", ") : "none";
     deps.log(
