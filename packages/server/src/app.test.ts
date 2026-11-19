@@ -849,9 +849,10 @@ describe("account filter", () => {
       { key: "team:D", tokens: 100 },
       { key: "personal", tokens: 40 },
       { key: "team:a:b", tokens: 13 },
-      { key: "unknown", tokens: 10 },
+      { key: "other", tokens: 10 },
     ]);
-    expect((await stats("&account=unknown", cookie)).body.totals.tokens).toBe(10);
+    expect((await stats("&account=unknown", cookie)).body.totals.tokens).toBe(0);
+    expect((await stats("&account=other", cookie)).body.totals.tokens).toBe(10);
     expect((await stats("&account=personal&account=personal", cookie)).body.totals.tokens).toBe(40);
   });
 
@@ -890,5 +891,37 @@ describe("account filter", () => {
     expect((await getStatsReq(`${RANGE}&member=999999&account=boss`, cookie)).status).toBe(400);
     expect((await getStatsReq(`${RANGE}&member=999999&account=personal`, cookie)).status).toBe(404);
     expect((await getStatsReq(`${RANGE}&account=personal`, {})).status).toBe(401);
+  });
+});
+
+describe("plan filter", () => {
+  const seedPlans = async () => {
+    const ann = await register();
+    const up = await post(
+      "/api/usage",
+      {
+        records: [
+          record({ agent: "codex", model: "gpt", total: 200, input: 191, account: { kind: "personal", plan: "plus" } }),
+          record({ model: "opus", total: 50, input: 41 }),
+        ],
+      },
+      bearer(ann.token),
+    );
+    expect(up.status).toBe(200);
+    return { cookie: { Cookie: sessionCookie(await login()) } };
+  };
+
+  test("plan filters totals and is validated", async () => {
+    const { cookie } = await seedPlans();
+    const tokens = async (qs: string) => ((await (await getStatsReq(`${RANGE}${qs}`, cookie)).json()) as { totals: { tokens: number } }).totals.tokens;
+    expect(await tokens("&plan=codex:plus")).toBe(200);
+    expect(await tokens("&plan=none")).toBe(50);
+    expect(await tokens("&plan=none&plan=codex:plus&plan=codex:plus")).toBe(250);
+    expect((await getStatsReq(`${RANGE}&plan=bogus`, cookie)).status).toBe(400);
+    expect((await getStatsReq(`${RANGE}&plan=claude:plus`, cookie)).status).toBe(400);
+    const many = (n: number) => Array.from({ length: n }, () => "&plan=codex:plus").join("");
+    expect((await getStatsReq(`${RANGE}${many(51)}`, cookie)).status).toBe(400);
+    expect((await getStatsReq(`${RANGE}${many(50)}`, cookie)).status).toBe(200);
+    expect((await getStatsReq(`${RANGE}&plan=codex:plus`, {})).status).toBe(401);
   });
 });

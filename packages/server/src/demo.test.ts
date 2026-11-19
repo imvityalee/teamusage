@@ -78,4 +78,14 @@ describe("seedDemo", () => {
     const rows = db.prepare("select distinct last_sync_at as t from machines").all() as { t: string }[];
     expect(rows.every((r) => r.t.startsWith(TODAY))).toBe(true);
   });
+
+  test("includes Codex accounts and plans", () => {
+    const db = openDb(":memory:");
+    seedDemo(db, TODAY);
+    const s = getStats(db, { from: FROM, to: TODAY });
+    expect(s.available.accounts.some((a) => a.key.startsWith("chatgpt:"))).toBe(true);
+    expect(s.available.accounts.some((a) => a.key === "other")).toBe(true);
+    expect(s.available.plans.some((p) => p.key.startsWith("codex:"))).toBe(true);
+    expect(s.available.plans.some((p) => p.key.startsWith("claude:"))).toBe(true);
+  });
 });

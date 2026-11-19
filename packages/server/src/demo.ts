@@ -1,4 +1,4 @@
-import type { UsageRecord } from "@teamusage/shared";
+import type { AccountLabel, UsageRecord } from "@teamusage/shared";
 import { registerMachine, upsertUsage, type Db } from "./db.js";
 
 const DAYS = 180;
@@ -38,17 +38,26 @@ const MODELS: Record<string, { model: string; usdPerMTok: number }[]> = {
   ],
 };
 
-const MEMBERS: { name: string; email: string; agents: string[]; scale: number }[] = [
-  { name: "Alice Archer", email: "alice@example.com", agents: ["claude", "codex"], scale: 1.6 },
-  { name: "Bao Nguyen", email: "bao@example.com", agents: ["claude", "gemini"], scale: 1.2 },
-  { name: "Carla Mendes", email: "carla@example.com", agents: ["codex", "opencode"], scale: 1.0 },
-  { name: "Dmitri Volkov", email: "dmitri@example.com", agents: ["claude", "opencode", "gemini"], scale: 0.8 },
-  { name: "Esi Boateng", email: "esi@example.com", agents: ["gemini", "codex"], scale: 0.5 },
-  { name: "Farid Karimi", email: "farid@example.com", agents: ["claude"], scale: 0.3 },
+/** Account labels per member and agent; an agent without an entry uploads unlabelled rows. */
+type Labels = Partial<Record<string, AccountLabel>>;
+
+const MEMBERS: { name: string; email: string; agents: string[]; scale: number; labels: Labels }[] = [
+  {
+    name: "Alice Archer",
+    email: "alice@example.com",
+    agents: ["claude", "codex"],
+    scale: 1.6,
+    labels: { claude: { kind: "team", org: "Acme", plan: "team_premium" }, codex: { kind: "personal", plan: "plus" } },
+  },
+  { name: "Bao Nguyen", email: "bao@example.com", agents: ["claude", "gemini"], scale: 1.2, labels: { claude: { kind: "team", org: "Acme", plan: "team_standard" } } },
+  { name: "Carla Mendes", email: "carla@example.com", agents: ["codex", "opencode"], scale: 1.0, labels: { codex: { kind: "team", plan: "business" } } },
+  { name: "Dmitri Volkov", email: "dmitri@example.com", agents: ["claude", "opencode", "gemini"], scale: 0.8, labels: { claude: { kind: "personal", plan: "max_5x" } } },
+  { name: "Esi Boateng", email: "esi@example.com", agents: ["gemini", "codex"], scale: 0.5, labels: {} },
+  { name: "Farid Karimi", email: "farid@example.com", agents: ["claude"], scale: 0.3, labels: { claude: { kind: "personal" } } },
 ];
 
 /**
- * Fills the database with deterministic made-up usage: 6 members, 4 agents, 180 days ending at `today`.
+ * Fills the database with deterministic made-up usage: 6 members, 4 agents, 180 days, some with Claude and Codex account labels and plans ending at `today`.
  * No real time or `Math.random`; rows go through the same write paths as real data.
  */
 export function seedDemo(db: Db, today: string): void {
@@ -86,6 +95,7 @@ export function seedDemo(db: Db, today: string): void {
           total,
           costUsd: Math.round((total / 1e6) * pick.usdPerMTok * 1e4) / 1e4,
           unpriced: false,
+          ...(m.labels[agent] ? { account: m.labels[agent] } : {}),
         });
       });
     }

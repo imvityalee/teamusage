@@ -1,4 +1,4 @@
-import { accountKey, parseAccountKey, type AccountKind, type Stats } from "@teamusage/shared";
+import { accountKey, parseAccountKey, parsePlanKey, planKey, type AccountKind, type Stats } from "@teamusage/shared";
 import type { Db } from "./db.js";
 
 /** SQLite `total()` returns a float and cannot overflow; anything non-finite is clamped, never emitted as null. */
@@ -16,17 +16,20 @@ function datesBetween(from: string, to: string): string[] {
 }
 
 /**
- * SQL condition on `usage` alias `u` for the agent, model and account filters, with its bound values. Only the
+ * SQL condition on `usage` alias `u` for the agent, model, account and plan filters, with its bound values. Only the
  * number of placeholders depends on the input; every value is bound by name, never written into the SQL text.
  * Combination rule: a row is included when (no agent filter OR its agent is listed) AND
- * (no model filter OR its (agent, model) pair is listed) AND (no account filter OR its account key is listed).
- * Account keys: `unknown` is a null label; `team:`/`enterprise:` treat a null org as the empty org. A malformed
- * key matches nothing.
+ * (no model filter OR its (agent, model) pair is listed) AND (no account filter OR its account key is listed) AND
+ * (no plan filter OR its plan key is listed).
+ * Account keys: `unknown` is an unlabelled Claude row, `other` an unlabelled row of any other agent,
+ * `chatgpt:<kind>` a Codex label; `team:`/`enterprise:` treat a null org as the empty org. Plan keys: `none` is no
+ * plan, else `<agent>:<plan>`. A malformed key matches nothing.
  */
 function usageFilter(
   agents: string[],
   models: { agent: string; model: string }[],
   accounts: string[],
+  plans: string[],
 ): { sql: string; params: Record<string, string> } {
   const params: Record<string, string> = {};
   const parts: string[] = [];
@@ -45,11 +48,24 @@ function usageFilter(
     const alts = accounts.map((key, i) => {
       const a = parseAccountKey(key);
       if (!a) return "0";
-      if (a.kind === "unknown") return "u.account_kind is null";
+      if (a.kind === "unknown") return "(u.account_kind is null and u.agent = 'claude')";
+      if (a.kind === "other") return "(u.account_kind is null and u.agent <> 'claude')";
       params[`fk${i}`] = a.kind;
-      if (a.org === null) return `u.account_kind = @fk${i}`;
+      if (a.agent === "codex") return `(u.agent = 'codex' and u.account_kind = @fk${i})`;
+      if (a.org === null) return `(u.agent = 'claude' and u.account_kind = @fk${i})`;
       params[`fo${i}`] = a.org;
-      return `(u.account_kind = @fk${i} and coalesce(u.account_org, '') = @fo${i})`;
+      return `(u.agent = 'claude' and u.account_kind = @fk${i} and coalesce(u.account_org, '') = @fo${i})`;
+    });
+    parts.push(`(${alts.join(" or ")})`);
+  }
+  if (plans.length > 0) {
+    const alts = plans.map((key, i) => {
+      const p = parsePlanKey(key);
+      if (!p) return "0";
+      if (p.agent === null) return "u.account_plan is null";
+      params[`pa${i}`] = p.agent;
+      params[`pp${i}`] = p.plan;
+      return `(u.agent = @pa${i} and u.account_plan = @pp${i})`;
     });
     parts.push(`(${alts.join(" or ")})`);
   }
@@ -57,28 +73,37 @@ function usageFilter(
 }
 
 /** The filter key of a stored label. Validation guarantees a non-null kind is an AccountKind. */
-const labelKey = (kind: AccountKind | null, org: string | null): string =>
-  accountKey(kind === null ? null : { kind, ...(org === null ? {} : { org }) }, "claude");
+function labelKey(agent: string, kind: AccountKind | null, org: string | null): string {
+  if (kind === null || (agent !== "claude" && agent !== "codex")) return accountKey(null, agent);
+  return accountKey({ kind, ...(org === null ? {} : { org }) }, agent);
+}
 
-/** Every account in the range (and member), ignoring all filters, tokens desc then key. One grouped query. */
-function availableAccounts(
+const cmp = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+const byTokensDesc = (a: [string, number], b: [string, number]): number => b[1] - a[1] || cmp(a[0], b[0]);
+
+/** Every account and every plan in the range (and member), ignoring all filters, tokens desc then key. One grouped query. */
+function availableAccountsAndPlans(
   db: Db,
   p: { from: string; to: string; memberId: number | null },
-  cmp: (a: string, b: string) => number,
-): { key: string; tokens: number }[] {
+): { accounts: { key: string; tokens: number }[]; plans: { key: string; tokens: number }[] } {
   const rows = db
     .prepare(
-      `select account_kind as kind, account_org as org, total(total) as total from usage
+      `select agent, account_kind as kind, account_org as org, account_plan as plan, total(total) as total from usage
        where date between @from and @to and (@memberId is null or member_id = @memberId)
-       group by account_kind, account_org`,
+       group by agent, account_kind, account_org, account_plan`,
     )
-    .all(p) as { kind: AccountKind | null; org: string | null; total: number }[];
-  const totals = new Map<string, number>();
+    .all(p) as { agent: string; kind: AccountKind | null; org: string | null; plan: string | null; total: number }[];
+  const accounts = new Map<string, number>();
+  const plans = new Map<string, number>();
   for (const r of rows) {
-    const key = labelKey(r.kind, r.org);
-    totals.set(key, finite((totals.get(key) ?? 0) + finite(r.total)));
+    const t = finite(r.total);
+    const ak = labelKey(r.agent, r.kind, r.org);
+    accounts.set(ak, finite((accounts.get(ak) ?? 0) + t));
+    const pk = planKey(r.agent, r.plan);
+    plans.set(pk, finite((plans.get(pk) ?? 0) + t));
   }
-  return [...totals].sort((a, b) => b[1] - a[1] || cmp(a[0], b[0])).map(([key, tokens]) => ({ key, tokens }));
+  const list = (m: Map<string, number>) => [...m].sort(byTokensDesc).map(([key, tokens]) => ({ key, tokens }));
+  return { accounts: list(accounts), plans: list(plans) };
 }
 
 /** Aggregates usage for the range. Does not validate; every value reaches SQL as a bound parameter. */
@@ -91,10 +116,11 @@ export function getStats(
     agents?: string[];
     models?: { agent: string; model: string }[];
     accounts?: string[];
+    plans?: string[];
   },
 ): Stats {
   const memberId = q.memberId ?? null;
-  const filter = usageFilter(q.agents ?? [], q.models ?? [], q.accounts ?? []);
+  const filter = usageFilter(q.agents ?? [], q.models ?? [], q.accounts ?? [], q.plans ?? []);
   const p = { from: q.from, to: q.to, memberId, ...filter.params };
 
   const memberRows = db
@@ -158,25 +184,36 @@ export function getStats(
     mixes.set(r.memberId, mix);
   }
 
-  // Each member's tokens by account, with the same range, member and filters: one grouped query for every member.
-  // A null and an empty org are the same key, so rows are merged by key.
+  // Each member's tokens by account and by account and plan, with the same range, member and filters: one grouped
+  // query for every member. A null and an empty org are the same key, so rows are merged by key.
   const accountRows = db
     .prepare(
-      `select member_id as memberId, account_kind as kind, account_org as org, total(total) as total
+      `select member_id as memberId, agent, account_kind as kind, account_org as org, account_plan as plan, total(total) as total
        from usage u
        where date between @from and @to and (@memberId is null or member_id = @memberId) and ${filter.sql}
-       group by member_id, account_kind, account_org`,
+       group by member_id, agent, account_kind, account_org, account_plan`,
     )
-    .all(p) as { memberId: number; kind: AccountKind | null; org: string | null; total: number }[];
+    .all(p) as { memberId: number; agent: string; kind: AccountKind | null; org: string | null; plan: string | null; total: number }[];
   const accountMixes = new Map<number, Map<string, number>>();
+  const planMixes = new Map<number, Map<string, { account: string; plan: string; tokens: number }>>();
   for (const r of accountRows) {
+    const t = finite(r.total);
+    const account = labelKey(r.agent, r.kind, r.org);
     const mix = accountMixes.get(r.memberId) ?? new Map<string, number>();
-    const key = labelKey(r.kind, r.org);
-    mix.set(key, finite((mix.get(key) ?? 0) + finite(r.total)));
+    mix.set(account, finite((mix.get(account) ?? 0) + t));
     accountMixes.set(r.memberId, mix);
+    const plan = planKey(r.agent, r.plan);
+    const pm = planMixes.get(r.memberId) ?? new Map<string, { account: string; plan: string; tokens: number }>();
+    const id = JSON.stringify([account, plan]);
+    const e = pm.get(id) ?? { account, plan, tokens: 0 };
+    e.tokens = finite(e.tokens + t);
+    pm.set(id, e);
+    planMixes.set(r.memberId, pm);
   }
+  const accountPlans = (id: number) =>
+    [...(planMixes.get(id)?.values() ?? [])].sort((a, b) => b.tokens - a.tokens || cmp(a.account, b.account) || cmp(a.plan, b.plan));
 
-  // Filter controls: the same range and member, but never the agent/model/account filters. One query for both lists.
+  // Filter controls: the same range and member, but never the agent/model/account/plan filters.
   const availRows = db
     .prepare(
       `select agent, model, total(total) as total from usage
@@ -186,14 +223,12 @@ export function getStats(
     .all({ from: q.from, to: q.to, memberId }) as { agent: string; model: string; total: number }[];
   const agentTotals = new Map<string, number>();
   for (const r of availRows) agentTotals.set(r.agent, (agentTotals.get(r.agent) ?? 0) + finite(r.total));
-  const cmp = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
   const available = {
     agents: [...agentTotals].sort((a, b) => b[1] - a[1] || cmp(a[0], b[0])).map(([a]) => a),
     models: [...availRows]
       .sort((a, b) => finite(b.total) - finite(a.total) || cmp(a.agent, b.agent) || cmp(a.model, b.model))
       .map((r) => ({ agent: r.agent, model: r.model, tokens: finite(r.total) })),
-    accounts: availableAccounts(db, { from: q.from, to: q.to, memberId }, cmp),
-    plans: [] as { key: string; tokens: number }[], // filled in by a later task
+    ...availableAccountsAndPlans(db, { from: q.from, to: q.to, memberId }),
   };
 
   // Agent ids are data: a Map plus fromEntries makes `__proto__` an ordinary own property.
@@ -240,7 +275,7 @@ export function getStats(
       byAgent: Object.fromEntries(mixes.get(m.id) ?? []) as Record<string, number>,
       // Account keys hold organisation names, which are data: same technique as byAgent.
       byAccount: Object.fromEntries(accountMixes.get(m.id) ?? []) as Record<string, number>,
-      byAccountPlan: [] as { account: string; plan: string; tokens: number }[], // filled in by a later task
+      byAccountPlan: accountPlans(m.id),
     })),
     ...(machines ? { machines } : {}),
     available,

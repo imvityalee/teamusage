@@ -273,8 +273,11 @@ describe("agent and model filters", () => {
       { agent: "gemini", model: "g", tokens: 5 },
       { agent: "codex", model: "other", tokens: 2 },
     ],
-    accounts: [{ key: "unknown", tokens: 178 }],
-    plans: [],
+    accounts: [
+      { key: "unknown", tokens: 130 },
+      { key: "other", tokens: 48 },
+    ],
+    plans: [{ key: "none", tokens: 178 }],
   };
 
   test("no filters: available lists everything in range, sorted by tokens", () => {
@@ -368,8 +371,11 @@ describe("agent and model filters", () => {
         { agent: "claude", model: "sonnet", tokens: 20 },
         { agent: "claude", model: "opus", tokens: 10 },
       ],
-      accounts: [{ key: "unknown", tokens: 70 }],
-      plans: [],
+      accounts: [
+        { key: "other", tokens: 40 },
+        { key: "unknown", tokens: 30 },
+      ],
+      plans: [{ key: "none", tokens: 70 }],
     });
     const none = getStats(db, { ...Q, memberId: ann, agents: ["gemini"] });
     expect(none.totals.tokens).toBe(0);
@@ -381,8 +387,8 @@ describe("agent and model filters", () => {
     expect(getStats(db, { from: "2026-11-04", to: "2026-11-04" }).available).toEqual({
       agents: ["codex"],
       models: [{ agent: "codex", model: "other", tokens: 2 }, { agent: "codex", model: "gpt", tokens: 1 }],
-      accounts: [{ key: "unknown", tokens: 3 }],
-      plans: [],
+      accounts: [{ key: "other", tokens: 3 }],
+      plans: [{ key: "none", tokens: 3 }],
     });
     expect(getStats(db, { from: "2026-12-01", to: "2026-12-02", agents: ["claude"] }).available).toEqual({ agents: [], models: [], accounts: [], plans: [] });
   });
@@ -540,7 +546,8 @@ describe("account filter, available accounts and members byAccount", () => {
   const allAccounts = [
     { key: "team:D", tokens: 100 },
     { key: "personal", tokens: 40 },
-    { key: "unknown", tokens: 15 },
+    { key: "other", tokens: 10 },
+    { key: "unknown", tokens: 5 },
   ];
   const byAccount = (s: ReturnType<typeof getStats>) => s.members.map((m) => [m.name, m.byAccount]);
 
@@ -548,7 +555,7 @@ describe("account filter, available accounts and members byAccount", () => {
     const { db } = seedAccounts();
     const s = getStats(db, Q);
     expect(byAccount(s)).toEqual([
-      ["A", { "team:D": 100, personal: 40, unknown: 10 }],
+      ["A", { "team:D": 100, personal: 40, other: 10 }],
       ["B", { unknown: 5 }],
     ]);
     expect(s.available.accounts).toEqual(allAccounts);
@@ -567,8 +574,10 @@ describe("account filter, available accounts and members byAccount", () => {
 
   test("unknown is the null label and combines with the agent filter", () => {
     const { db } = seedAccounts();
-    expect(getStats(db, { ...Q, accounts: ["unknown"] }).totals.tokens).toBe(15);
+    expect(getStats(db, { ...Q, accounts: ["unknown"] }).totals.tokens).toBe(5);
     expect(getStats(db, { ...Q, accounts: ["unknown"], agents: ["claude"] }).totals.tokens).toBe(5);
+    expect(getStats(db, { ...Q, accounts: ["unknown"], agents: ["codex"] }).totals.tokens).toBe(0);
+    expect(getStats(db, { ...Q, accounts: ["other"] }).totals.tokens).toBe(10);
   });
 
   test("available accounts respect the member and ignore agent and model filters", () => {
@@ -578,7 +587,7 @@ describe("account filter, available accounts and members byAccount", () => {
     expect(s.available.accounts).toEqual([
       { key: "team:D", tokens: 100 },
       { key: "personal", tokens: 40 },
-      { key: "unknown", tokens: 10 },
+      { key: "other", tokens: 10 },
     ]);
   });
 
@@ -619,5 +628,71 @@ describe("account filter, available accounts and members byAccount", () => {
     const s = getStats(db, Q);
     expect(s.members[0]?.byAccount).toEqual({ "team:": 12 });
     expect(s.available.accounts).toEqual([{ key: "team:", tokens: 12 }]);
+  });
+});
+
+describe("Other agents, Codex accounts and plans", () => {
+  const MC = "c".repeat(32);
+  /** One member: claude unlabelled 100, codex unlabelled 20, codex personal/plus 7, claude team:A/team_premium 50. */
+  function seedPlans(): Db {
+    const db = openDb(":memory:");
+    const m = registerMachine(db, { name: "P", email: "p@x.com", machineId: MC, machineLabel: "l" });
+    upsertUsage(db, { memberId: m.memberId, machineId: MC }, [
+      rec("2026-11-02", "claude", "opus", 100),
+      rec("2026-11-02", "codex", "gpt", 20),
+      rec("2026-11-02", "codex", "gpt5", 7, { account: { kind: "personal", plan: "plus" } }),
+      rec("2026-11-02", "claude", "sonnet", 50, { account: { kind: "team", org: "A", plan: "team_premium" } }),
+    ]);
+    return db;
+  }
+
+  test("keeps unknown, other and chatgpt apart", () => {
+    const db = seedPlans();
+    expect(getStats(db, Q).available.accounts).toEqual([
+      { key: "team:A", tokens: 50 },
+      { key: "unknown", tokens: 100 },
+      { key: "other", tokens: 20 },
+      { key: "chatgpt:personal", tokens: 7 },
+    ].sort((a, b) => b.tokens - a.tokens));
+    expect(getStats(db, { ...Q, accounts: ["unknown"] }).totals.tokens).toBe(100);
+    expect(getStats(db, { ...Q, accounts: ["other"] }).totals.tokens).toBe(20);
+    expect(getStats(db, { ...Q, accounts: ["chatgpt:personal"] }).totals.tokens).toBe(7);
+    expect(getStats(db, { ...Q, accounts: ["team:A"] }).totals.tokens).toBe(50);
+    expect(getStats(db, Q).members[0]?.byAccount).toEqual({ unknown: 100, "team:A": 50, other: 20, "chatgpt:personal": 7 });
+  });
+
+  test("filters by plan", () => {
+    const db = seedPlans();
+    expect(getStats(db, { ...Q, plans: ["claude:team_premium"] }).totals.tokens).toBe(50);
+    expect(getStats(db, { ...Q, plans: ["none"] }).totals.tokens).toBe(120);
+    expect(getStats(db, { ...Q, plans: ["codex:plus", "claude:team_premium"] }).totals.tokens).toBe(57);
+    expect(getStats(db, { ...Q, plans: ["claude:plus"] }).totals.tokens).toBe(0);
+    expect(getStats(db, { ...Q, plans: ["codex:plus"], accounts: ["team:A"] }).totals.tokens).toBe(0);
+    expect(getStats(db, { ...Q, plans: ["codex:plus"], agents: ["codex"] }).totals.tokens).toBe(7);
+    expect(getStats(db, { ...Q, plans: ["bogus"] }).totals.tokens).toBe(0);
+  });
+
+  test("available plans ignore every filter", () => {
+    const db = seedPlans();
+    const expected = [
+      { key: "none", tokens: 120 },
+      { key: "claude:team_premium", tokens: 50 },
+      { key: "codex:plus", tokens: 7 },
+    ];
+    expect(getStats(db, Q).available.plans).toEqual(expected);
+    expect(getStats(db, { ...Q, plans: ["codex:plus"], agents: ["codex"], accounts: ["other"] }).available.plans).toEqual(expected);
+  });
+
+  test("byAccountPlan lists account and plan", () => {
+    const db = seedPlans();
+    expect(getStats(db, Q).members[0]?.byAccountPlan).toEqual([
+      { account: "unknown", plan: "none", tokens: 100 },
+      { account: "team:A", plan: "claude:team_premium", tokens: 50 },
+      { account: "other", plan: "none", tokens: 20 },
+      { account: "chatgpt:personal", plan: "codex:plus", tokens: 7 },
+    ]);
+    expect(getStats(db, { ...Q, plans: ["codex:plus"] }).members[0]?.byAccountPlan).toEqual([
+      { account: "chatgpt:personal", plan: "codex:plus", tokens: 7 },
+    ]);
   });
 });
