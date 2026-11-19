@@ -35,12 +35,13 @@ describe("claudeConfigPath", () => {
 describe("readClaudeAccount", () => {
   test("team and enterprise carry the organisation name", () => {
     expect(read(login("claude_team", "Devcats"))).toEqual({ kind: "team", org: "Devcats" });
-    expect(read(login("claude_enterprise", "Big Co"))).toEqual({ kind: "enterprise", org: "Big Co" });
+    expect(read(login("claude_enterprise", "Big Co"))).toEqual({ kind: "enterprise", org: "Big Co", plan: "enterprise" });
   });
   test("pro, max and free are personal and never carry an organisation", () => {
-    for (const t of ["claude_pro", "claude_max", "claude_free"]) {
-      expect(read(login(t, "Someone's Org"))).toEqual({ kind: "personal" });
+    for (const [t, plan] of [["claude_pro", "pro"], ["claude_free", "free"]] as const) {
+      expect(read(login(t, "Someone's Org"))).toEqual({ kind: "personal", plan });
     }
+    expect(read(login("claude_max", "Someone's Org"))).toEqual({ kind: "personal" });
   });
   test("inherited Object property names as organizationType give no label", () => {
     for (const t of ["constructor", "toString", "valueOf", "hasOwnProperty", "__proto__"]) {
@@ -107,5 +108,48 @@ describe("labelRecords", () => {
     expect("account" in out[0]!).toBe(false);
     const old = labelRecords([r("2026-11-01", "claude", { account: { kind: "api" } })], acct, "2026-11-18");
     expect("account" in old[0]!).toBe(false);
+  });
+});
+
+describe("readClaudeAccount plan", () => {
+  const withFields = (fields: Record<string, string>) => JSON.stringify({ oauthAccount: fields });
+  test("claude_free and claude_pro", () => {
+    expect(read(withFields({ organizationType: "claude_free" }))).toEqual({ kind: "personal", plan: "free" });
+    expect(read(withFields({ organizationType: "claude_pro" }))).toEqual({ kind: "personal", plan: "pro" });
+  });
+  test("claude_max by rate-limit tier", () => {
+    const max = (userRateLimitTier: string) => read(withFields({ organizationType: "claude_max", userRateLimitTier }));
+    expect(max("default_claude_max_20x")).toEqual({ kind: "personal", plan: "max_20x" });
+    expect(max("default_claude_max_5x")).toEqual({ kind: "personal", plan: "max_5x" });
+    expect(max("default_claude_max_1x")).toEqual({ kind: "personal" });
+    expect(read(withFields({ organizationType: "claude_max" }))).toEqual({ kind: "personal" });
+  });
+  test("claude_team by seat tier", () => {
+    const team = (seatTier: string) =>
+      read(withFields({ organizationType: "claude_team", organizationName: "Org", seatTier }));
+    for (const s of ["team_tier_1", "premium", "team_premium"])
+      expect(team(s)).toEqual({ kind: "team", org: "Org", plan: "team_premium" });
+    for (const s of ["standard", "team_standard"])
+      expect(team(s)).toEqual({ kind: "team", org: "Org", plan: "team_standard" });
+    expect(team("team_tier_9")).toEqual({ kind: "team", org: "Org" });
+  });
+  test("owner shape", () => {
+    expect(
+      read(
+        withFields({
+          organizationType: "claude_team",
+          seatTier: "team_tier_1",
+          userRateLimitTier: "default_claude_max_5x",
+          organizationName: "O!Bank Team",
+        }),
+      ),
+    ).toEqual({ kind: "team", org: "O!Bank Team", plan: "team_premium" });
+  });
+  test("claude_enterprise", () => {
+    expect(read(withFields({ organizationType: "claude_enterprise", organizationName: "E" }))).toEqual({
+      kind: "enterprise",
+      org: "E",
+      plan: "enterprise",
+    });
   });
 });

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
-import { MAX_ORG_CHARS, type AccountLabel, type UsageRecord } from "@teamusage/shared";
+import { MAX_ORG_CHARS, type AccountLabel, type Plan, type UsageRecord } from "@teamusage/shared";
 
 /**
  * Claude Code keeps its account details in `.claude.json`: under `CLAUDE_CONFIG_DIR` when that is set,
@@ -29,9 +29,32 @@ function cleanOrg(raw: unknown): string | undefined {
   return org === "" ? undefined : org;
 }
 
+const TEAM_PREMIUM = new Set(["team_tier_1", "premium", "team_premium"]);
+const TEAM_STANDARD = new Set(["standard", "team_standard"]);
+
+/** The plan for a Claude login; an unrecognised type, seat or tier gives none. */
+function claudePlan(type: string, seatTier: unknown, rateTier: unknown): Plan | undefined {
+  switch (type) {
+    case "claude_free":
+      return "free";
+    case "claude_pro":
+      return "pro";
+    case "claude_enterprise":
+      return "enterprise";
+    case "claude_max":
+      if (typeof rateTier !== "string") return undefined;
+      return rateTier.includes("max_20x") ? "max_20x" : rateTier.includes("max_5x") ? "max_5x" : undefined;
+    case "claude_team":
+      if (typeof seatTier !== "string") return undefined;
+      return TEAM_PREMIUM.has(seatTier) ? "team_premium" : TEAM_STANDARD.has(seatTier) ? "team_standard" : undefined;
+    default:
+      return undefined;
+  }
+}
+
 /**
- * The current Claude login, reduced to a kind and (team/enterprise only) an organisation name.
- * Only `oauthAccount.organizationType` and `organizationName` are read. Any problem gives null.
+ * The current Claude login, reduced to a kind, a plan and (team/enterprise only) an organisation name.
+ * Only `oauthAccount.organizationType`, `organizationName`, `seatTier` and `userRateLimitTier` are read. Any problem gives null.
  */
 export function readClaudeAccount(
   deps: { env?: NodeJS.ProcessEnv; home?: string | (() => string); readFile?: (p: string) => string } = {},
@@ -47,14 +70,24 @@ export function readClaudeAccount(
   const oauth = (parsed as { oauthAccount?: unknown }).oauthAccount;
   if (oauth === undefined) return { kind: "api" };
   if (typeof oauth !== "object" || oauth === null || Array.isArray(oauth)) return null;
-  const { organizationType, organizationName } = oauth as { organizationType?: unknown; organizationName?: unknown };
+  const { organizationType, organizationName, seatTier, userRateLimitTier } = oauth as {
+    organizationType?: unknown;
+    organizationName?: unknown;
+    seatTier?: unknown;
+    userRateLimitTier?: unknown;
+  };
   const kind = typeof organizationType === "string" && Object.hasOwn(KIND_BY_TYPE, organizationType)
       ? KIND_BY_TYPE[organizationType]
       : undefined;
   if (kind === undefined) return null;
-  if (kind === "personal") return { kind };
-  const org = cleanOrg(organizationName);
-  return org === undefined ? { kind } : { kind, org };
+  const plan = claudePlan(organizationType as string, seatTier, userRateLimitTier);
+  const label: AccountLabel = { kind };
+  if (kind !== "personal") {
+    const org = cleanOrg(organizationName);
+    if (org !== undefined) label.org = org;
+  }
+  if (plan !== undefined) label.plan = plan;
+  return label;
 }
 
 const dayBefore = (day: string): string => {
