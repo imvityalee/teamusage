@@ -6,7 +6,8 @@ import type { UsageRecord } from "@teamusage/shared";
 import type { Db } from "../../server/src/db.js";
 import { CollectError } from "./collect.js";
 import { configPath, saveConfig, updateConfigFile, type Config } from "./config.js";
-import { noticePath } from "./notice.js";
+import { clientVersion } from "./codex.js";
+import { noticePath, writeCodexNotice } from "./notice.js";
 import { getStatus, setup, sync, syncSince, type Deps } from "./sync.js";
 import { machineId } from "./machine.js";
 import { countRows, startServer as start, type TestServer } from "./test-server.js";
@@ -556,6 +557,12 @@ describe("without an OS id", () => {
 });
 
 describe("setup", () => {
+  test("clears a Codex notice once the config is saved", async () => {
+    writeCodexNotice("old problem");
+    await setup({ serverUrl: srv.url, inviteCode: INVITE, name: "Ann", email: "ann@example.com" });
+    expect(existsSync(noticePath())).toBe(false);
+  });
+
   const input = () => ({ serverUrl: `${srv.url}/`, inviteCode: INVITE, name: "Ann", email: "ann@example.com" });
 
   test("registers and saves the config without the invite code", async () => {
@@ -815,12 +822,53 @@ describe("plain http to a remote host", () => {
 
 describe("codex notice", () => {
   const hook = (over: Record<string, string> = {}) => deps({ env: { TEAMUSAGE_HOOK: "codex", ...over } });
-  const MSG = "teamusage could not send your usage: teamusage is not set up; run `teamusage setup`";
+  const MSG = `teamusage could not send your usage: teamusage is not set up; run \`teamusage setup\` (in a terminal: npx -y teamusage@${clientVersion()} setup)`;
+  const notice = () => (JSON.parse(readFileSync(noticePath(), "utf8")) as { systemMessage: string }).systemMessage;
 
   test("writes a notice for a missing setup under TEAMUSAGE_HOOK=codex", async () => {
     await sync({ quiet: true, deps: hook() });
     expect(JSON.parse(readFileSync(noticePath(), "utf8"))).toEqual({ systemMessage: MSG });
     expect(statSync(noticePath()).mode & 0o777).toBe(0o600);
+  });
+
+  test.each([
+    ["not bound", () => saveConfig({ serverUrl: srv.url, name: "Ann", email: "ann@example.com", token: TOKEN }), "not bound"],
+    [
+      "URL or email changed",
+      () => saveConfig({ serverUrl: srv.url, name: "Ann", email: "ann@example.com", token: TOKEN, tokenServerUrl: "https://other.example.com", tokenEmail: "ann@example.com" }),
+      "changed",
+    ],
+    ["no token", () => saveConfig({ serverUrl: srv.url, name: "Ann", email: "ann@example.com" }), "has no token"],
+    [
+      "token rejected",
+      () => saveConfig({ serverUrl: srv.url, name: "Ann", email: "ann@example.com", token: TOKEN, ...bound(srv.url) }),
+      "rejected this machine's token",
+    ],
+    [
+      "invalid config file",
+      () => {
+        mkdirSync(path.dirname(configPath()), { recursive: true });
+        writeFileSync(configPath(), "{not json");
+      },
+      "not valid JSON",
+    ],
+  ])("%s writes a notice", async (_n, setupFn, text) => {
+    setupFn();
+    await sync({ quiet: true, deps: hook({}) });
+    expect(notice()).toContain(text);
+  });
+
+  test("a refused invite during re-registration is a setup problem", async () => {
+    saveConfig({ serverUrl: srv.url, name: "Ann", email: "ann@example.com", token: TOKEN, ...bound(srv.url), inviteCode: "WRONG-invite-c0de" });
+    await sync({ quiet: true, deps: hook({}) });
+    expect(notice()).toContain("the server refused the invite code; run `teamusage setup`");
+    expect(notice()).not.toContain("WRONG-invite-c0de");
+    await expect(sync({ deps: hook({}) })).rejects.toThrow(/refused the invite code/);
+  });
+
+  test("a non-quiet run with a failing notice write still rejects with the original error", async () => {
+    mkdirSync(noticePath(), { recursive: true }); // a directory in the way: the notice cannot be written
+    await expect(sync({ deps: hook() })).rejects.toThrow(/not set up/);
   });
 
   test("non-quiet runs write the notice and still reject", async () => {

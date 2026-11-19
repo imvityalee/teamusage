@@ -374,7 +374,15 @@ async function collectAndUpload(
         throw new SyncError(`the server rejected this machine's token; ${SETUP_HINT}`);
       }
       reRegistered = true;
-      token = await registerNow(inviteCode, true);
+      try {
+        token = await registerNow(inviteCode, true);
+      } catch (re) {
+        // The saved invite is refused (the server answers 403): a setup problem, not a network one.
+        if (re instanceof ApiError && re.status === 403) {
+          throw new SyncError(`the server refused the invite code; ${SETUP_HINT}`);
+        }
+        throw re;
+      }
       // The server may have lost this machine's history (an operator removed it), so send all of it again,
       // from the first chunk.
       if (since !== undefined) ({ passes, summary: result } = await gather(undefined));
@@ -452,6 +460,7 @@ export async function setup(
     ...(input.saveInvite ? { inviteCode } : {}),
     ...(optIn ? { allowInsecureHttp: true } : {}),
   });
+  clearCodexNotice();
   return { serverUrl, name, email };
 }
 

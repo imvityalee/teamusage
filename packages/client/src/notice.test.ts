@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
@@ -6,6 +6,7 @@ import { ApiError } from "./api.js";
 import { CollectError } from "./collect.js";
 import { ConfigError } from "./config.js";
 import { clearCodexNotice, isSetupProblem, noticePath, writeCodexNotice } from "./notice.js";
+import { clientVersion } from "./codex.js";
 import { SyncError } from "./sync.js";
 
 let home: string;
@@ -22,9 +23,21 @@ test("notice is valid JSON for any message, mode 600", () => {
   const msg = 'bad "quote" and back\\slash\nnewline';
   writeCodexNotice(msg);
   expect(JSON.parse(readFileSync(noticePath(), "utf8"))).toEqual({
-    systemMessage: `teamusage could not send your usage: ${msg}`,
+    systemMessage: `teamusage could not send your usage: ${msg} (in a terminal: npx -y teamusage@${clientVersion()} setup)`,
   });
   expect(statSync(noticePath()).mode & 0o777).toBe(0o600);
+});
+
+test("the notice names the npx setup command of this client's version", () => {
+  writeCodexNotice("x");
+  const text = JSON.parse(readFileSync(noticePath(), "utf8")).systemMessage as string;
+  expect(text).toMatch(/\(in a terminal: npx -y teamusage@\d+\.\d+\.\d+ setup\)$/);
+});
+
+test("the notice is written through a temp file and leaves none behind", () => {
+  writeCodexNotice("one");
+  writeCodexNotice("two");
+  expect(readdirSync(path.dirname(noticePath())).sort()).toEqual(["codex-notice.json"]);
 });
 
 test("clearCodexNotice removes the file and tolerates a missing one", () => {
