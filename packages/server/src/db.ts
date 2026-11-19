@@ -49,7 +49,7 @@ export function openDb(path: string): Db {
   db.exec(SCHEMA);
   // Databases created by 0.1/0.2 lack the account label columns; add them in place.
   const have = new Set((db.prepare("pragma table_info(usage)").all() as { name: string }[]).map((c) => c.name));
-  for (const col of ["account_kind", "account_org"]) {
+  for (const col of ["account_kind", "account_org", "account_plan"]) {
     if (!have.has(col)) db.exec(`alter table usage add column ${col} text`);
   }
   return db;
@@ -137,16 +137,26 @@ export function upsertUsage(
   // Kind and org share one condition and are set in the same statement, so they change together.
   const TAKE_LABEL =
     "excluded.account_kind is not null and (excluded.total > usage.total or usage.account_kind is null)";
+  // The plan follows the label: a different account replaces it (even with none), the same account only gains or
+  // updates one, and history (same total) may fill a missing plan but never relabel. Right-hand references see the old row.
+  const SAME_ACCOUNT =
+    "excluded.account_kind is usage.account_kind and coalesce(excluded.account_org, '') = coalesce(usage.account_org, '')";
+  const PLAN = `case
+        when ${TAKE_LABEL} and not (${SAME_ACCOUNT}) then excluded.account_plan
+        when excluded.account_kind is not null and ${SAME_ACCOUNT} and excluded.account_plan is not null
+          and (excluded.total > usage.total or usage.account_plan is null) then excluded.account_plan
+        else usage.account_plan end`;
   // A day's usage only grows, so a lower incoming total means local logs were pruned: keep the stored row.
   const stmt = db.prepare(`
-    insert into usage (member_id, machine_id, date, agent, model, input, output, cache_create, cache_read, total, cost_usd, unpriced, account_kind, account_org)
-    values (@memberId, @machineId, @date, @agent, @model, @input, @output, @cacheCreate, @cacheRead, @total, @costUsd, @unpriced, @accountKind, @accountOrg)
+    insert into usage (member_id, machine_id, date, agent, model, input, output, cache_create, cache_read, total, cost_usd, unpriced, account_kind, account_org, account_plan)
+    values (@memberId, @machineId, @date, @agent, @model, @input, @output, @cacheCreate, @cacheRead, @total, @costUsd, @unpriced, @accountKind, @accountOrg, @accountPlan)
     on conflict (machine_id, date, agent, model) do update set
       member_id = excluded.member_id, input = excluded.input, output = excluded.output,
       cache_create = excluded.cache_create, cache_read = excluded.cache_read, total = excluded.total,
       cost_usd = excluded.cost_usd, unpriced = excluded.unpriced,
       account_org = case when ${TAKE_LABEL} then excluded.account_org else usage.account_org end,
-      account_kind = case when ${TAKE_LABEL} then excluded.account_kind else usage.account_kind end
+      account_kind = case when ${TAKE_LABEL} then excluded.account_kind else usage.account_kind end,
+      account_plan = ${PLAN}
     where excluded.total >= usage.total`);
   return db.transaction(() => {
     let stored = 0;
@@ -167,6 +177,7 @@ export function upsertUsage(
         unpriced: r.unpriced ? 1 : 0,
         accountKind: r.account?.kind ?? null,
         accountOrg: r.account?.org ?? null,
+        accountPlan: r.account?.plan ?? null,
       });
       if (res.changes > 0) stored++;
       else kept++;

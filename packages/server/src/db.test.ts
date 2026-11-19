@@ -239,6 +239,72 @@ describe("account label", () => {
   });
 });
 
+describe("account plan", () => {
+  const setup = () => {
+    const { memberId } = registerMachine(db, reg("m1"));
+    return { memberId, machineId: "m1" };
+  };
+  const base = { date: "2026-11-17", agent: "claude" as const, model: "x" };
+  const row = () =>
+    db.prepare("select account_kind, account_org, account_plan from usage").get() as {
+      account_kind: string | null;
+      account_org: string | null;
+      account_plan: string | null;
+    };
+
+  test("adds account_plan to an old database", () => {
+    const dir = mkdtempSync(join(tmpdir(), "tu-"));
+    const file = join(dir, "old03.db");
+    const old = new Database(file);
+    old.exec(`
+      create table members (id integer primary key autoincrement, email text not null unique, name text not null, created_at text not null);
+      create table machines (id text primary key, member_id integer not null references members(id) on delete cascade, label text not null, token_hash text not null unique, created_at text not null, last_sync_at text);
+      create table usage (member_id integer not null, machine_id text not null, date text not null, agent text not null, model text not null,
+        input integer not null, output integer not null, cache_create integer not null, cache_read integer not null, total integer not null,
+        cost_usd real not null, unpriced integer not null, account_kind text, account_org text, primary key (machine_id, date, agent, model));
+      insert into usage values (1, 'm1', '2026-11-17', 'claude', 'x', 1, 0, 0, 0, 1, 0, 0, 'team', 'D');
+    `);
+    old.close();
+    const again = openDb(file);
+    const cols = (again.prepare("pragma table_info(usage)").all() as { name: string }[]).map((c) => c.name);
+    expect(cols).toContain("account_plan");
+    expect(again.prepare("select account_plan from usage").get()).toEqual({ account_plan: null });
+    again.close();
+    rmSync(dir, { recursive: true });
+  });
+
+  test("stores the plan with a new label", () => {
+    upsertUsage(db, setup(), [rec({ ...base, total: 100, account: { kind: "team", org: "A", plan: "team_premium" } })]);
+    expect(row()).toEqual({ account_kind: "team", account_org: "A", account_plan: "team_premium" });
+  });
+
+  test("history fills plans but never relabels", () => {
+    const who = setup();
+    upsertUsage(db, who, [rec({ ...base, total: 100, account: { kind: "team", org: "A" } })]);
+    upsertUsage(db, who, [rec({ ...base, total: 100, account: { kind: "team", org: "A", plan: "team_premium" } })]);
+    expect(row()).toEqual({ account_kind: "team", account_org: "A", account_plan: "team_premium" });
+
+    db.prepare("delete from usage").run();
+    upsertUsage(db, who, [rec({ ...base, total: 100, account: { kind: "personal" } })]);
+    upsertUsage(db, who, [rec({ ...base, total: 100, account: { kind: "team", org: "A", plan: "team_premium" } })]);
+    expect(row()).toEqual({ account_kind: "personal", account_org: null, account_plan: null });
+  });
+
+  test("an older client never clears a plan", () => {
+    const who = setup();
+    upsertUsage(db, who, [rec({ ...base, total: 100, account: { kind: "team", org: "A", plan: "team_premium" } })]);
+    upsertUsage(db, who, [rec({ ...base, total: 200, account: { kind: "team", org: "A" } })]);
+    expect(row()).toEqual({ account_kind: "team", account_org: "A", account_plan: "team_premium" });
+  });
+
+  test("a new account replaces the plan", () => {
+    const who = setup();
+    upsertUsage(db, who, [rec({ ...base, total: 100, account: { kind: "personal", plan: "pro" } })]);
+    upsertUsage(db, who, [rec({ ...base, total: 200, account: { kind: "team", org: "A" } })]);
+    expect(row()).toEqual({ account_kind: "team", account_org: "A", account_plan: null });
+  });
+});
+
 describe("removal", () => {
   test("removeMember deletes its machines, usage and tokens", () => {
     const a = registerMachine(db, reg("m1"));
