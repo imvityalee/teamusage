@@ -375,3 +375,30 @@ test("the Codex marketplace points at another source, or lacks its policy or cat
   expectFailure(copy(({ json }) => json(C_MARKET, (m) => delete m.plugins[0].category)), /\.agents\/plugins\/marketplace\.json: must list exactly one plugin/);
   expectFailure(copy(({ json }) => json(C_MARKET, (m) => (m.name = "other"))), /\.agents\/plugins\/marketplace\.json: name must be "teamusage"/);
 });
+
+// Codex 0.141 runs a hook's command through the user's shell and waits for it to exit and for its stdout and
+// stderr to close, so each hook must background itself with its output redirected.
+test("a Codex hook that runs in-line, or backgrounds without redirecting its output", () => {
+  for (const command of [
+    `npx -y teamusage@${version} sync --quiet --detach --throttle 4h`,
+    `npx -y teamusage@${version} sync --quiet --detach --throttle 4h &`,
+  ]) {
+    expectFailure(
+      copy(({ json }) => json(C_HOOKS, (h) => (h.hooks.Stop[0].hooks[0].command = command))),
+      /codex-plugin\/hooks\/hooks\.json: Stop hook must be/,
+    );
+  }
+});
+
+test("a Codex hook with a shell field, which Codex 0.141 does not read", () =>
+  expectFailure(
+    copy(({ json }) => json(C_HOOKS, (h) => (h.hooks.SessionStart[0].hooks[0].shell = "bash"))),
+    /codex-plugin\/hooks\/hooks\.json: SessionStart hook must be/,
+  ));
+
+test("every Codex hook backgrounds itself with its output redirected", () => {
+  const hooks = JSON.parse(readFileSync(path.join(repo, C_HOOKS), "utf8")).hooks;
+  for (const ev of ["SessionStart", "Stop", "SessionEnd"]) {
+    assert.match(hooks[ev][0].hooks[0].command, / >\/dev\/null 2>&1 &$/, ev);
+  }
+});

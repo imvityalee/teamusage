@@ -24,8 +24,10 @@ const HOOK_EVENTS = ["SessionEnd", "SessionStart", "Stop"];
 const STOP_ARGS = ["--throttle", "4h"];
 const SESSION_START_MATCHER = "startup|resume";
 // Codex 0.141 has no SessionEnd event (it ignores the key without a warning; OpenAI's hook docs list it for later
-// versions) and skips every hook marked async ("async hooks are not supported yet"), so the Codex hooks are plain
-// synchronous commands; --detach makes each one return at once.
+// versions) and skips every hook marked async ("async hooks are not supported yet"). It runs a hook's command string
+// through the user's shell (`<shell> -c`, else `$SHELL -lc`) and waits until the shell exits and its stdout and
+// stderr close, so each Codex hook backgrounds npx with its output redirected and returns at once.
+const CODEX_BACKGROUND = " >/dev/null 2>&1 &";
 const CODEX_POLICY = { installation: "AVAILABLE", authentication: "ON_INSTALL" };
 const CODEX_CATEGORY = "Developer Tools";
 const SKILLS = ["usage-stats", "usage-sync"];
@@ -237,7 +239,7 @@ export function checkPlugin(root) {
     if (JSON.stringify(cMcp) !== JSON.stringify(want)) fail(`${C_MCP}: must be exactly ${JSON.stringify(want)}`);
   }
 
-  // Codex hooks: one command string each
+  // Codex hooks: one command string each, backgrounded in the shell
   const C_HOOKS = "codex-plugin/hooks/hooks.json";
   const cHooks = need(C_HOOKS);
   if (cHooks) {
@@ -256,7 +258,7 @@ export function checkPlugin(root) {
         const handlers = groups.flatMap((g) => (Array.isArray(g?.hooks) ? g.hooks : [null]));
         if (handlers.length !== 1) fail(`${C_HOOKS}: ${ev} must have exactly one hook`);
         const args = clientArgs("sync", "--quiet", "--detach", ...(ev === "Stop" ? STOP_ARGS : []));
-        const want = { type: "command", command: ["npx", ...args].join(" ") };
+        const want = { type: "command", command: ["npx", ...args].join(" ") + CODEX_BACKGROUND };
         for (const h of handlers) {
           if (JSON.stringify(h) !== JSON.stringify(want)) fail(`${C_HOOKS}: ${ev} hook must be ${JSON.stringify(want)}`);
         }
