@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import type { UsageRecord } from "@teamusage/shared";
-import { claudeConfigPath, labelRecords, readClaudeAccount } from "./account.js";
+import { claudeConfigPath, describeLogin, labelRecords, readLogins, readClaudeAccount } from "./account.js";
 
 const read = (json: string | null) =>
   readClaudeAccount({
@@ -92,7 +92,7 @@ describe("labelRecords", () => {
   test("labels only today and yesterday", () => {
     const out = labelRecords(
       [r("2026-11-18", "claude"), r("2026-11-17", "claude"), r("2026-11-16", "claude"), r("2026-11-18", "codex")],
-      acct,
+      { claude: acct, codex: null },
       "2026-11-18",
     );
     expect(out[0]!.account).toEqual(acct);
@@ -101,13 +101,47 @@ describe("labelRecords", () => {
     expect(out[3]!.account).toBeUndefined();
   });
   test("yesterday crosses month boundaries", () => {
-    expect(labelRecords([r("2026-10-31", "claude")], acct, "2026-11-01")[0]!.account).toEqual(acct);
+    expect(labelRecords([r("2026-10-31", "claude")], { claude: acct, codex: null }, "2026-11-01")[0]!.account).toEqual(acct);
   });
   test("removes any existing account and adds no key without a label", () => {
-    const out = labelRecords([r("2026-11-18", "claude", { account: { kind: "api" } })], null, "2026-11-18");
+    const out = labelRecords([r("2026-11-18", "claude", { account: { kind: "api" } })], { claude: null, codex: null }, "2026-11-18");
     expect("account" in out[0]!).toBe(false);
-    const old = labelRecords([r("2026-11-01", "claude", { account: { kind: "api" } })], acct, "2026-11-18");
+    const old = labelRecords([r("2026-11-01", "claude", { account: { kind: "api" } })], { claude: acct, codex: null }, "2026-11-18");
     expect("account" in old[0]!).toBe(false);
+  });
+});
+
+describe("labelRecords with logins and history", () => {
+  const r = (date: string, agent: string): UsageRecord =>
+    ({ date, agent, model: "m", input: 1, output: 1, cacheCreate: 0, cacheRead: 0, total: 2, costUsd: 0, unpriced: false }) as UsageRecord;
+  const claude = { kind: "api" } as const;
+  const codex = { kind: "personal", plan: "plus" } as const;
+  test("recent days get each agent's own login", () => {
+    const out = labelRecords([r("2026-11-18", "claude"), r("2026-11-18", "codex"), r("2026-11-18", "gemini")], { claude, codex }, "2026-11-18");
+    expect(out[0]!.account).toEqual(claude);
+    expect(out[1]!.account).toEqual(codex);
+    expect(out[2]!.account).toBeUndefined();
+  });
+  test("history labels old Claude and Codex records but never other agents", () => {
+    const out = labelRecords([r("2025-01-01", "codex"), r("2025-01-01", "gemini")], { claude, codex }, "2026-11-18", { history: true });
+    expect(out[0]!.account).toEqual(codex);
+    expect("account" in out[1]!).toBe(false);
+  });
+});
+
+describe("describeLogin", () => {
+  test("Claude logins", () => {
+    expect(describeLogin("claude", { kind: "team", org: "O!Bank", plan: "team_premium" })).toBe("Team · O!Bank · Premium");
+    expect(describeLogin("claude", { kind: "team" })).toBe("Team");
+    expect(describeLogin("claude", { kind: "enterprise", org: "Acme", plan: "enterprise" })).toBe("Enterprise · Acme");
+    expect(describeLogin("claude", { kind: "personal", plan: "max_5x" })).toBe("Personal · Max 5x");
+    expect(describeLogin("claude", { kind: "api" })).toBe("API key");
+  });
+  test("Codex logins", () => {
+    expect(describeLogin("codex", { kind: "personal", plan: "plus" })).toBe("Personal · ChatGPT · Plus");
+    expect(describeLogin("codex", { kind: "team", plan: "business" })).toBe("Team · ChatGPT · Business");
+    expect(describeLogin("codex", { kind: "enterprise" })).toBe("Enterprise · ChatGPT");
+    expect(describeLogin("codex", { kind: "api" })).toBe("API key · ChatGPT");
   });
 });
 
@@ -152,4 +186,12 @@ describe("readClaudeAccount plan", () => {
       plan: "enterprise",
     });
   });
+});
+
+test("readLogins: a throwing reader gives null for that agent only", () => {
+  const boom = () => {
+    throw new Error("x");
+  };
+  expect(readLogins({ claude: () => ({ kind: "api" }), codex: boom })).toEqual({ claude: { kind: "api" }, codex: null });
+  expect(readLogins({ claude: boom, codex: () => ({ kind: "api" }) })).toEqual({ claude: null, codex: { kind: "api" } });
 });

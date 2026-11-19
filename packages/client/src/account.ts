@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
-import { MAX_ORG_CHARS, type AccountLabel, type Plan, type UsageRecord } from "@teamusage/shared";
+import { readCodexAccount } from "./codex-account.js";
+import { MAX_ORG_CHARS, planShortName, type AccountLabel, type Plan, type UsageRecord } from "@teamusage/shared";
 
 /**
  * Claude Code keeps its account details in `.claude.json`: under `CLAUDE_CONFIG_DIR` when that is set,
@@ -95,11 +96,57 @@ const dayBefore = (day: string): string => {
   return new Date(Date.UTC(y, m - 1, d - 1)).toISOString().slice(0, 10);
 };
 
-/** Labels Claude records dated `today` or the day before; every other record carries no account. */
-export function labelRecords(records: UsageRecord[], account: AccountLabel | null, today: string): UsageRecord[] {
+export interface Logins {
+  claude: AccountLabel | null;
+  codex: AccountLabel | null;
+}
+
+/**
+ * Labels Claude and Codex records with their login when dated `today` or the day before (any date with `history`);
+ * every other record, and every other agent, carries no account.
+ */
+export function labelRecords(
+  records: UsageRecord[],
+  logins: Logins,
+  today: string,
+  opts: { history?: boolean } = {},
+): UsageRecord[] {
   const recent = new Set([today, dayBefore(today)]);
   return records.map((r) => {
     const { account: _drop, ...rest } = r;
-    return account !== null && r.agent === "claude" && recent.has(r.date) ? { ...rest, account } : rest;
+    const login = r.agent === "claude" ? logins.claude : r.agent === "codex" ? logins.codex : null;
+    return login !== null && (opts.history === true || recent.has(r.date)) ? { ...rest, account: login } : rest;
   });
+}
+
+/** A short display name for a login, e.g. "Team · Acme · Premium" or "Personal · ChatGPT · Plus". */
+export function describeLogin(agent: "claude" | "codex", a: AccountLabel): string {
+  let name: string;
+  if (agent === "codex") {
+    name = `${{ personal: "Personal", team: "Team", enterprise: "Enterprise", api: "API key" }[a.kind]} · ChatGPT`;
+  } else if (a.kind === "team" || a.kind === "enterprise") {
+    const kind = a.kind === "team" ? "Team" : "Enterprise";
+    name = a.org ? `${kind} · ${a.org}` : kind;
+  } else {
+    name = a.kind === "personal" ? "Personal" : "API key";
+  }
+  const plan = planShortName(a.plan);
+  return plan === "" ? name : `${name} · ${plan}`;
+}
+
+/** Reads each login on its own: a reader that throws gives null for that agent only. */
+export function readLogins(
+  readers: { claude: () => AccountLabel | null; codex: () => AccountLabel | null } = {
+    claude: () => readClaudeAccount(),
+    codex: () => readCodexAccount(),
+  },
+): Logins {
+  const safe = (read: () => AccountLabel | null): AccountLabel | null => {
+    try {
+      return read();
+    } catch {
+      return null;
+    }
+  };
+  return { claude: safe(readers.claude), codex: safe(readers.codex) };
 }

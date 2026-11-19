@@ -1,8 +1,8 @@
 import { randomBytes } from "node:crypto";
 import { chmodSync, closeSync, openSync, readFileSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs";
 import path from "node:path";
-import type { AccountLabel, UsageRecord } from "@teamusage/shared";
-import { labelRecords, readClaudeAccount } from "./account.js";
+import type { UsageRecord } from "@teamusage/shared";
+import { describeLogin, labelRecords, readLogins, type Logins } from "./account.js";
 import { ApiError, health, register, upload } from "./api.js";
 import { collect, CollectError } from "./collect.js";
 import {
@@ -24,8 +24,8 @@ export interface Deps {
   collect: typeof collect;
   env: NodeJS.ProcessEnv;
   today: () => string; // local YYYY-MM-DD
-  /** The current Claude login, read once per sync. */
-  account: () => AccountLabel | null;
+  /** The current Claude and Codex logins, read once per sync; one reader failing gives null for that agent only. */
+  accounts: () => Logins;
   log: (line: string) => void;
 }
 
@@ -107,7 +107,7 @@ const defaults = (): Deps => ({
   collect,
   env: process.env,
   today: () => localToday(),
-  account: () => readClaudeAccount(),
+  accounts: () => readLogins(),
   log: (line) => process.stdout.write(`${line}\n`),
 });
 
@@ -229,12 +229,12 @@ export function assertTokenBound(cfg: Config): void {
 }
 
 export async function sync(
-  opts: { dryRun?: boolean; quiet?: boolean; deps?: Partial<Deps> } = {},
+  opts: { dryRun?: boolean; quiet?: boolean; labelHistory?: boolean; deps?: Partial<Deps> } = {},
 ): Promise<SyncResult> {
   const deps: Deps = { ...defaults(), ...opts.deps };
   const quiet = opts.quiet === true;
   try {
-    return await run(deps, opts.dryRun === true, quiet);
+    return await run(deps, opts.dryRun === true, quiet, opts.labelHistory === true);
   } catch (e) {
     if (!quiet) throw e;
     appendSyncLog(`sync failed: ${errorMessage(e)}`);
@@ -242,10 +242,10 @@ export async function sync(
   }
 }
 
-async function run(deps: Deps, dryRun: boolean, quiet: boolean): Promise<SyncResult> {
+async function run(deps: Deps, dryRun: boolean, quiet: boolean, history: boolean): Promise<SyncResult> {
   const cfg = loadConfig(deps.env);
   if (!cfg) throw new SyncError(`teamusage is not set up; ${SETUP_HINT}`);
-  if (dryRun) return collectAndUpload(deps, cfg, true, quiet);
+  if (dryRun) return collectAndUpload(deps, cfg, true, quiet, history);
   assertTokenBound(cfg);
   const release = acquireLock();
   if (release === null) {
@@ -254,25 +254,33 @@ async function run(deps: Deps, dryRun: boolean, quiet: boolean): Promise<SyncRes
   }
   try {
     writeLastAttempt();
-    return await collectAndUpload(deps, cfg, false, quiet);
+    return await collectAndUpload(deps, cfg, false, quiet, history);
   } finally {
     release();
   }
 }
 
-async function collectAndUpload(deps: Deps, cfg: Config, dryRun: boolean, quiet: boolean): Promise<SyncResult> {
+async function collectAndUpload(
+  deps: Deps,
+  cfg: Config,
+  dryRun: boolean,
+  quiet: boolean,
+  history: boolean,
+): Promise<SyncResult> {
   const today = deps.today();
-  const since = syncSince(cfg.lastSuccessfulSync);
-  // The login file must never fail a sync: a throwing reader means no label.
-  const account = (() => {
+  const since = history ? undefined : syncSince(cfg.lastSuccessfulSync);
+  // A login file must never fail a sync: a throwing reader means no label for that agent only.
+  const logins = ((): Logins => {
+    let all: Partial<Logins> = {};
     try {
-      return deps.account();
+      all = deps.accounts();
     } catch {
-      return null;
+      // fall through to no labels
     }
+    return { claude: all.claude ?? null, codex: all.codex ?? null };
   })();
   const gather = async (from: string | undefined) => {
-    const records = labelRecords((await deps.collect(from)).map(onlyRecordFields), account, today);
+    const records = labelRecords((await deps.collect(from)).map(onlyRecordFields), logins, today, { history });
     const summary: SyncResult = {
       ...empty(),
       days: new Set(records.map((r) => r.date)).size,
@@ -282,6 +290,17 @@ async function collectAndUpload(deps: Deps, cfg: Config, dryRun: boolean, quiet:
     return { records, summary };
   };
   let { records, summary: result } = await gather(since);
+  if (history && !quiet) {
+    for (const [agent, title] of [["claude", "Claude"], ["codex", "Codex"]] as const) {
+      if (!result.agents.includes(agent)) continue;
+      const login = logins[agent];
+      deps.log(
+        login === null
+          ? `${title} history: no login found, left as it is.`
+          : `Labels all ${title} history as ${describeLogin(agent, login)}.`,
+      );
+    }
+  }
 
   let machine: string | undefined;
   const identity = () => {

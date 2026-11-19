@@ -11,7 +11,7 @@ import type { Stats } from "@teamusage/shared";
 import { ApiError } from "./api.js";
 import { defaults as mcpDefaults, COST_NOTE, loadStats, startMcp, RANGES, type Range } from "./mcp.js";
 import { clean } from "./text.js";
-import { errorMessage, getStatus, parseThrottle, readLastAttempt, setup, shouldSkip, sync, writeLastAttempt, type Deps } from "./sync.js";
+import { errorMessage, getStatus, SyncError, parseThrottle, readLastAttempt, setup, shouldSkip, sync, writeLastAttempt, type Deps } from "./sync.js";
 import { codexDeps, registerCodex, type CodexDeps } from "./codex.js";
 import { installSchedule, removeSchedule, ScheduleError, scheduleStatus, type ScheduleDeps } from "./schedule.js";
 
@@ -39,12 +39,14 @@ Commands:
   schedule install|remove
       Install or remove the job that runs "sync --quiet" every 4 hours (launchd on macOS, cron on Linux).
       Install the client globally first: npm install -g ${APP_NAME}
-  sync [--dry-run] [--quiet] [--detach] [--throttle <duration>]
+  sync [--dry-run] [--quiet] [--detach] [--throttle <duration>] [--label-history]
       Collect usage with ccusage and upload it.
       --dry-run  print exactly what would be sent, and send nothing (--detach is then ignored)
       --quiet    print nothing and always exit 0 (failures go to sync.log in the config directory)
       --detach   start "sync --quiet" in the background and return at once
       --throttle <n>m|<n>h   do nothing when a sync was attempted less than that long ago (1m-1440m or 1h-24h)
+      --label-history   send all history again and label every Claude and Codex day with the current login
+                        (cannot be combined with --detach or --throttle)
   status
       Show the configuration, the last successful sync and whether the server is reachable.
   stats [--range 1m|3m|6m]
@@ -225,13 +227,16 @@ async function runSchedule(args: string[], deps: CliDeps): Promise<number> {
 }
 
 async function runSync(args: string[], deps: Partial<Deps>): Promise<number> {
+  if (args.includes("--label-history") && (args.includes("--detach") || args.some((a) => a === "--throttle" || a.startsWith("--throttle=")))) {
+    throw new SyncError("--label-history cannot be used with --detach or --throttle");
+  }
   const dryRun = args.includes("--dry-run");
   // --dry-run wins over --detach: a dry run never goes to the background and never sends anything.
   const quiet = args.includes("--quiet") || (args.includes("--detach") && !dryRun);
   try {
     const { values } = parseArgs({
       args,
-      options: { "dry-run": { type: "boolean" }, quiet: { type: "boolean" }, detach: { type: "boolean" }, throttle: { type: "string" } },
+      options: { "dry-run": { type: "boolean" }, quiet: { type: "boolean" }, detach: { type: "boolean" }, throttle: { type: "string" }, "label-history": { type: "boolean" } },
       strict: true,
       allowPositionals: false,
     });
@@ -258,7 +263,7 @@ async function runSync(args: string[], deps: Partial<Deps>): Promise<number> {
       child.unref();
       return 0;
     }
-    await sync({ dryRun: values["dry-run"] === true, quiet, deps });
+    await sync({ dryRun: values["dry-run"] === true, quiet, labelHistory: values["label-history"] === true, deps });
     return 0;
   } catch (e) {
     if (quiet) return 0;

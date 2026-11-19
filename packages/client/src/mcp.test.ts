@@ -7,7 +7,7 @@ import { ApiError } from "./api.js";
 import type { Config } from "./config.js";
 import { ensureConfigDir } from "./config.js";
 import { z } from "zod";
-import { COST_NOTE, handleTool, mcpServerInfo, noInput, rangeInput, resetSyncThrottle, TOOLS, type Deps } from "./mcp.js";
+import { COST_NOTE, handleTool, mcpServerInfo, rangeInput, syncInput, resetSyncThrottle, TOOLS, type Deps } from "./mcp.js";
 import { clean } from "./text.js";
 import { startServer, type TestServer } from "./test-server.js";
 
@@ -52,7 +52,7 @@ const mk = (over: Partial<Deps> = {}) => {
   const d = {
     fetchStats,
     loadConfig: vi.fn(() => cfg),
-    today: () => "2026-11-18", account: () => null,
+    today: () => "2026-11-18", accounts: () => ({ claude: null, codex: null }),
     env: {},
     log: vi.fn(),
     collect: vi.fn(async () => []),
@@ -215,7 +215,7 @@ test("sync_usage runs a sync in-process; log output never reaches stdout", async
   try {
     const r = await handleTool("sync_usage", {}, {
       collect: vi.fn(async () => [rec]),
-      today: () => "2026-11-18", account: () => null,
+      today: () => "2026-11-18", accounts: () => ({ claude: null, codex: null }),
       log: vi.fn(),
       env: {
         TEAMUSAGE_SERVER_URL: srv.url,
@@ -272,7 +272,7 @@ test("results are capped: 150 members -> 100 (highest tokens first) with truncat
 test("hand-written JSON schemas and zod schemas accept and reject the same inputs", () => {
   const samples = [{}, { range: "1m" }, { range: "3m" }, { range: "6m" }, { range: "2m" }, { range: 1 }, { range: "1m", x: 1 }, { x: 1 }];
   for (const tool of TOOLS) {
-    const zodSchema = tool.name === "sync_usage" ? noInput : rangeInput;
+    const zodSchema = tool.name === "sync_usage" ? syncInput : rangeInput;
     const js = z.fromJSONSchema(tool.inputSchema as never);
     for (const s of samples) {
       expect(js.safeParse(s).success, `${tool.name} ${JSON.stringify(s)}`).toBe(zodSchema.safeParse(s).success);
@@ -285,7 +285,7 @@ test("sync_usage: a second call within 60 s returns the previous result as cache
   const srv = await startServer(INVITE);
   const collect = vi.fn(async () => [rec]);
   const d = {
-    collect, log: vi.fn(), today: () => "2026-11-18", account: () => null, nowMs: () => now,
+    collect, log: vi.fn(), today: () => "2026-11-18", accounts: () => ({ claude: null, codex: null }), nowMs: () => now,
     env: { TEAMUSAGE_SERVER_URL: srv.url, TEAMUSAGE_INVITE_CODE: INVITE, TEAMUSAGE_NAME: "Ann", TEAMUSAGE_EMAIL: "ann@example.com" },
   };
   try {
@@ -305,6 +305,29 @@ test("sync_usage: a second call within 60 s returns the previous result as cache
   }
 });
 
+test("sync_usage labelHistory bypasses the cache; a non-boolean is invalid", async () => {
+  let now = 1_000_000;
+  const srv = await startServer(INVITE);
+  const collect = vi.fn(async (_s?: string) => [rec]);
+  const d = {
+    collect, log: vi.fn(), today: () => "2026-11-18", accounts: () => ({ claude: null, codex: null }), nowMs: () => now,
+    env: { TEAMUSAGE_SERVER_URL: srv.url, TEAMUSAGE_INVITE_CODE: INVITE, TEAMUSAGE_NAME: "Ann", TEAMUSAGE_EMAIL: "ann@example.com" },
+  };
+  try {
+    await handleTool("sync_usage", {}, d);
+    now += 1000;
+    const r = JSON.parse((await handleTool("sync_usage", { labelHistory: true }, d)).text);
+    expect(r.cached).toBeUndefined();
+    expect(collect).toHaveBeenCalledTimes(2);
+    expect(collect).toHaveBeenLastCalledWith(undefined);
+    const bad = await handleTool("sync_usage", { labelHistory: "yes" }, d);
+    expect(bad.isError).toBe(true);
+    expect(collect).toHaveBeenCalledTimes(2);
+  } finally {
+    await srv.close();
+  }
+});
+
 test("sync_usage with the real logger writes its line to stderr and nothing to stdout", async () => {
   const srv = await startServer(INVITE);
   const out = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
@@ -312,7 +335,7 @@ test("sync_usage with the real logger writes its line to stderr and nothing to s
   try {
     await handleTool("sync_usage", {}, {
       collect: vi.fn(async () => [rec]),
-      today: () => "2026-11-18", account: () => null,
+      today: () => "2026-11-18", accounts: () => ({ claude: null, codex: null }),
       env: { TEAMUSAGE_SERVER_URL: srv.url, TEAMUSAGE_INVITE_CODE: INVITE, TEAMUSAGE_NAME: "Ann", TEAMUSAGE_EMAIL: "ann@example.com" },
     });
     expect(out).not.toHaveBeenCalled();

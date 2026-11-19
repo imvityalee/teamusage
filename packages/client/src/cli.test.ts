@@ -43,7 +43,7 @@ const deps = (env: NodeJS.ProcessEnv = {}): Partial<Deps> & { log: ReturnType<ty
     TEAMUSAGE_EMAIL: "ann@example.com",
     ...env,
   },
-  today: () => "2026-11-18", account: () => null,
+  today: () => "2026-11-18", accounts: () => ({ claude: null, codex: null }),
   log: vi.fn(),
 });
 
@@ -70,6 +70,24 @@ test("sync --dry-run --detach: the dry run wins; nothing is spawned or sent", as
   expect(fetchSpy).not.toHaveBeenCalled();
   expect(countRows(srv.db, "usage")).toBe(0);
   expect(d.log.mock.calls.flat().join("\n")).toContain('"records"');
+});
+
+test("sync --label-history with --detach or --throttle fails with exit 1 and does nothing", async () => {
+  const d = deps();
+  const e = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+  for (const extra of [["--detach"], ["--throttle", "4h"], ["--quiet", "--detach"]]) {
+    expect(await main(["sync", "--label-history", ...extra], d)).toBe(1);
+  }
+  expect(e.mock.calls.map(([c]) => String(c)).join("")).toContain("--label-history cannot be used with --detach or --throttle");
+  expect(spawned.calls).toHaveLength(0);
+  expect(fetchSpy).not.toHaveBeenCalled();
+});
+
+test("the usage text lists --label-history", async () => {
+  const o = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+  const e = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+  await main(["--help"], deps());
+  expect(o.mock.calls.concat(e.mock.calls).map(([c]) => String(c)).join("")).toContain("--label-history");
 });
 
 test("sync --detach spawns a detached quiet sync and sends nothing itself", async () => {

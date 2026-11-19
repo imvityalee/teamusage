@@ -6,6 +6,7 @@ import type { UsageRecord } from "@teamusage/shared";
 import type { Db } from "../../server/src/db.js";
 import { CollectError } from "./collect.js";
 import { configPath, saveConfig, type Config } from "./config.js";
+import { updateConfigFile } from "./config.js";
 import { getStatus, setup, sync, syncSince, type Deps } from "./sync.js";
 import { machineId } from "./machine.js";
 import { countRows, startServer as start, type TestServer } from "./test-server.js";
@@ -64,7 +65,7 @@ function deps(over: Partial<Deps> = {}): Partial<Deps> & { log: ReturnType<typeo
     collect: vi.fn(async () => many(3)),
     env: envFor(srv.url),
     today: () => "2026-11-18",
-    account: () => null,
+    accounts: () => ({ claude: null, codex: null }),
     log: vi.fn(),
     ...over,
   } as Partial<Deps> & { log: ReturnType<typeof vi.fn> };
@@ -137,6 +138,44 @@ test("the upload body is exactly {records} with only UsageRecord fields", async 
   expect(JSON.stringify(body)).not.toContain("secret-repo");
 });
 
+describe("label history", () => {
+  const claude = { kind: "team", org: "O!Bank", plan: "team_premium" } as const;
+  const codex = { kind: "personal", plan: "plus" } as const;
+  const old = () => [
+    rec(0, { date: "2025-03-01", agent: "claude" }),
+    rec(1, { date: "2025-03-01", agent: "codex" }),
+    rec(2, { date: "2025-03-01", agent: "gemini" }),
+  ];
+  const lines = (d: { log: ReturnType<typeof vi.fn> }) => d.log.mock.calls.map(([l]) => String(l));
+
+  test("collects all history and labels every old Claude and Codex day", async () => {
+    updateConfigFile({ lastSuccessfulSync: "2026-11-18" });
+    const collect = vi.fn(async (_since?: string) => old());
+    const d = deps({ collect, accounts: () => ({ claude, codex }) });
+    await sync({ labelHistory: true, deps: d });
+    expect(collect).toHaveBeenCalledWith(undefined);
+    const body = calls("/api/usage")[0];
+    expect(body.records[0].account).toEqual(claude);
+    expect(body.records[1].account).toEqual(codex);
+    expect("account" in body.records[2]).toBe(false);
+    expect(lines(d)).toContain("Labels all Claude history as Team · O!Bank · Premium.");
+    expect(lines(d)).toContain("Labels all Codex history as Personal · ChatGPT · Plus.");
+  });
+
+  test("a missing login is reported and only agents present are mentioned", async () => {
+    const d = deps({ collect: async () => [rec(0, { date: "2025-03-01", agent: "claude" })], accounts: () => ({ claude: null, codex }) });
+    await sync({ labelHistory: true, dryRun: true, deps: d });
+    expect(lines(d)).toContain("Claude history: no login found, left as it is.");
+    expect(lines(d).join("\n")).not.toContain("Codex");
+  });
+
+  test("without the flag old days stay unlabelled", async () => {
+    const d = deps({ collect: async () => old(), accounts: () => ({ claude, codex }) });
+    await sync({ deps: d });
+    expect(JSON.stringify(calls("/api/usage")[0])).not.toContain("account");
+  });
+});
+
 describe("account label", () => {
   const acct = { kind: "team", org: "Devcats" } as const;
   const recs = () => [
@@ -149,14 +188,14 @@ describe("account label", () => {
     const boom = () => {
       throw new Error("login file");
     };
-    await sync({ deps: deps({ collect: async () => recs(), account: boom }) });
+    await sync({ deps: deps({ collect: async () => recs(), accounts: boom }) });
     const body = calls("/api/usage")[0];
     expect(body.records).toHaveLength(3);
     for (const r of body.records) expect("account" in r).toBe(false);
   });
 
   test("the upload carries account on recent Claude records only", async () => {
-    const d = deps({ collect: async () => recs(), account: () => acct });
+    const d = deps({ collect: async () => recs(), accounts: () => ({ claude: acct, codex: null }) });
     await sync({ deps: d });
     const body = calls("/api/usage")[0];
     expect(body.records[0].account).toEqual(acct);
@@ -166,18 +205,18 @@ describe("account label", () => {
 
   test("a ccusage-supplied account is dropped", async () => {
     const leaky = { ...rec(0, { date: "2026-11-18", agent: "claude" }), account: { kind: "api" } } as UsageRecord;
-    await sync({ deps: deps({ collect: async () => [leaky], account: () => null }) });
+    await sync({ deps: deps({ collect: async () => [leaky], accounts: () => ({ claude: null, codex: null }) }) });
     expect("account" in calls("/api/usage")[0].records[0]).toBe(false);
   });
 
   test("the login is read once per sync", async () => {
-    const account = vi.fn(() => acct);
-    await sync({ deps: deps({ collect: async () => recs(), account }) });
-    expect(account).toHaveBeenCalledTimes(1);
+    const accounts = vi.fn(() => ({ claude: acct, codex: null }));
+    await sync({ deps: deps({ collect: async () => recs(), accounts }) });
+    expect(accounts).toHaveBeenCalledTimes(1);
   });
 
   test("dry run shows the label", async () => {
-    const d = deps({ collect: async () => recs(), account: () => acct });
+    const d = deps({ collect: async () => recs(), accounts: () => ({ claude: acct, codex: null }) });
     await sync({ dryRun: true, deps: d });
     const all = d.log.mock.calls.map(([l]) => String(l)).join("\n");
     expect(all).toContain('"account"');
@@ -185,7 +224,7 @@ describe("account label", () => {
   });
 
   test("no login means no account keys", async () => {
-    const d = deps({ collect: async () => recs(), account: () => null });
+    const d = deps({ collect: async () => recs(), accounts: () => ({ claude: null, codex: null }) });
     await sync({ deps: d });
     expect(JSON.stringify(calls("/api/usage")[0])).not.toContain("account");
   });

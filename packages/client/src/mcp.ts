@@ -8,7 +8,7 @@ import { clientVersion } from "./codex.js";
 import { collect } from "./collect.js";
 import { loadConfig } from "./config.js";
 import { clean } from "./text.js";
-import { readClaudeAccount } from "./account.js";
+import { readLogins } from "./account.js";
 import { assertTokenBound, errorMessage, localToday, sync, SyncError, type Deps as SyncDeps } from "./sync.js";
 
 export type Range = "1m" | "3m" | "6m"; // 30, 90, 180 days
@@ -28,12 +28,21 @@ const DAYS: Record<Range, 30 | 90 | 180> = { "1m": 30, "3m": 90, "6m": 180 };
 
 export const rangeInput = z.strictObject({ range: z.enum(["1m", "3m", "6m"]).default("1m") });
 export const noInput = z.strictObject({});
+export const syncInput = z.strictObject({ labelHistory: z.boolean().optional() });
 
 export const TOOLS = [
   {
     name: "sync_usage",
-    description: "Collect this machine's coding-agent token usage and upload it to the team server.",
-    inputSchema: { type: "object" as const, properties: {}, additionalProperties: false },
+    description:
+      "Collect this machine's coding-agent token usage and upload it to the team server. " +
+      "labelHistory: true sends all history again and labels every Claude and Codex day with the current login.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        labelHistory: { type: "boolean" },
+      },
+      additionalProperties: false,
+    },
   },
   {
     name: "get_my_usage",
@@ -66,7 +75,7 @@ export const defaults = (): Deps => ({
   collect,
   env: process.env,
   today: () => localToday(),
-  account: () => readClaudeAccount(),
+  accounts: () => readLogins(),
   log: (line) => process.stderr.write(`${line}\n`),
   fetchStats,
   loadConfig,
@@ -110,12 +119,14 @@ export async function handleTool(
     const d: Deps = { ...defaults(), ...deps };
     switch (name) {
       case "sync_usage": {
-        if (!noInput.safeParse(args === undefined ? {} : args).success) return fail(INVALID_INPUT);
+        const input = syncInput.safeParse(args === undefined ? {} : args);
+        if (!input.success) return fail(INVALID_INPUT);
+        const labelHistory = input.data.labelHistory === true;
         const now = (d.nowMs ?? Date.now)();
-        if (lastSync && now - lastSync.at >= 0 && now - lastSync.at < SYNC_MIN_INTERVAL_MS) {
+        if (!labelHistory && lastSync && now - lastSync.at >= 0 && now - lastSync.at < SYNC_MIN_INTERVAL_MS) {
           return ok({ ...lastSync.result, cached: true, ageSeconds: Math.floor((now - lastSync.at) / 1000) });
         }
-        const r = await sync({ quiet: false, deps: d });
+        const r = await sync({ quiet: false, labelHistory, deps: d });
         if (r.skipped) return ok({ skipped: true });
         lastSync = { at: now, result: r };
         return ok(r);
