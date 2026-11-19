@@ -699,23 +699,23 @@ plugin's own MCP server.
 `teamusage setup` no longer offers to register the MCP tools with Codex; when `codex` is on your `PATH`
 it prints these plugin steps instead.
 
-**When it sends.** The hooks start the sync in the background and never make Codex wait. Codex 0.141 has
-no session-end event, so Codex usage is sent when a session starts and, during a session, at most every
-4 hours after a reply. (The plugin also has a session-end hook, for later Codex versions.) The hooks work
-on macOS and Linux. On Windows the hook commands are not valid, so Windows Codex users run
+**When it sends.** The hooks start the sync in the background and never make Codex wait. Codex 0.141 ignores
+the session-end hook, so there Codex usage is sent when a session starts and, during a session, at most
+every 4 hours after a reply. Newer Codex (for example 0.170) loads the session-end hook, so usage may also be
+sent when a session ends. The hooks run under `sh`, so they work whatever your login shell is (for
+example fish) on macOS and Linux. On Windows the hook commands are not valid, so Windows Codex users run
 `teamusage sync` themselves or use the `sync_usage` MCP tool.
 
 **The warning.** While everything works the hooks show nothing. When a sync started by a hook fails because
 of a setup or token problem (teamusage is not set up, the server URL or email changed, the token is missing
-or rejected, the config file is broken, the server URL is not valid), Codex shows a warning after your first
-reply in a session:
+or rejected, the config file is broken, the server URL is not valid), Codex shows a warning once per session,
+after your first reply (on the very first session it may come after the second reply while npx downloads):
 
 ```text
-teamusage could not send your usage: <what went wrong>
+teamusage could not send your usage: <what went wrong> (in a terminal: npx -y teamusage@0.3.1 setup)
 ```
 
-It comes once per session until the problem is fixed, usually by running `npx -y teamusage@0.3.1 setup` in
-a terminal. The first sync that succeeds clears it. The warning holds only the client's own error message,
+It comes once per session until the problem is fixed, by running that setup command in a terminal. The first sync that succeeds clears it. The warning holds only the client's own error message,
 never a token or the invite code. Network and server errors, collection errors and skipped syncs show no
 warning.
 

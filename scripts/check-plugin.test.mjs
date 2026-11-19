@@ -376,8 +376,8 @@ test("the Codex marketplace points at another source, or lacks its policy or cat
   expectFailure(copy(({ json }) => json(C_MARKET, (m) => (m.name = "other"))), /\.agents\/plugins\/marketplace\.json: name must be "teamusage"/);
 });
 
-// Codex 0.141 runs a hook's command through the user's shell and waits for it to exit and for its stdout and
-// stderr to close, so each hook must background itself with its output redirected.
+// Codex runs a hook's command through the user's login shell and waits for it to exit and for its stdout and
+// stderr to close, so each hook runs under `sh -c` and backgrounds npx with its output redirected.
 test("a Codex hook that runs in-line, or backgrounds without redirecting its output", () => {
   for (const command of [
     `npx -y teamusage@${version} sync --quiet --detach --throttle 4h`,
@@ -399,7 +399,7 @@ test("a Codex hook with a shell field, which Codex 0.141 does not read", () =>
 test("every Codex hook backgrounds itself with its output redirected", () => {
   const hooks = JSON.parse(readFileSync(path.join(repo, C_HOOKS), "utf8")).hooks;
   for (const ev of ["SessionStart", "Stop", "SessionEnd"]) {
-    assert.match(hooks[ev][0].hooks[0].command, / >\/dev\/null 2>&1 &$/, ev);
+    assert.match(hooks[ev][0].hooks[0].command, /^sh -c '.* >\/dev\/null 2>&1 &'$/s, ev);
   }
 });
 
@@ -407,17 +407,20 @@ test("every Codex hook backgrounds itself with its output redirected", () => {
 // label /hooks shows, and the Stop hook prints and removes the notice before it starts the sync.
 const CODEX_STATUS = "teamusage: send usage";
 const CODEX_NOTICE =
-  'F="${XDG_CONFIG_HOME:-$HOME/.config}/teamusage/codex-notice.json"; [ -f "$F" ] && cat "$F" && rm -f "$F"; ';
-const codexSync = (...extra) =>
-  ["TEAMUSAGE_HOOK=codex npx -y", `teamusage@${version}`, "sync --quiet --detach", ...extra].join(" ") + " >/dev/null 2>&1 &";
+  'D=${XDG_CONFIG_HOME:-}; case "$D" in /*) ;; *) D="$HOME/.config";; esac; F="$D/teamusage/codex-notice.json"; ' +
+  '[ -f "$F" ] && cat "$F" && rm -f "$F"; ';
+const sh = (script) => `sh -c '${script}'`;
+const BG = " >/dev/null 2>&1 &";
+const sessionScript = () => `TEAMUSAGE_HOOK=codex npx -y teamusage@${version} sync --quiet --detach${BG}`;
+const stopScript = () => `${CODEX_NOTICE}npx -y teamusage@${version} sync --quiet --detach --throttle 4h${BG}`;
 
 test("the repository's Codex hooks are exactly the named, Codex-tagged commands", () => {
   const hooks = JSON.parse(readFileSync(path.join(repo, C_HOOKS), "utf8"));
   assert.deepEqual(hooks, {
     hooks: {
-      SessionStart: [{ matcher: "startup|resume", hooks: [{ type: "command", command: codexSync(), statusMessage: CODEX_STATUS }] }],
-      Stop: [{ hooks: [{ type: "command", command: CODEX_NOTICE + codexSync("--throttle 4h"), statusMessage: CODEX_STATUS }] }],
-      SessionEnd: [{ hooks: [{ type: "command", command: codexSync(), statusMessage: CODEX_STATUS }] }],
+      SessionStart: [{ matcher: "startup|resume", hooks: [{ type: "command", command: sh(sessionScript()), statusMessage: CODEX_STATUS }] }],
+      Stop: [{ hooks: [{ type: "command", command: sh(stopScript()), statusMessage: CODEX_STATUS }] }],
+      SessionEnd: [{ hooks: [{ type: "command", command: sh(sessionScript()), statusMessage: CODEX_STATUS }] }],
     },
   });
 });
@@ -460,11 +463,32 @@ test("a Codex hook without its statusMessage, or with another one", () => {
 
 test("the Codex Stop hook without the notice prefix, or a session hook with it", () => {
   expectFailure(
-    copy(({ json }) => json(C_HOOKS, (h) => (h.hooks.Stop[0].hooks[0].command = codexSync("--throttle 4h")))),
+    copy(({ json }) => json(C_HOOKS, (h) => (h.hooks.Stop[0].hooks[0].command = sh(stopScript().replace(CODEX_NOTICE, ""))))),
     /codex-plugin\/hooks\/hooks\.json: Stop hook must be/,
   );
   expectFailure(
-    copy(({ json }) => json(C_HOOKS, (h) => (h.hooks.SessionStart[0].hooks[0].command = CODEX_NOTICE + codexSync()))),
+    copy(({ json }) => json(C_HOOKS, (h) => (h.hooks.SessionStart[0].hooks[0].command = sh(CODEX_NOTICE + sessionScript())))),
     /codex-plugin\/hooks\/hooks\.json: SessionStart hook must be/,
+  );
+});
+
+test("the Stop hook's own sync must not set TEAMUSAGE_HOOK=codex (one warning per session)", () =>
+  expectFailure(
+    copy(({ json }) => json(C_HOOKS, (h) => (h.hooks.Stop[0].hooks[0].command = sh(stopScript().replace("npx -y", "TEAMUSAGE_HOOK=codex npx -y"))))),
+    /codex-plugin\/hooks\/hooks\.json: Stop hook must be/,
+  ));
+
+test("Codex hooks without the sh -c wrapper, or with the relative-XDG-unsafe notice path", () => {
+  for (const ev of ["SessionStart", "SessionEnd"]) {
+    expectFailure(
+      copy(({ json }) => json(C_HOOKS, (h) => (h.hooks[ev][0].hooks[0].command = sessionScript()))),
+      new RegExp(`codex-plugin/hooks/hooks\\.json: ${ev} hook must be`),
+    );
+  }
+  expectFailure(
+    copy(({ json }) =>
+      json(C_HOOKS, (h) => (h.hooks.Stop[0].hooks[0].command = sh(stopScript().replace(CODEX_NOTICE, 'F="${XDG_CONFIG_HOME:-$HOME/.config}/teamusage/codex-notice.json"; [ -f "$F" ] && cat "$F" && rm -f "$F"; ')))),
+    ),
+    /codex-plugin\/hooks\/hooks\.json: Stop hook must be/,
   );
 });

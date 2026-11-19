@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "TEAMUSAGE_HOOK=codex npx -y teamusage@0.3.1 sync --quiet --detach >/dev/null 2>&1 &",
+            "command": "sh -c 'TEAMUSAGE_HOOK=codex npx -y teamusage@0.3.1 sync --quiet --detach >/dev/null 2>&1 &'",
             "statusMessage": "teamusage: send usage"
           }
         ]
@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "F=\"${XDG_CONFIG_HOME:-$HOME/.config}/teamusage/codex-notice.json\"; [ -f \"$F\" ] && cat \"$F\" && rm -f \"$F\"; TEAMUSAGE_HOOK=codex npx -y teamusage@0.3.1 sync --quiet --detach --throttle 4h >/dev/null 2>&1 &",
+            "command": "sh -c 'D=${XDG_CONFIG_HOME:-}; case \"$D\" in /*) ;; *) D=\"$HOME/.config\";; esac; F=\"$D/teamusage/codex-notice.json\"; [ -f \"$F\" ] && cat \"$F\" && rm -f \"$F\"; npx -y teamusage@0.3.1 sync --quiet --detach --throttle 4h >/dev/null 2>&1 &'",
             "statusMessage": "teamusage: send usage"
           }
         ]
@@ -28,7 +28,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "TEAMUSAGE_HOOK=codex npx -y teamusage@0.3.1 sync --quiet --detach >/dev/null 2>&1 &",
+            "command": "sh -c 'TEAMUSAGE_HOOK=codex npx -y teamusage@0.3.1 sync --quiet --detach >/dev/null 2>&1 &'",
             "statusMessage": "teamusage: send usage"
           }
         ]
