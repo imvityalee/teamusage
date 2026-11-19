@@ -102,9 +102,15 @@ describe("account label", () => {
     const r = { ...good, account: { kind: "team", org: "Devcats" } };
     expect(validateBatch({ records: [r] })).toEqual({ ok: true, records: [r] });
   });
-  test("rejected on a non-claude record", () => {
-    const res = validateBatch({ records: [{ ...good, agent: "codex", account: { kind: "personal" } }] });
-    expect(res).toEqual({ ok: false, error: "records[0]: account on a non-claude record" });
+  test("kept on a codex record with a plan, org rejected", () => {
+    const r = { ...good, agent: "codex", account: { kind: "personal", plan: "plus" } };
+    expect(validateBatch({ records: [r] })).toEqual({ ok: true, records: [r] });
+    const res = validateBatch({ records: [{ ...r, account: { kind: "team", org: "X" } }] });
+    expect(res).toEqual({ ok: false, error: "records[0]: org is not allowed for this account kind" });
+  });
+  test("rejected on an unlabelled agent's record", () => {
+    const res = validateBatch({ records: [{ ...good, agent: "gemini", account: { kind: "personal" } }] });
+    expect(res).toEqual({ ok: false, error: "records[0]: account on an unlabelled agent's record" });
   });
   test("invalid account rejected", () => {
     expect(validateBatch({ records: [{ ...good, account: { kind: "vip" } }] }).ok).toBe(false);

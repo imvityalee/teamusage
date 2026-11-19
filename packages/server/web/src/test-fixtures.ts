@@ -42,13 +42,15 @@ export function statsFixture(names: FixtureNames = PLAIN): Stats {
       byAgent: Object.fromEntries([["claude", 35_000], ["codex", 4_500], [names.agent, 500]]) as Record<string, number>,
       // Shares of 40,000: 78%, 13%, 10%.
       byAccount: { "team:Devcats": 31_000, unknown: 5_000, personal: 4_000 },
+      byAccountPlan: [],
     },
     {
       id: 2, name: "Bao Nguyen", email: "bao@example.com", tokens: 20_500, costUsd: 3.5, machines: 1, lastSyncAt: "2026-11-10T12:00:00.000Z",
       byAgent: { claude: 20_000, codex: 500 },
       byAccount: { "team:Devcats": 20_000, unknown: 500 },
+      byAccountPlan: [],
     },
-    { id: 3, name: "Carla Mendes", email: "carla@example.com", tokens: 0, costUsd: 0, machines: 1, lastSyncAt: null, byAgent: {}, byAccount: {} },
+    { id: 3, name: "Carla Mendes", email: "carla@example.com", tokens: 0, costUsd: 0, machines: 1, lastSyncAt: null, byAgent: {}, byAccount: {}, byAccountPlan: [] },
   ];
   return {
     from: "2026-11-09",
@@ -75,6 +77,7 @@ export function statsFixture(names: FixtureNames = PLAIN): Stats {
         { key: "unknown", tokens: 5_500 },
         { key: "personal", tokens: 4_000 },
       ],
+      plans: [],
     },
   };
 }
@@ -101,7 +104,7 @@ export function emptyStatsFixture(): Stats {
     ...s,
     totals: { tokens: 0, costUsd: 0, activeMembers: 0, memberCount: 3 },
     daily: s.daily.map((d) => ({ date: d.date, byAgent: {} })),
-    members: s.members.map((m) => ({ ...m, tokens: 0, costUsd: 0, byAgent: {}, byAccount: {} })),
+    members: s.members.map((m) => ({ ...m, tokens: 0, costUsd: 0, byAgent: {}, byAccount: {}, byAccountPlan: [] })),
     models: [],
   };
 }

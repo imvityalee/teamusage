@@ -66,8 +66,7 @@ function validateRecord(raw: unknown): UsageRecord | string {
   if (typeof unpriced !== "boolean") return "invalid unpriced";
   const rec: UsageRecord = { date: r.date, agent: r.agent, model: r.model, input, output, cacheCreate, cacheRead, total, costUsd, unpriced };
   if (r.account !== undefined) {
-    if (r.agent !== "claude") return "account on a non-claude record";
-    const account = validateAccount(r.account);
+    const account = validateAccount(r.account, r.agent);
     if (typeof account === "string") return account;
     rec.account = account;
   }

@@ -13,6 +13,7 @@ const KIND_NAMES = {
   personal: "acctPersonal",
   api: "acctApi",
   unknown: "acctUnknown",
+  other: "acctUnknown", // Task 6 gives it its own name
 } as const satisfies Record<string, MessageKey>;
 
 /**

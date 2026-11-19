@@ -198,6 +198,7 @@ describe("fetchStats cleans the filter lists", () => {
         { agent: "codex", model: "m4", tokens: Number.MAX_VALUE },
       ],
       accounts: [],
+      plans: [],
     });
   });
 });

@@ -15,6 +15,8 @@ export interface Stats {
     byAgent: Record<string, number>;
     /** Tokens by account key (`accountKey`) for this member, with the same range and filters as `tokens`; empty when none. */
     byAccount: Record<string, number>;
+    /** Tokens by account key and plan key (`planKey`), tokens desc then account then plan; empty when none. */
+    byAccountPlan: { account: string; plan: string; tokens: number }[];
   }[]; // sorted by tokens desc
   /** Present only when a single member was requested: that member's machines, most recently synced first. */
   machines?: { label: string; lastSyncAt: string | null }[];
@@ -22,12 +24,14 @@ export interface Stats {
    * Everything present in the date range (and for the member, when one is requested), IGNORING the agent,
    * model and account filters, sorted by total tokens descending. It feeds the filter controls. `tokens` is that
    * model's (or account's) total in the range; an agent's total, and the unfiltered total, are sums of these.
-   * Account keys are `accountKey` values; `unknown` covers every row without a label, non-Claude rows included.
+   * Account keys are `accountKey` values; `unknown` covers unlabelled Claude rows, `other` every other agent's
+   * unlabelled rows. Plan keys are `planKey` values.
    */
   available: {
     agents: string[];
     models: { agent: string; model: string; tokens: number }[];
     accounts: { key: string; tokens: number }[];
+    plans: { key: string; tokens: number }[];
   };
   models: {
     agent: string;

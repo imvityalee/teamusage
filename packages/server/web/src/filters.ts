@@ -152,7 +152,7 @@ export function cleanAvailable(raw: unknown): Stats["available"] {
     if (typeof n !== "number" || !Number.isFinite(n) || n < 0) return [];
     return [{ key, tokens: n }];
   });
-  return { agents, models, accounts };
+  return { agents, models, accounts, plans: [] }; // plans: a later task
 }
 
 /**
@@ -182,7 +182,7 @@ export function withSelection(available: Stats["available"], f: Filters): Stats[
     accounts.push({ key, tokens: 0 });
     keys.add(key);
   }
-  return { agents, models, accounts };
+  return { agents, models, accounts, plans: [] }; // plans: a later task
 }
 
 const tokens = (n: unknown): number => (typeof n === "number" && Number.isFinite(n) && n > 0 ? n : 0);

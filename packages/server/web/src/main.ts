@@ -43,7 +43,7 @@ type Shown =
   | { kind: "notFound" };
 
 const PRESETS: readonly Preset[] = [30, 90, 180];
-const NOTHING: Stats["available"] = { agents: [], models: [], accounts: [] };
+const NOTHING: Stats["available"] = { agents: [], models: [], accounts: [], plans: [] };
 
 function byId<T extends HTMLElement = HTMLElement>(id: string): T {
   const el = document.getElementById(id);

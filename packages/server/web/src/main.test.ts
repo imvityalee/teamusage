@@ -555,6 +555,7 @@ describe("filters", () => {
           { agent: "claude", model: "claude-opus-4-1", tokens: 25_000 },
         ],
         accounts: [],
+        plans: [],
       },
     };
   }

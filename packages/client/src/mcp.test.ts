@@ -27,11 +27,11 @@ const stats = (over: Partial<Stats> = {}): Stats => ({
   to: "2026-11-18",
   totals: { tokens: 1000, costUsd: 1.5, activeMembers: 1, memberCount: 2 },
   daily: [{ date: "2026-11-18", byAgent: { claude: 1000 } }],
-  members: [{ id: 1, name: "Ann", email: "ann@example.com", tokens: 1000, costUsd: 1.5, machines: 1, lastSyncAt: "x", byAgent: { claude: 1000 }, byAccount: { unknown: 1000 } }],
+  members: [{ id: 1, name: "Ann", email: "ann@example.com", tokens: 1000, costUsd: 1.5, machines: 1, lastSyncAt: "x", byAgent: { claude: 1000 }, byAccount: { unknown: 1000 }, byAccountPlan: [] }],
   models: [
     { agent: "claude", model: "opus", input: 1, output: 2, cacheCreate: 3, cacheRead: 4, total: 10, costUsd: 0.5, unpriced: false },
   ],
-  available: { agents: ["claude"], models: [{ agent: "claude", model: "opus", tokens: 10 }], accounts: [{ key: "unknown", tokens: 10 }] },
+  available: { agents: ["claude"], models: [{ agent: "claude", model: "opus", tokens: 10 }], accounts: [{ key: "unknown", tokens: 10 }], plans: [] },
   ...over,
 });
 
@@ -169,7 +169,7 @@ test("server strings are data: control characters stripped, length capped, only 
   const d = mk({
     fetchStats: vi.fn(async () =>
       stats({
-        members: [{ id: 1, name: evil, email: "e".repeat(500), tokens: 1, costUsd: 1, machines: 1, lastSyncAt: null, byAgent: {}, byAccount: {} }],
+        members: [{ id: 1, name: evil, email: "e".repeat(500), tokens: 1, costUsd: 1, machines: 1, lastSyncAt: null, byAgent: {}, byAccount: {}, byAccountPlan: [] }],
         models: [
           { agent: "a\nb", model: "m".repeat(300), input: 0, output: 0, cacheCreate: 0, cacheRead: 0, total: 1, costUsd: 0, unpriced: true },
         ],
@@ -250,7 +250,7 @@ test("sync_usage reports skipped when another sync holds the lock", async () => 
 
 test("results are capped: 150 members -> 100 (highest tokens first) with truncated and the full count", async () => {
   const members = Array.from({ length: 150 }, (_, i) => ({
-    id: i + 1, name: `m${i}`, email: `m${i}@x`, tokens: i, costUsd: 0, machines: 1, lastSyncAt: null, byAgent: {}, byAccount: {},
+    id: i + 1, name: `m${i}`, email: `m${i}@x`, tokens: i, costUsd: 0, machines: 1, lastSyncAt: null, byAgent: {}, byAccount: {}, byAccountPlan: [],
   }));
   const models = Array.from({ length: 250 }, (_, i) => ({
     agent: "a", model: `m${i}`, input: 0, output: 0, cacheCreate: 0, cacheRead: 0, total: i, costUsd: 0, unpriced: false,

@@ -58,7 +58,7 @@ function usageFilter(
 
 /** The filter key of a stored label. Validation guarantees a non-null kind is an AccountKind. */
 const labelKey = (kind: AccountKind | null, org: string | null): string =>
-  accountKey(kind === null ? null : { kind, ...(org === null ? {} : { org }) });
+  accountKey(kind === null ? null : { kind, ...(org === null ? {} : { org }) }, "claude");
 
 /** Every account in the range (and member), ignoring all filters, tokens desc then key. One grouped query. */
 function availableAccounts(
@@ -193,6 +193,7 @@ export function getStats(
       .sort((a, b) => finite(b.total) - finite(a.total) || cmp(a.agent, b.agent) || cmp(a.model, b.model))
       .map((r) => ({ agent: r.agent, model: r.model, tokens: finite(r.total) })),
     accounts: availableAccounts(db, { from: q.from, to: q.to, memberId }, cmp),
+    plans: [] as { key: string; tokens: number }[], // filled in by a later task
   };
 
   // Agent ids are data: a Map plus fromEntries makes `__proto__` an ordinary own property.
@@ -239,6 +240,7 @@ export function getStats(
       byAgent: Object.fromEntries(mixes.get(m.id) ?? []) as Record<string, number>,
       // Account keys hold organisation names, which are data: same technique as byAgent.
       byAccount: Object.fromEntries(accountMixes.get(m.id) ?? []) as Record<string, number>,
+      byAccountPlan: [] as { account: string; plan: string; tokens: number }[], // filled in by a later task
     })),
     ...(machines ? { machines } : {}),
     available,

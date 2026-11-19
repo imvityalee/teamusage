@@ -274,6 +274,7 @@ describe("agent and model filters", () => {
       { agent: "codex", model: "other", tokens: 2 },
     ],
     accounts: [{ key: "unknown", tokens: 178 }],
+    plans: [],
   };
 
   test("no filters: available lists everything in range, sorted by tokens", () => {
@@ -368,6 +369,7 @@ describe("agent and model filters", () => {
         { agent: "claude", model: "opus", tokens: 10 },
       ],
       accounts: [{ key: "unknown", tokens: 70 }],
+      plans: [],
     });
     const none = getStats(db, { ...Q, memberId: ann, agents: ["gemini"] });
     expect(none.totals.tokens).toBe(0);
@@ -380,8 +382,9 @@ describe("agent and model filters", () => {
       agents: ["codex"],
       models: [{ agent: "codex", model: "other", tokens: 2 }, { agent: "codex", model: "gpt", tokens: 1 }],
       accounts: [{ key: "unknown", tokens: 3 }],
+      plans: [],
     });
-    expect(getStats(db, { from: "2026-12-01", to: "2026-12-02", agents: ["claude"] }).available).toEqual({ agents: [], models: [], accounts: [] });
+    expect(getStats(db, { from: "2026-12-01", to: "2026-12-02", agents: ["claude"] }).available).toEqual({ agents: [], models: [], accounts: [], plans: [] });
   });
 
   test("names with quotes, percent signs and __proto__ are plain data", () => {

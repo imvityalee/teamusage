@@ -413,9 +413,9 @@ describe("GET /api/stats", () => {
     const text = JSON.stringify(body);
     for (const secret of [token, MID, MID2, "mbp"]) expect(text).not.toContain(secret);
     expect(Object.keys((body.members as object[])[0] as object).sort()).toEqual([
-      "byAccount", "byAgent", "costUsd", "email", "id", "lastSyncAt", "machines", "name", "tokens",
+      "byAccount", "byAccountPlan", "byAgent", "costUsd", "email", "id", "lastSyncAt", "machines", "name", "tokens",
     ]);
-    expect(Object.keys(body.available as object).sort()).toEqual(["accounts", "agents", "models"]);
+    expect(Object.keys(body.available as object).sort()).toEqual(["accounts", "agents", "models", "plans"]);
     expect(memberId).toBeGreaterThan(0);
   });
 
