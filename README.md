@@ -45,15 +45,22 @@ instead, make the directory writable by uid 10001.
 
 ### Upgrading
 
-Upgrade the server first. Rebuild the image, run `docker rm -f teamusage`, and start it again with the
-same `docker run` command and the same volume. Members, tokens and dashboard sessions are kept. The first
-start with this release adds columns to the usage table in place; there is nothing for you to run.
+**From 0.3.0 to 0.3.1.** The server does not change; a 0.3.0 server is fine. 0.3.1 names the Codex hooks
+("teamusage: send usage" in `/hooks`) and shows a warning in Codex when the hooks cannot send your usage
+because of a setup problem. Members update the Claude Code plugin (see below), Codex users upgrade the Codex
+plugin and trust its hooks again in `/hooks` (see [Codex](#codex)), and anyone who installed the client
+globally runs `npm install -g teamusage@0.3.1`.
+
+**From 0.2.0 or older.** Upgrade the server first. Rebuild the image, run `docker rm -f teamusage`, and
+start it again with the same `docker run` command and the same volume. Members, tokens and dashboard
+sessions are kept. The first start with 0.3.0 or later adds columns to the usage table in place; there is
+nothing for you to run.
 
 Upgrade the server before the clients: an older server rejects uploads that carry Codex account labels.
 Clients on 0.1.0 and 0.2.0 keep working against the new server. Their usage shows as "Unknown" in the
 account views when they send no account label. After the server, members update the Claude Code plugin to
-this release, which runs `teamusage@0.3.0`, and Codex users install the Codex plugin (see
-[Codex](#codex)). Anyone who installed the client globally runs `npm install -g teamusage@0.3.0`.
+this release, which runs `teamusage@0.3.1`, and Codex users install the Codex plugin (see
+[Codex](#codex)). Anyone who installed the client globally runs `npm install -g teamusage@0.3.1`.
 
 "Unknown" now means unlabelled Claude usage only. Usage of other agents without an account label shows
 as "Other agents", and the `unknown` account filter matches Claude usage only.
@@ -63,14 +70,14 @@ select `teamusage` on the Installed tab and choose Update now. A third-party mar
 auto-update by default. The running session keeps the old version until the next session or
 `/reload-plugins`.
 
-A 0.3.0 client against an older server: machines with a Codex login have every upload refused until the
-server is upgraded. Nothing is lost; it is sent again after the upgrade. Claude-only machines still upload,
-without plans.
+A 0.3.0 or newer client against a server older than 0.3.0: machines with a Codex login have every upload
+refused until the server is upgraded. Nothing is lost; it is sent again after the upgrade. Claude-only
+machines still upload, without plans.
 
 An existing Codex MCP registration stays on the version it was registered with (0.2.0 `setup` registered
 one by default). A registration like that also hides the plugin's own MCP server, so anyone who registered
 teamusage with Codex before and now uses the plugin runs `codex mcp remove teamusage` first. People who do
-not use the plugin re-run `teamusage setup --codex` to move the registration to 0.3.0. To upgrade the Codex
+not use the plugin re-run `teamusage setup --codex` to move the registration to 0.3.1. To upgrade the Codex
 plugin, see [Codex](#codex).
 
 After upgrading, a member can give past days their plan and account label once: see
@@ -229,14 +236,15 @@ teamusage: connect your machine (about 5 minutes)
 5. Check it: ask Claude "send my usage", then find yourself on https://usage.example.com
 
 Using Codex? In a terminal, once:
-     npx -y teamusage@0.3.0 setup
+     npx -y teamusage@0.3.1 setup
    (server URL, invite code, your name and email). If you registered teamusage with Codex
    before, first run: codex mcp remove teamusage (the plugin brings its own MCP server). Then:
      codex plugin marketplace add imvityalee/teamusage
      codex plugin add teamusage@teamusage
-   Then in Codex type /hooks and trust the teamusage hooks. Trust them again after
-   each plugin upgrade. Codex usage is sent when a session starts and at most every
-   4 hours after a reply. On Windows, run "npx -y teamusage@0.3.0 sync" yourself.
+   Then in Codex type /hooks and trust the hooks named "teamusage: send usage". Trust them
+   again after each plugin upgrade. Codex usage is sent when a session starts and at most
+   every 4 hours after a reply. If Codex warns "teamusage could not send your usage", run
+   the setup command above again. On Windows, run "npx -y teamusage@0.3.1 sync" yourself.
 ```
 
 ```text
@@ -255,19 +263,20 @@ teamusage: подключите свой компьютер (около 5 мин
 5. Проверка: попросите Claude «отправь статистику» и найдите себя на https://usage.example.com
 
 Используете Codex? В терминале, один раз:
-     npx -y teamusage@0.3.0 setup
+     npx -y teamusage@0.3.1 setup
    (адрес сервера, код приглашения, ваши имя и почта). Если вы раньше регистрировали
    teamusage в Codex, сначала выполните: codex mcp remove teamusage (плагин приносит
    собственный MCP-сервер). Затем:
      codex plugin marketplace add imvityalee/teamusage
      codex plugin add teamusage@teamusage
-   Потом в Codex введите /hooks и доверьте хуки teamusage. После каждого обновления
-   плагина доверьте их снова. Статистика Codex отправляется при начале сессии и не
-   чаще раза в 4 часа после ответа. В Windows запускайте
-   «npx -y teamusage@0.3.0 sync» сами.
+   Потом в Codex введите /hooks и доверьте хуки «teamusage: send usage». После каждого
+   обновления плагина доверьте их снова. Статистика Codex отправляется при начале сессии
+   и не чаще раза в 4 часа после ответа. Если Codex предупреждает «teamusage could not
+   send your usage», снова выполните команду setup выше. В Windows запускайте
+   «npx -y teamusage@0.3.1 sync» сами.
 ```
 
-If something does not arrive, the person runs `npx -y teamusage@0.3.0 status` in a terminal and reads
+If something does not arrive, the person runs `npx -y teamusage@0.3.1 status` in a terminal and reads
 `sync.log` in `~/.config/teamusage`. Details on each path follow below.
 
 ## Join as a team member
@@ -339,7 +348,7 @@ They use the same config as the other commands. The Claude Code plugin below reg
 
 This repository is also a Claude Code plugin marketplace. The plugin sends your usage automatically when
 Claude Code sessions start and end and during a session at most every 4 hours, and adds two skills and the MCP tools above. It runs the client from
-npm at a pinned version (`npx -y teamusage@0.3.0`). Inside Claude Code:
+npm at a pinned version (`npx -y teamusage@0.3.1`). Inside Claude Code:
 
 ```
 /plugin marketplace add imvityalee/teamusage
@@ -410,11 +419,11 @@ node packages/client/dist/cli.js sync
 ```
 
 You can instead install it from npm with
-`npm install -g teamusage@0.3.0` and use `teamusage setup`, `teamusage sync` and
+`npm install -g teamusage@0.3.1` and use `teamusage setup`, `teamusage sync` and
 `teamusage schedule install` (see [Scheduled sync](#scheduled-sync)).
 
 **Automatic sending.** When a session starts (new or resumed) and when it ends, the plugin runs
-`npx -y teamusage@0.3.0 sync --quiet --detach`. The client returns at once, the sync continues in the
+`npx -y teamusage@0.3.1 sync --quiet --detach`. The client returns at once, the sync continues in the
 background, the client prints nothing, and failures go to `sync.log` in the config directory.
 
 A `Stop` hook, which Claude Code runs after each reply, runs the same command with `--throttle 4h`. The
@@ -664,16 +673,17 @@ teamusage status                  # shows "Scheduled sync: installed" or "not in
 
 This repository is also a Codex plugin marketplace. The plugin sends your Codex usage automatically and
 adds two skills and the MCP tools. It runs the client from npm at a pinned version
-(`npx -y teamusage@0.3.0`), so Node.js 22 or newer is required. Set up once, in a terminal:
+(`npx -y teamusage@0.3.1`), so Node.js 22 or newer is required. Set up once, in a terminal:
 
 ```sh
-npx -y teamusage@0.3.0 setup                      # server URL, invite code, your name and email
+npx -y teamusage@0.3.1 setup                      # server URL, invite code, your name and email
 codex plugin marketplace add imvityalee/teamusage
 codex plugin add teamusage@teamusage
 ```
 
-Then, in Codex, type `/hooks` and trust the teamusage hooks. Codex does not run hooks you have not
-trusted. Trust them again after every plugin upgrade.
+Then, in Codex, type `/hooks` and trust the teamusage hooks, listed as "teamusage: send usage". Codex
+does not run hooks you have not trusted. Every plugin update changes the hook commands, and Codex asks for
+trust again for a changed hook, so after every plugin update type `/hooks` and trust them again.
 
 **Upgrading the plugin.** In a terminal, refresh the marketplace snapshot and install the new version:
 
@@ -695,8 +705,22 @@ no session-end event, so Codex usage is sent when a session starts and, during a
 on macOS and Linux. On Windows the hook commands are not valid, so Windows Codex users run
 `teamusage sync` themselves or use the `sync_usage` MCP tool.
 
-**Troubleshooting.** The hooks print nothing. To see what is wrong, run `npx -y teamusage@0.3.0 status`
-or `teamusage sync` in a terminal, and read `sync.log` in the config directory.
+**The warning.** While everything works the hooks show nothing. When a sync started by a hook fails because
+of a setup or token problem (teamusage is not set up, the server URL or email changed, the token is missing
+or rejected, the config file is broken, the server URL is not valid), Codex shows a warning after your first
+reply in a session:
+
+```text
+teamusage could not send your usage: <what went wrong>
+```
+
+It comes once per session until the problem is fixed, usually by running `npx -y teamusage@0.3.1 setup` in
+a terminal. The first sync that succeeds clears it. The warning holds only the client's own error message,
+never a token or the invite code. Network and server errors, collection errors and skipped syncs show no
+warning.
+
+**Troubleshooting.** To see what is wrong, run `npx -y teamusage@0.3.1 status` or `teamusage sync` in a
+terminal, and read `sync.log` in the config directory.
 
 **Without the plugin.** `teamusage setup --codex` registers only the MCP tools with Codex, by running
 

@@ -28,6 +28,13 @@ const SESSION_START_MATCHER = "startup|resume";
 // through the user's shell (`<shell> -c`, else `$SHELL -lc`) and waits until the shell exits and its stdout and
 // stderr close, so each Codex hook backgrounds npx with its output redirected and returns at once.
 const CODEX_BACKGROUND = " >/dev/null 2>&1 &";
+// TEAMUSAGE_HOOK=codex makes a failed sync with a setup problem leave codex-notice.json in the client config
+// directory ({"systemMessage": ...}); the Stop hook prints it (Codex shows it as a warning) and removes it, before
+// it starts the next sync. Codex handlers have no name field; /hooks lists them by statusMessage.
+const CODEX_ENV = "TEAMUSAGE_HOOK=codex ";
+const CODEX_NOTICE =
+  'F="${XDG_CONFIG_HOME:-$HOME/.config}/teamusage/codex-notice.json"; [ -f "$F" ] && cat "$F" && rm -f "$F"; ';
+const CODEX_STATUS = "teamusage: send usage";
 const CODEX_POLICY = { installation: "AVAILABLE", authentication: "ON_INSTALL" };
 const CODEX_CATEGORY = "Developer Tools";
 const SKILLS = ["usage-stats", "usage-sync"];
@@ -239,7 +246,7 @@ export function checkPlugin(root) {
     if (JSON.stringify(cMcp) !== JSON.stringify(want)) fail(`${C_MCP}: must be exactly ${JSON.stringify(want)}`);
   }
 
-  // Codex hooks: one command string each, backgrounded in the shell
+  // Codex hooks: one command string each, backgrounded in the shell, labelled; Stop shows the notice first
   const C_HOOKS = "codex-plugin/hooks/hooks.json";
   const cHooks = need(C_HOOKS);
   if (cHooks) {
@@ -258,7 +265,8 @@ export function checkPlugin(root) {
         const handlers = groups.flatMap((g) => (Array.isArray(g?.hooks) ? g.hooks : [null]));
         if (handlers.length !== 1) fail(`${C_HOOKS}: ${ev} must have exactly one hook`);
         const args = clientArgs("sync", "--quiet", "--detach", ...(ev === "Stop" ? STOP_ARGS : []));
-        const want = { type: "command", command: ["npx", ...args].join(" ") + CODEX_BACKGROUND };
+        const command = (ev === "Stop" ? CODEX_NOTICE : "") + CODEX_ENV + ["npx", ...args].join(" ") + CODEX_BACKGROUND;
+        const want = { type: "command", command, statusMessage: CODEX_STATUS };
         for (const h of handlers) {
           if (JSON.stringify(h) !== JSON.stringify(want)) fail(`${C_HOOKS}: ${ev} hook must be ${JSON.stringify(want)}`);
         }

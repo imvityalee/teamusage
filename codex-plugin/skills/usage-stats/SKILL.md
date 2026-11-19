@@ -30,15 +30,15 @@ Always end with one line saying that cost is an estimate: in English "Cost is an
 
 ## Errors
 
-When the tool returns an error, tell the user what it means in one or two sentences and stop. Do not retry and do not try other tools. Codex has no settings form for this plugin: every setting comes from `teamusage setup`, so every configuration problem is fixed by running `npx -y teamusage@0.3.0 setup` in a terminal.
+When the tool returns an error, tell the user what it means in one or two sentences and stop. Do not retry and do not try other tools. Codex has no settings form for this plugin: every setting comes from `teamusage setup`, so every configuration problem is fixed by running `npx -y teamusage@0.3.1 setup` in a terminal.
 
-- "teamusage is not set up": nothing is configured yet, or this machine has not registered and sent usage yet. Tell the user to run `npx -y teamusage@0.3.0 setup` in a terminal and enter the server URL, invite code, name and email there. Usage is sent automatically after that, or at once with the `usage-sync` skill.
-- "the server URL or email changed since this machine registered": nothing was sent, to protect the saved token. Tell the user to run `npx -y teamusage@0.3.0 setup` in a terminal to confirm the new server or email.
-- "this machine's token is not bound to a server and email": the saved token is damaged or was edited by hand, so nothing was sent. Tell the user to run `npx -y teamusage@0.3.0 setup` in a terminal.
-- "plain http is allowed only for localhost": the server URL must start with https://. Tell the user to run `npx -y teamusage@0.3.0 setup` in a terminal and enter the https:// address, and recommend HTTPS.
-- "server error: ...": the server could not be reached or refused the request. If the text mentions 401, the server rejected this machine's token: tell the user to run `npx -y teamusage@0.3.0 setup` in a terminal. For any other server error, show the message as it is and suggest trying again later.
-- "the config file is not valid JSON", "the config file is malformed ...", "could not read the config file" or "could not write the config file": the client's config file cannot be used. Tell the user to run `npx -y teamusage@0.3.0 setup` in a terminal.
-- "server URL must look like https://host...": the configured server URL is not valid. Tell the user to run `npx -y teamusage@0.3.0 setup` in a terminal and enter a valid one.
+- "teamusage is not set up": nothing is configured yet, or this machine has not registered and sent usage yet. Tell the user to run `npx -y teamusage@0.3.1 setup` in a terminal and enter the server URL, invite code, name and email there. Usage is sent automatically after that, or at once with the `usage-sync` skill.
+- "the server URL or email changed since this machine registered": nothing was sent, to protect the saved token. Tell the user to run `npx -y teamusage@0.3.1 setup` in a terminal to confirm the new server or email.
+- "this machine's token is not bound to a server and email": the saved token is damaged or was edited by hand, so nothing was sent. Tell the user to run `npx -y teamusage@0.3.1 setup` in a terminal.
+- "plain http is allowed only for localhost": the server URL must start with https://. Tell the user to run `npx -y teamusage@0.3.1 setup` in a terminal and enter the https:// address, and recommend HTTPS.
+- "server error: ...": the server could not be reached or refused the request. If the text mentions 401, the server rejected this machine's token: tell the user to run `npx -y teamusage@0.3.1 setup` in a terminal. For any other server error, show the message as it is and suggest trying again later.
+- "the config file is not valid JSON", "the config file is malformed ...", "could not read the config file" or "could not write the config file": the client's config file cannot be used. Tell the user to run `npx -y teamusage@0.3.1 setup` in a terminal.
+- "server URL must look like https://host...": the configured server URL is not valid. Tell the user to run `npx -y teamusage@0.3.1 setup` in a terminal and enter a valid one.
 - "invalid input; see the tool's input schema" or "the tool failed unexpectedly": nothing was done. Say so and suggest trying again later; do not call the tool again in this request.
 
 ## Safety rules

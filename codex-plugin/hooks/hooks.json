@@ -6,7 +6,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "npx -y teamusage@0.3.0 sync --quiet --detach >/dev/null 2>&1 &"
+            "command": "TEAMUSAGE_HOOK=codex npx -y teamusage@0.3.1 sync --quiet --detach >/dev/null 2>&1 &",
+            "statusMessage": "teamusage: send usage"
           }
         ]
       }
@@ -16,7 +17,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "npx -y teamusage@0.3.0 sync --quiet --detach --throttle 4h >/dev/null 2>&1 &"
+            "command": "F=\"${XDG_CONFIG_HOME:-$HOME/.config}/teamusage/codex-notice.json\"; [ -f \"$F\" ] && cat \"$F\" && rm -f \"$F\"; TEAMUSAGE_HOOK=codex npx -y teamusage@0.3.1 sync --quiet --detach --throttle 4h >/dev/null 2>&1 &",
+            "statusMessage": "teamusage: send usage"
           }
         ]
       }
@@ -26,7 +28,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "npx -y teamusage@0.3.0 sync --quiet --detach >/dev/null 2>&1 &"
+            "command": "TEAMUSAGE_HOOK=codex npx -y teamusage@0.3.1 sync --quiet --detach >/dev/null 2>&1 &",
+            "statusMessage": "teamusage: send usage"
           }
         ]
       }

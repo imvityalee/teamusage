@@ -402,3 +402,69 @@ test("every Codex hook backgrounds itself with its output redirected", () => {
     assert.match(hooks[ev][0].hooks[0].command, / >\/dev\/null 2>&1 &$/, ev);
   }
 });
+
+// 0.3.1: each Codex hook tells the client it runs from Codex (so a setup problem leaves a notice), carries the
+// label /hooks shows, and the Stop hook prints and removes the notice before it starts the sync.
+const CODEX_STATUS = "teamusage: send usage";
+const CODEX_NOTICE =
+  'F="${XDG_CONFIG_HOME:-$HOME/.config}/teamusage/codex-notice.json"; [ -f "$F" ] && cat "$F" && rm -f "$F"; ';
+const codexSync = (...extra) =>
+  ["TEAMUSAGE_HOOK=codex npx -y", `teamusage@${version}`, "sync --quiet --detach", ...extra].join(" ") + " >/dev/null 2>&1 &";
+
+test("the repository's Codex hooks are exactly the named, Codex-tagged commands", () => {
+  const hooks = JSON.parse(readFileSync(path.join(repo, C_HOOKS), "utf8"));
+  assert.deepEqual(hooks, {
+    hooks: {
+      SessionStart: [{ matcher: "startup|resume", hooks: [{ type: "command", command: codexSync(), statusMessage: CODEX_STATUS }] }],
+      Stop: [{ hooks: [{ type: "command", command: CODEX_NOTICE + codexSync("--throttle 4h"), statusMessage: CODEX_STATUS }] }],
+      SessionEnd: [{ hooks: [{ type: "command", command: codexSync(), statusMessage: CODEX_STATUS }] }],
+    },
+  });
+});
+
+test("the 0.3.0 Codex hooks, without the Codex tag or the label, are rejected", () => {
+  const old030 = {
+    SessionStart: "npx -y teamusage@0.3.0 sync --quiet --detach >/dev/null 2>&1 &",
+    Stop: "npx -y teamusage@0.3.0 sync --quiet --detach --throttle 4h >/dev/null 2>&1 &",
+    SessionEnd: "npx -y teamusage@0.3.0 sync --quiet --detach >/dev/null 2>&1 &",
+  };
+  const failures = copy(({ json }) =>
+    json(C_HOOKS, (h) => {
+      for (const [ev, command] of Object.entries(old030)) h.hooks[ev][0].hooks[0] = { type: "command", command };
+    }),
+  );
+  for (const ev of Object.keys(old030)) expectFailure(failures, new RegExp(`codex-plugin/hooks/hooks\\.json: ${ev} hook must be`));
+  // The same commands at the current version, still without TEAMUSAGE_HOOK=codex
+  for (const ev of ["SessionStart", "SessionEnd"]) {
+    expectFailure(
+      copy(({ json }) =>
+        json(C_HOOKS, (h) => (h.hooks[ev][0].hooks[0].command = `npx -y teamusage@${version} sync --quiet --detach >/dev/null 2>&1 &`)),
+      ),
+      new RegExp(`codex-plugin/hooks/hooks\\.json: ${ev} hook must be`),
+    );
+  }
+});
+
+test("a Codex hook without its statusMessage, or with another one", () => {
+  for (const ev of ["SessionStart", "Stop", "SessionEnd"]) {
+    expectFailure(
+      copy(({ json }) => json(C_HOOKS, (h) => delete h.hooks[ev][0].hooks[0].statusMessage)),
+      new RegExp(`codex-plugin/hooks/hooks\\.json: ${ev} hook must be`),
+    );
+  }
+  expectFailure(
+    copy(({ json }) => json(C_HOOKS, (h) => (h.hooks.Stop[0].hooks[0].statusMessage = "teamusage"))),
+    /codex-plugin\/hooks\/hooks\.json: Stop hook must be/,
+  );
+});
+
+test("the Codex Stop hook without the notice prefix, or a session hook with it", () => {
+  expectFailure(
+    copy(({ json }) => json(C_HOOKS, (h) => (h.hooks.Stop[0].hooks[0].command = codexSync("--throttle 4h")))),
+    /codex-plugin\/hooks\/hooks\.json: Stop hook must be/,
+  );
+  expectFailure(
+    copy(({ json }) => json(C_HOOKS, (h) => (h.hooks.SessionStart[0].hooks[0].command = CODEX_NOTICE + codexSync()))),
+    /codex-plugin\/hooks\/hooks\.json: SessionStart hook must be/,
+  );
+});
