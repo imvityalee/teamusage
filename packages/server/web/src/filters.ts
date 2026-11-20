@@ -1,9 +1,17 @@
-import { MAX_ACCOUNTS, MAX_PLANS, parseAccountKey, parsePlanKey, type Stats } from "@teamusage/shared";
+import {
+  MAX_ACCOUNT_FILTERS,
+  MAX_AGENT_FILTERS,
+  MAX_MODEL_FILTERS,
+  MAX_PLAN_FILTERS,
+  parseAccountKey,
+  parsePlanKey,
+  type Stats,
+} from "@teamusage/shared";
 
 /**
- * The agent, model and account filters. They live only in memory: they are never stored and never put in the URL,
- * and reach the server only as `agent`, `model` and `account` query parameters (see `toQuery`).
- * Agent ids, model names and account keys are compared as plain strings, through Map and Set only.
+ * The agent, model, account and plan filters. They live only in memory: they are never stored and never put in the
+ * URL, and reach the server only as `agent`, `model`, `account` and `plan` query parameters (see `toQuery`).
+ * Agent ids, model names, account keys and plan keys are compared as plain strings, through Map and Set only.
  */
 
 export interface ModelRef {
@@ -20,6 +28,15 @@ export interface Filters {
   plans: string[];
 }
 
+export type FilterKind = keyof Filters;
+
+/** In the order of the filter bar and the query parameters. */
+export const FILTER_KINDS: readonly FilterKind[] = ["agents", "models", "accounts", "plans"];
+
+/** The filters that are plain lists of keys, with no rule tying them to another filter. */
+export const KEY_KINDS = ["accounts", "plans"] as const satisfies readonly FilterKind[];
+export type KeyKind = (typeof KEY_KINDS)[number];
+
 export const NO_FILTERS: Filters = Object.freeze({
   agents: Object.freeze([]),
   models: Object.freeze([]),
@@ -28,9 +45,12 @@ export const NO_FILTERS: Filters = Object.freeze({
 }) as unknown as Filters;
 
 /** The server's limits; the page never asks for more. */
-export const MAX_AGENTS = 20;
-export const MAX_MODELS = 50;
-export { MAX_ACCOUNTS, MAX_PLANS };
+export const LIMITS: Readonly<Record<FilterKind, number>> = {
+  agents: MAX_AGENT_FILTERS,
+  models: MAX_MODEL_FILTERS,
+  accounts: MAX_ACCOUNT_FILTERS,
+  plans: MAX_PLAN_FILTERS,
+};
 
 /**
  * Whether a model can be filtered on. The server reads `<agent>:<model>` up to the first colon, so a model of an
@@ -42,14 +62,12 @@ export function canFilterModel(ref: ModelRef): boolean {
 
 /** Query parameters, agents first in selection order, then models as `<agent>:<model>`, then account keys, then plan keys. */
 export function toQuery(f: Filters): [string, string][] {
+  const pairs = (name: string, values: string[], max: number) => values.slice(0, max).map((v): [string, string] => [name, v]);
   return [
-    ...f.agents.slice(0, MAX_AGENTS).map((a): [string, string] => ["agent", a]),
-    ...f.models
-      .filter(canFilterModel)
-      .slice(0, MAX_MODELS)
-      .map((m): [string, string] => ["model", `${m.agent}:${m.model}`]),
-    ...f.accounts.slice(0, MAX_ACCOUNTS).map((k): [string, string] => ["account", k]),
-    ...f.plans.slice(0, MAX_PLANS).map((k): [string, string] => ["plan", k]),
+    ...pairs("agent", f.agents, LIMITS.agents),
+    ...pairs("model", f.models.filter(canFilterModel).map((m) => `${m.agent}:${m.model}`), LIMITS.models),
+    ...pairs("account", f.accounts, LIMITS.accounts),
+    ...pairs("plan", f.plans, LIMITS.plans),
   ];
 }
 
@@ -66,12 +84,14 @@ function modelIndex(available: Stats["available"]): Map<string, Set<string>> {
   return index;
 }
 
+const keysOf = (list: { key: string }[]): Set<string> => new Set(list.map((a) => a.key));
+
 /** Drops selections that are not in `available`; keeps the rest in order. */
 export function prune(f: Filters, available: Stats["available"]): Filters {
   const agents = new Set(available.agents);
   const models = modelIndex(available);
-  const accounts = new Set(available.accounts.map((a) => a.key));
-  const plans = new Set(available.plans.map((a) => a.key));
+  const accounts = keysOf(available.accounts);
+  const plans = keysOf(available.plans);
   return {
     agents: f.agents.filter((a) => agents.has(a)),
     models: f.models.filter((m) => models.get(m.agent)?.has(m.model) === true),
@@ -81,27 +101,24 @@ export function prune(f: Filters, available: Stats["available"]): Filters {
 }
 
 export function isActive(f: Filters): boolean {
-  return f.agents.length > 0 || f.models.length > 0 || f.accounts.length > 0 || f.plans.length > 0;
+  return FILTER_KINDS.some((kind) => f[kind].length > 0);
 }
 
-/**
- * Drives a button label: "All agents" only when nothing is selected, otherwise "N agents", even when every item is
- * ticked, so the button never says "All" while chips are showing. `total` is kept for callers' clarity.
- */
-export function summary(selected: number, _total: number): "all" | "some" {
-  return selected === 0 ? "all" : "some";
+/** True when `after` lost every selection of a filter that `before` had: the answer was narrowed by a filter now gone. */
+export function anyFilterEmptied(before: Filters, after: Filters): boolean {
+  return FILTER_KINDS.some((kind) => before[kind].length > 0 && after[kind].length === 0);
 }
+
+const sameList = <T>(a: T[], b: T[], same: (x: T, y: T) => boolean): boolean =>
+  a.length === b.length && a.every((x, i) => same(x, b[i] as T));
+const sameString = (x: string, y: string): boolean => x === y;
 
 export function equalFilters(a: Filters, b: Filters): boolean {
   return (
-    a.agents.length === b.agents.length &&
-    a.agents.every((x, i) => x === b.agents[i]) &&
-    a.models.length === b.models.length &&
-    a.models.every((x, i) => sameModel(x, b.models[i] as ModelRef)) &&
-    a.accounts.length === b.accounts.length &&
-    a.accounts.every((x, i) => x === b.accounts[i]) &&
-    a.plans.length === b.plans.length &&
-    a.plans.every((x, i) => x === b.plans[i])
+    sameList(a.agents, b.agents, sameString) &&
+    sameList(a.models, b.models, sameModel) &&
+    sameList(a.accounts, b.accounts, sameString) &&
+    sameList(a.plans, b.plans, sameString)
   );
 }
 
@@ -111,11 +128,16 @@ export interface Toggled {
   limited: boolean;
 }
 
+/** `list` without `key` when it has it, else with `key` added; null when adding would go over `max`. */
+function toggled(list: string[], key: string, max: number): string[] | null {
+  if (list.includes(key)) return list.filter((k) => k !== key);
+  return list.length >= max ? null : [...list, key];
+}
+
 /** Adds or removes an agent. While agents are selected, selected models of other agents are dropped. */
 export function toggleAgent(f: Filters, id: string): Toggled {
-  const has = f.agents.includes(id);
-  if (!has && f.agents.length >= MAX_AGENTS) return { filters: f, limited: true };
-  const agents = has ? f.agents.filter((a) => a !== id) : [...f.agents, id];
+  const agents = toggled(f.agents, id, LIMITS.agents);
+  if (agents === null) return { filters: f, limited: true };
   const listed = new Set(agents);
   const models = agents.length === 0 ? f.models : f.models.filter((m) => listed.has(m.agent));
   return { filters: { ...f, agents, models }, limited: false };
@@ -125,30 +147,31 @@ export function toggleAgent(f: Filters, id: string): Toggled {
 export function toggleModel(f: Filters, ref: ModelRef): Toggled {
   if (!canFilterModel(ref)) return { filters: f, limited: false };
   const has = f.models.some((m) => sameModel(m, ref));
-  if (!has && f.models.length >= MAX_MODELS) return { filters: f, limited: true };
+  if (!has && f.models.length >= LIMITS.models) return { filters: f, limited: true };
   const models = has ? f.models.filter((m) => !sameModel(m, ref)) : [...f.models, { agent: ref.agent, model: ref.model }];
   return { filters: { ...f, models }, limited: false };
 }
 
-/** Adds or removes an account key. Agents and models are left as they are. */
-export function toggleAccount(f: Filters, key: string): Toggled {
-  const has = f.accounts.includes(key);
-  if (!has && f.accounts.length >= MAX_ACCOUNTS) return { filters: f, limited: true };
-  const accounts = has ? f.accounts.filter((k) => k !== key) : [...f.accounts, key];
-  return { filters: { ...f, accounts }, limited: false };
+/** Adds or removes an account or plan key. The other filters are left as they are. */
+export function toggleKey(f: Filters, kind: KeyKind, key: string): Toggled {
+  const keys = toggled(f[kind], key, LIMITS[kind]);
+  return keys === null ? { filters: f, limited: true } : { filters: { ...f, [kind]: keys }, limited: false };
 }
 
-/** Adds or removes a plan key. Agents, models and accounts are left as they are. */
-export function togglePlan(f: Filters, key: string): Toggled {
-  const has = f.plans.includes(key);
-  if (!has && f.plans.length >= MAX_PLANS) return { filters: f, limited: true };
-  const plans = has ? f.plans.filter((k) => k !== key) : [...f.plans, key];
-  return { filters: { ...f, plans }, limited: false };
+const isTokenCount = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n) && n >= 0;
+
+/** The `{ key, tokens }` entries of `raw` with a valid key and a finite, non-negative total. */
+function keyedTotals(raw: unknown, validKey: (key: string) => boolean): { key: string; tokens: number }[] {
+  return (Array.isArray(raw) ? raw : []).flatMap((a: unknown) => {
+    if (typeof a !== "object" || a === null) return [];
+    const { key, tokens } = a as { key?: unknown; tokens?: unknown };
+    return typeof key === "string" && validKey(key) && isTokenCount(tokens) ? [{ key, tokens }] : [];
+  });
 }
 
 /**
- * The filter lists from an answer, keeping only well-formed entries: agent ids that are strings, and models with a
- * string agent and model and a finite, non-negative total, and accounts with a well-formed key and such a total.
+ * The filter lists from an answer, keeping only well-formed entries: agent ids that are strings; models with a string
+ * agent and model and a finite, non-negative total; accounts and plans with a well-formed key and such a total.
  * Anything else is dropped, so a `null` cannot make `prune` throw and no total can show as NaN.
  */
 export function cleanAvailable(raw: unknown): Stats["available"] {
@@ -156,27 +179,22 @@ export function cleanAvailable(raw: unknown): Stats["available"] {
   const agents = Array.isArray(r.agents) ? r.agents.filter((a): a is string => typeof a === "string") : [];
   const models = (Array.isArray(r.models) ? r.models : []).flatMap((m: unknown) => {
     if (typeof m !== "object" || m === null) return [];
-    const { agent, model, tokens: n } = m as { agent?: unknown; model?: unknown; tokens?: unknown };
-    if (typeof agent !== "string" || typeof model !== "string" || typeof n !== "number" || !Number.isFinite(n) || n < 0) return [];
-    return [{ agent, model, tokens: n }];
+    const { agent, model, tokens } = m as { agent?: unknown; model?: unknown; tokens?: unknown };
+    return typeof agent === "string" && typeof model === "string" && isTokenCount(tokens) ? [{ agent, model, tokens }] : [];
   });
-  // Same rules for accounts; the key must also be a well-formed account key.
-  const accounts = (Array.isArray(r.accounts) ? r.accounts : []).flatMap((a: unknown) => {
-    if (typeof a !== "object" || a === null) return [];
-    const { key, tokens: n } = a as { key?: unknown; tokens?: unknown };
-    if (typeof key !== "string" || parseAccountKey(key) === undefined) return [];
-    if (typeof n !== "number" || !Number.isFinite(n) || n < 0) return [];
-    return [{ key, tokens: n }];
-  });
-  // And for plans, with a well-formed plan key.
-  const plans = (Array.isArray(r.plans) ? r.plans : []).flatMap((a: unknown) => {
-    if (typeof a !== "object" || a === null) return [];
-    const { key, tokens: n } = a as { key?: unknown; tokens?: unknown };
-    if (typeof key !== "string" || parsePlanKey(key) === undefined) return [];
-    if (typeof n !== "number" || !Number.isFinite(n) || n < 0) return [];
-    return [{ key, tokens: n }];
-  });
-  return { agents, models, accounts, plans };
+  return {
+    agents,
+    models,
+    accounts: keyedTotals(r.accounts, (k) => parseAccountKey(k) !== undefined),
+    plans: keyedTotals(r.plans, (k) => parsePlanKey(k) !== undefined),
+  };
+}
+
+/** `list` plus every selected key it lacks, at zero tokens. */
+function withKeys(list: { key: string; tokens: number }[], selected: string[]): { key: string; tokens: number }[] {
+  const present = keysOf(list);
+  const missing = [...new Set(selected)].filter((key) => !present.has(key));
+  return [...list, ...missing.map((key) => ({ key, tokens: 0 }))];
 }
 
 /**
@@ -184,14 +202,8 @@ export function cleanAvailable(raw: unknown): Stats["available"] {
  * unticked (for example on a member's page, whose `available` is that member's).
  */
 export function withSelection(available: Stats["available"], f: Filters): Stats["available"] {
-  const agents = [...available.agents];
-  const seen = new Set(agents);
-  for (const a of f.agents) {
-    if (!seen.has(a)) {
-      agents.push(a);
-      seen.add(a);
-    }
-  }
+  const present = new Set(available.agents);
+  const agents = [...available.agents, ...[...new Set(f.agents)].filter((a) => !present.has(a))];
   const index = modelIndex(available);
   const models = [...available.models];
   for (const m of f.models) {
@@ -199,34 +211,20 @@ export function withSelection(available: Stats["available"], f: Filters): Stats[
     models.push({ agent: m.agent, model: m.model, tokens: 0 });
     index.set(m.agent, (index.get(m.agent) ?? new Set<string>()).add(m.model));
   }
-  const accounts = [...available.accounts];
-  const keys = new Set(accounts.map((a) => a.key));
-  for (const key of f.accounts) {
-    if (keys.has(key)) continue;
-    accounts.push({ key, tokens: 0 });
-    keys.add(key);
-  }
-  const plans = [...available.plans];
-  const planKeys = new Set(plans.map((p) => p.key));
-  for (const key of f.plans) {
-    if (planKeys.has(key)) continue;
-    plans.push({ key, tokens: 0 });
-    planKeys.add(key);
-  }
-  return { agents, models, accounts, plans };
+  return { agents, models, accounts: withKeys(available.accounts, f.accounts), plans: withKeys(available.plans, f.plans) };
 }
 
-const tokens = (n: unknown): number => (typeof n === "number" && Number.isFinite(n) && n > 0 ? n : 0);
+const positive = (n: unknown): number => (typeof n === "number" && Number.isFinite(n) && n > 0 ? n : 0);
 const capped = (n: number): number => Math.min(n, Number.MAX_VALUE);
 
 /** Each agent's tokens in the period, ignoring the filters, in `available` order. */
-export function agentTotals(available: Stats["available"]): Map<string, number> {
+export function availableAgentTotals(available: Stats["available"]): Map<string, number> {
   const totals = new Map<string, number>(available.agents.map((a) => [a, 0]));
-  for (const m of available.models) totals.set(m.agent, capped((totals.get(m.agent) ?? 0) + tokens(m.tokens)));
+  for (const m of available.models) totals.set(m.agent, capped((totals.get(m.agent) ?? 0) + positive(m.tokens)));
   return totals;
 }
 
 /** Every token in the period, ignoring the filters: the base for "N% of all tokens in this period". */
 export function availableTotal(available: Stats["available"]): number {
-  return available.models.reduce((sum, m) => capped(sum + tokens(m.tokens)), 0);
+  return available.models.reduce((sum, m) => capped(sum + positive(m.tokens)), 0);
 }

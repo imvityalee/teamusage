@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { checkRange, fetchStats, login } from "./api.js";
+import { fetchStats, login } from "./api.js";
 import { memberStatsFixture, statsFixture } from "./test-fixtures.js";
 
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
@@ -73,20 +73,6 @@ describe("login", () => {
     expect(await login("x")).toEqual({ kind: "tooMany", retryAfterSec: 60 });
     expect(await login("x")).toEqual({ kind: "error" });
     expect(await login("x")).toEqual({ kind: "network" });
-  });
-});
-
-describe("checkRange", () => {
-  test("accepts ordered real dates up to 730 days", () => {
-    expect(checkRange("2026-01-01", "2026-01-01")).toBe("ok");
-    expect(checkRange("2024-11-19", "2026-11-18")).toBe("ok"); // 730 days inclusive
-  });
-
-  test("rejects missing, reversed and too long ranges", () => {
-    expect(checkRange("", "2026-01-01")).toBe("incomplete");
-    expect(checkRange("2026-02-30", "2026-03-01")).toBe("incomplete");
-    expect(checkRange("2026-02-01", "2026-01-01")).toBe("order");
-    expect(checkRange("2024-11-18", "2026-11-18")).toBe("tooLong"); // 731 days
   });
 });
 

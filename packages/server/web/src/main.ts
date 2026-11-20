@@ -1,24 +1,22 @@
-import { presetRange, type Stats } from "@teamusage/shared";
-import { checkRange, fetchStats, login } from "./api.js";
-import { renderChips, renderFilterControls, type FilterBarHandlers, type PopoverKind } from "./filterbar.js";
+import { checkRange, localIsoDate, MAX_RANGE_DAYS, presetRange, type Stats } from "@teamusage/shared";
+import { fetchStats, login } from "./api.js";
+import { FILTER_TEXT, renderChips, renderFilterControls, type FilterBarHandlers } from "./filterbar.js";
 import {
+  anyFilterEmptied,
   availableTotal,
   equalFilters,
   isActive,
-  MAX_ACCOUNTS,
-  MAX_PLANS,
-  MAX_AGENTS,
-  MAX_MODELS,
+  LIMITS,
   NO_FILTERS,
   prune,
-  toggleAccount,
-  togglePlan,
   toggleAgent,
+  toggleKey,
   toggleModel,
+  type FilterKind,
   type Filters,
   type Toggled,
 } from "./filters.js";
-import { localIsoDate, rangeText } from "./format.js";
+import { rangeText } from "./format.js";
 import { loadLang, pickLang, saveLang, t, type Lang, type MessageKey } from "./i18n.js";
 import {
   applyMemberSearch,
@@ -84,9 +82,9 @@ const state: {
   shown: Shown | null;
   /** The member search text. It lives only here and in the input: never sent, stored or put in the URL. */
   query: string;
-  /** The agent, model and account filters. Only here: sent as query parameters, never stored or put in the URL. */
+  /** The agent, model, account and plan filters. Only here: sent as query parameters, never stored or put in the URL. */
   filters: Filters;
-  open: PopoverKind | null;
+  open: FilterKind | null;
   /** The models search text: a plain substring match on the rows already drawn; never sent or stored. */
   modelQuery: string;
   note: Message | null;
@@ -278,12 +276,7 @@ async function load(): Promise<void> {
         // list, the answer was narrowed by a filter that is now gone, so ask again.
         const pruned = prune(filters, res.stats.available);
         state.filters = pruned;
-        const emptied =
-          (filters.agents.length > 0 && pruned.agents.length === 0) ||
-          (filters.models.length > 0 && pruned.models.length === 0) ||
-          (filters.accounts.length > 0 && pruned.accounts.length === 0) ||
-          (filters.plans.length > 0 && pruned.plans.length === 0);
-        if (emptied) {
+        if (anyFilterEmptied(filters, pruned)) {
           void load();
           return;
         }
@@ -336,9 +329,9 @@ function setFilters(next: Filters): void {
   void load();
 }
 
-function applyToggle(result: Toggled, limitKey: MessageKey, max: number): void {
+function applyToggle(result: Toggled, kind: FilterKind): void {
   if (result.limited) {
-    state.note = { key: limitKey, vars: { n: max } };
+    state.note = { key: FILTER_TEXT[kind].limit, vars: { n: LIMITS[kind] } };
     paintFilters();
     return;
   }
@@ -368,10 +361,9 @@ const handlers: FilterBarHandlers = {
     // Focus stays on the button that opened it; Tab then moves into the popover.
     focusQuietly(document.getElementById(`${kind}-btn`));
   },
-  toggleAgent: (id) => applyToggle(toggleAgent(state.filters, id), "agentLimit", MAX_AGENTS),
-  toggleModel: (ref) => applyToggle(toggleModel(state.filters, ref), "modelLimit", MAX_MODELS),
-  toggleAccount: (key) => applyToggle(toggleAccount(state.filters, key), "accountLimit", MAX_ACCOUNTS),
-  togglePlan: (key) => applyToggle(togglePlan(state.filters, key), "planLimit", MAX_PLANS),
+  toggleAgent: (id) => applyToggle(toggleAgent(state.filters, id), "agents"),
+  toggleModel: (ref) => applyToggle(toggleModel(state.filters, ref), "models"),
+  toggleKey: (kind, key) => applyToggle(toggleKey(state.filters, kind, key), kind),
   showAll: (kind) => setFilters({ ...state.filters, [kind]: [] }),
   modelQuery: (query) => {
     state.modelQuery = query;
@@ -399,9 +391,9 @@ function onCustomRange(): void {
   const from = ui.from.value;
   const to = ui.to.value;
   const check = checkRange(from, to);
-  if (check === "incomplete") return;
+  if (check === "invalid") return; // a date field is still empty or half typed
   if (check !== "ok") {
-    state.rangeMsg = { key: check === "order" ? "rangeOrder" : "rangeTooLong" };
+    state.rangeMsg = check === "order" ? { key: "rangeOrder" } : { key: "rangeTooLong", vars: { n: MAX_RANGE_DAYS } };
     paint();
     return;
   }

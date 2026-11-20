@@ -1,22 +1,18 @@
 import type { Stats } from "@teamusage/shared";
 import { describe, expect, test } from "vitest";
 import {
-  agentTotals,
+  availableAgentTotals,
   availableTotal,
   canFilterModel,
   cleanAvailable,
+  anyFilterEmptied,
   equalFilters,
   isActive,
-  MAX_ACCOUNTS,
-  MAX_AGENTS,
-  MAX_MODELS,
-  MAX_PLANS,
+  LIMITS,
   NO_FILTERS,
   prune,
-  summary,
-  toggleAccount,
-  togglePlan,
   toggleAgent,
+  toggleKey,
   toggleModel,
   toQuery,
   withSelection,
@@ -84,10 +80,10 @@ describe("toQuery", () => {
       plans: [],
     };
     const q = toQuery(f);
-    expect(q.filter(([k]) => k === "agent")).toHaveLength(MAX_AGENTS);
-    expect(q.filter(([k]) => k === "model")).toHaveLength(MAX_MODELS);
-    expect(q.filter(([k]) => k === "account")).toHaveLength(MAX_ACCOUNTS);
-    expect([MAX_AGENTS, MAX_MODELS, MAX_ACCOUNTS]).toEqual([20, 50, 50]);
+    expect(q.filter(([k]) => k === "agent")).toHaveLength(LIMITS.agents);
+    expect(q.filter(([k]) => k === "model")).toHaveLength(LIMITS.models);
+    expect(q.filter(([k]) => k === "account")).toHaveLength(LIMITS.accounts);
+    expect([LIMITS.agents, LIMITS.models, LIMITS.accounts]).toEqual([20, 50, 50]);
   });
 });
 
@@ -119,7 +115,7 @@ describe("prune", () => {
   });
 });
 
-describe("isActive, summary, equalFilters", () => {
+describe("isActive, anyFilterEmptied, equalFilters", () => {
   test("isActive is true when either list has a selection", () => {
     expect(isActive(NO_FILTERS)).toBe(false);
     expect(isActive({ agents: ["claude"], models: [], accounts: [], plans: [] })).toBe(true);
@@ -127,12 +123,11 @@ describe("isActive, summary, equalFilters", () => {
     expect(isActive({ agents: [], models: [], accounts: ["unknown"], plans: [] })).toBe(true);
   });
 
-  test("summary is all only when nothing is selected, so the button never says All while chips show", () => {
-    expect(summary(0, 5)).toBe("all");
-    expect(summary(2, 5)).toBe("some");
-    expect(summary(5, 5)).toBe("some");
-    expect(summary(0, 0)).toBe("all");
-    expect(summary(3, 2)).toBe("some");
+  test("anyFilterEmptied is true only when a filter that had selections has none left", () => {
+    const before: Filters = { agents: ["a"], models: [], accounts: ["unknown"], plans: [] };
+    expect(anyFilterEmptied(before, { ...before, accounts: [] })).toBe(true);
+    expect(anyFilterEmptied(before, before)).toBe(false);
+    expect(anyFilterEmptied(NO_FILTERS, NO_FILTERS)).toBe(false);
   });
 
   test("equalFilters compares contents, not identity", () => {
@@ -177,14 +172,14 @@ describe("toggling", () => {
     ]);
   });
 
-  test("toggleAccount adds and removes a key and leaves agents and models alone", () => {
+  test("toggleKey(accounts) adds and removes a key and leaves agents and models alone", () => {
     const start: Filters = { agents: ["claude"], models: [{ agent: "claude", model: "opus-4-7" }], accounts: [], plans: [] };
-    const added = toggleAccount(start, "team:Devcats");
+    const added = toggleKey(start, "accounts", "team:Devcats");
     expect(added).toEqual({ filters: { ...start, accounts: ["team:Devcats"], plans: [] }, limited: false });
     expect(start.accounts).toEqual([]);
-    const two = toggleAccount(added.filters, "unknown").filters;
+    const two = toggleKey(added.filters, "accounts", "unknown").filters;
     expect(two.accounts).toEqual(["team:Devcats", "unknown"]);
-    expect(toggleAccount(two, "team:Devcats").filters.accounts).toEqual(["unknown"]);
+    expect(toggleKey(two, "accounts", "team:Devcats").filters.accounts).toEqual(["unknown"]);
     // Agents and models keep the selected accounts.
     expect(toggleAgent(two, "codex").filters.accounts).toEqual(["team:Devcats", "unknown"]);
     expect(toggleModel(two, { agent: "claude", model: "x" }).filters.accounts).toEqual(["team:Devcats", "unknown"]);
@@ -192,30 +187,30 @@ describe("toggling", () => {
 
   test("adding past the limit stops and says so; removing still works", () => {
     let f: Filters = NO_FILTERS;
-    for (let i = 0; i < MAX_AGENTS; i++) f = toggleAgent(f, `a${i}`).filters;
+    for (let i = 0; i < LIMITS.agents; i++) f = toggleAgent(f, `a${i}`).filters;
     const over = toggleAgent(f, "one-too-many");
     expect(over.limited).toBe(true);
     expect(over.filters).toEqual(f);
-    expect(toggleAgent(f, "a3").filters.agents).toHaveLength(MAX_AGENTS - 1);
+    expect(toggleAgent(f, "a3").filters.agents).toHaveLength(LIMITS.agents - 1);
 
     let m: Filters = NO_FILTERS;
-    for (let i = 0; i < MAX_MODELS; i++) m = toggleModel(m, { agent: "a", model: `m${i}` }).filters;
+    for (let i = 0; i < LIMITS.models; i++) m = toggleModel(m, { agent: "a", model: `m${i}` }).filters;
     const overM = toggleModel(m, { agent: "a", model: "extra" });
     expect(overM.limited).toBe(true);
-    expect(overM.filters.models).toHaveLength(MAX_MODELS);
+    expect(overM.filters.models).toHaveLength(LIMITS.models);
 
     let a: Filters = NO_FILTERS;
-    for (let i = 0; i < MAX_ACCOUNTS; i++) a = toggleAccount(a, `team:o${i}`).filters;
-    const overA = toggleAccount(a, "personal");
+    for (let i = 0; i < LIMITS.accounts; i++) a = toggleKey(a, "accounts", `team:o${i}`).filters;
+    const overA = toggleKey(a, "accounts", "personal");
     expect(overA.limited).toBe(true);
     expect(overA.filters).toEqual(a);
-    expect(toggleAccount(a, "team:o3").filters.accounts).toHaveLength(MAX_ACCOUNTS - 1);
+    expect(toggleKey(a, "accounts", "team:o3").filters.accounts).toHaveLength(LIMITS.accounts - 1);
   });
 });
 
 describe("totals from available", () => {
   test("per agent and overall, without a request", () => {
-    expect([...agentTotals(available)]).toEqual([["claude", 70], ["codex", 30], ["x", 1]]);
+    expect([...availableAgentTotals(available)]).toEqual([["claude", 70], ["codex", 30], ["x", 1]]);
     expect(availableTotal(available)).toBe(101);
     expect(availableTotal({ agents: [], models: [], accounts: [], plans: [] })).toBe(0);
   });
@@ -231,14 +226,14 @@ describe("totals from available", () => {
       accounts: [],
       plans: [],
     };
-    expect([...agentTotals(odd)]).toEqual([["__proto__", 2], ["constructor", 0]]);
+    expect([...availableAgentTotals(odd)]).toEqual([["__proto__", 2], ["constructor", 0]]);
     expect(availableTotal(odd)).toBe(2);
   });
 
   test("never Infinity", () => {
     const big = { agents: ["a"], models: [{ agent: "a", model: "m", tokens: Number.MAX_VALUE }, { agent: "a", model: "n", tokens: Number.MAX_VALUE }], accounts: [], plans: [] };
     expect(availableTotal(big)).toBe(Number.MAX_VALUE);
-    expect(agentTotals(big).get("a")).toBe(Number.MAX_VALUE);
+    expect(availableAgentTotals(big).get("a")).toBe(Number.MAX_VALUE);
   });
 });
 
@@ -298,7 +293,7 @@ describe("withSelection", () => {
 });
 
 describe("plans filter", () => {
-  test("query has plan= after accounts, capped at MAX_PLANS", () => {
+  test("query has plan= after accounts, capped at LIMITS.plans", () => {
     expect(toQuery({ agents: ["claude"], models: [], accounts: ["personal"], plans: ["claude:pro", "none"] })).toEqual([
       ["agent", "claude"],
       ["account", "personal"],
@@ -306,19 +301,19 @@ describe("plans filter", () => {
       ["plan", "none"],
     ]);
     const many = toQuery({ ...NO_FILTERS, plans: Array.from({ length: 70 }, (_, i) => `claude:p${i}`) });
-    expect(many.filter(([k]) => k === "plan")).toHaveLength(MAX_PLANS);
+    expect(many.filter(([k]) => k === "plan")).toHaveLength(LIMITS.plans);
   });
 
-  test("togglePlan adds, removes, respects the limit; isActive and equalFilters see plans", () => {
-    const added = togglePlan(NO_FILTERS, "claude:pro");
+  test("toggleKey(plans) adds, removes, respects the limit; isActive and equalFilters see plans", () => {
+    const added = toggleKey(NO_FILTERS, "plans", "claude:pro");
     expect(added).toEqual({ filters: { ...NO_FILTERS, plans: ["claude:pro"] }, limited: false });
-    expect(togglePlan(added.filters, "claude:pro").filters.plans).toEqual([]);
+    expect(toggleKey(added.filters, "plans", "claude:pro").filters.plans).toEqual([]);
     let f: Filters = NO_FILTERS;
-    for (let i = 0; i < MAX_PLANS; i++) f = togglePlan(f, `claude:p${i}`).filters;
-    expect(togglePlan(f, "none")).toEqual({ filters: f, limited: true });
+    for (let i = 0; i < LIMITS.plans; i++) f = toggleKey(f, "plans", `claude:p${i}`).filters;
+    expect(toggleKey(f, "plans", "none")).toEqual({ filters: f, limited: true });
     expect(isActive(added.filters)).toBe(true);
     expect(equalFilters(added.filters, NO_FILTERS)).toBe(false);
-    expect(equalFilters(added.filters, togglePlan(NO_FILTERS, "claude:pro").filters)).toBe(true);
+    expect(equalFilters(added.filters, toggleKey(NO_FILTERS, "plans", "claude:pro").filters)).toBe(true);
   });
 
   test("prune, cleanAvailable and withSelection carry plans", () => {

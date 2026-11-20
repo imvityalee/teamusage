@@ -137,6 +137,11 @@ describe("getStats", () => {
     expect(s.daily.map((d) => d.date)).toContain("2028-02-29");
   });
 
+  test("a range ending on the last date a YYYY-MM-DD can hold", () => {
+    const s = getStats(openDb(":memory:"), { from: "9999-12-30", to: "9999-12-31" });
+    expect(s.daily.map((d) => d.date)).toEqual(["9999-12-30", "9999-12-31"]);
+  });
+
   test("agent ids like __proto__ are ordinary own properties", () => {
     const db = openDb(":memory:");
     const r = registerMachine(db, { name: "Cy", email: "cy@x.com", machineId: M1, machineLabel: "l" });
@@ -425,25 +430,29 @@ describe("agent and model filters", () => {
     expect(t).toBe(Number.MAX_VALUE);
   });
 
-  test("a filter run issues a bounded number of queries, never one per member, agent or model", () => {
+  test("the number of queries does not grow with members, agents, models or filter values", () => {
     const { db } = seedFilters();
     let n = 0;
     const orig = db.prepare.bind(db);
     (db as unknown as { prepare: unknown }).prepare = (sql: string) => { n++; return orig(sql); };
-    getStats(db, { ...Q, agents: ["claude", "codex"], models: [{ agent: "claude", model: "opus" }] });
-    expect(n).toBe(7);
-    n = 0;
-    getStats(db, { ...Q, memberId: 1, agents: ["claude"], accounts: ["personal", "team:D", "unknown"] });
-    expect(n).toBe(8);
-    // More members, agents and models do not add queries.
+    const queriesFor = (q: Parameters<typeof getStats>[1]) => {
+      n = 0;
+      getStats(db, q);
+      return n;
+    };
+    const asks = [
+      Q,
+      { ...Q, agents: ["claude", "codex"], models: [{ agent: "claude", model: "opus" }] },
+      { ...Q, memberId: 1, agents: ["claude"], accounts: ["personal", "team:D", "unknown"] },
+    ];
+    const before = asks.map(queriesFor);
     for (let i = 0; i < 5; i++) {
       const id = String(i + 5).repeat(32);
       const r = registerMachine(db, { name: `M${i}`, email: `m${i}@x.com`, machineId: id, machineLabel: "l" });
       upsertUsage(db, { memberId: r.memberId, machineId: id }, [rec("2026-11-02", `agent${i}`, `model${i}`, 3)]);
     }
-    n = 0;
-    getStats(db, Q);
-    expect(n).toBe(7);
+    expect(asks.map(queriesFor)).toEqual(before);
+    expect(queriesFor({ ...Q, accounts: Array.from({ length: 50 }, (_, i) => `team:o${i}`) })).toBe(before[0]);
   });
 });
 
@@ -559,6 +568,14 @@ describe("account filter, available accounts and members byAccount", () => {
       ["B", { unknown: 5 }],
     ]);
     expect(s.available.accounts).toEqual(allAccounts);
+  });
+
+  test("a member's tokens by agent add up every account the agent ran on", () => {
+    const { db } = seedAccounts();
+    expect(getStats(db, Q).members.map((m) => [m.name, m.byAgent])).toEqual([
+      ["A", { claude: 140, codex: 10 }],
+      ["B", { claude: 5 }],
+    ]);
   });
 
   test("an account filter applies to totals and members; available accounts ignore it", () => {

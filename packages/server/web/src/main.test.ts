@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
-import { presetRange, type Stats } from "@teamusage/shared";
+import { localIsoDate, presetRange, type Stats } from "@teamusage/shared";
 import { Window } from "happy-dom";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { localIsoDate, rangeText } from "./format.js";
+import { rangeText } from "./format.js";
 import { LANG_KEY } from "./i18n.js";
 import { emptyStatsFixture, memberStatsFixture, statsFixture } from "./test-fixtures.js";
 

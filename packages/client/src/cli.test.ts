@@ -72,11 +72,11 @@ test("sync --dry-run --detach: the dry run wins; nothing is spawned or sent", as
   expect(d.log.mock.calls.flat().join("\n")).toContain('"records"');
 });
 
-test("sync --label-history with --detach or --throttle fails with exit 1 and does nothing", async () => {
+test("sync --label-history with --detach or --throttle is a usage error (exit 2) and does nothing", async () => {
   const d = deps();
   const e = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
   for (const extra of [["--detach"], ["--throttle", "4h"], ["--quiet", "--detach"]]) {
-    expect(await main(["sync", "--label-history", ...extra], d)).toBe(1);
+    expect(await main(["sync", "--label-history", ...extra], d)).toBe(2);
   }
   expect(e.mock.calls.map(([c]) => String(c)).join("")).toContain("--label-history cannot be used with --detach or --throttle");
   expect(spawned.calls).toHaveLength(0);
@@ -129,6 +129,12 @@ test("setup --allow-insecure-http to a remote host warns once, then registers", 
   expect(warnings).toHaveLength(1);
   expect(printed(err) + printed(out)).not.toContain(INVITE);
   expect(JSON.parse(readFileSync(configPath(), "utf8")).allowInsecureHttp).toBe(true);
+});
+
+test("setup trims the name and email before checking them", async () => {
+  const args = ["setup", "--server", srv.url, "--invite", INVITE, "--name", "Ann\t", "--email", " ann@example.com "];
+  expect(await main(args, deps())).toBe(0);
+  expect(printed(out)).toContain("Registered Ann <ann@example.com>");
 });
 
 test("setup to a remote http host without the opt-in fails before any request", async () => {
@@ -450,6 +456,7 @@ describe("sync --throttle", () => {
 
   test("an invalid value is a usage error; with --quiet it exits 0", async () => {
     expect(await main(["sync", "--throttle", "5"], deps())).toBe(2);
+    expect(printed(err)).toContain("--throttle must be 1m to 1440m or 1h to 24h; see `teamusage --help`");
     expect(await main(["sync", "--quiet", "--throttle", "99h"], deps())).toBe(0);
     expect(spawned.calls).toHaveLength(0);
   });

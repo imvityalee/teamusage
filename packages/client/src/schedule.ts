@@ -1,9 +1,12 @@
-import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { APP_NAME } from "@teamusage/shared";
+import { configDir } from "./config.js";
+import { UserError } from "./errors.js";
+import { runProgram, type RunResult } from "./run.js";
 
 /**
  * The scheduled job runs `<node> <cli> sync --quiet` every four hours. Nothing the user typed (name, email,
@@ -13,12 +16,6 @@ import { fileURLToPath } from "node:url";
 export const LABEL = "com.teamusage.sync";
 export const INTERVAL_SECONDS = 14400;
 const TAG = "# teamusage";
-
-export interface RunResult {
-  code: number;
-  stdout: string;
-  stderr: string;
-}
 
 export interface ScheduleDeps {
   /** Runs a program with an argument array (never a shell); a program that cannot start rejects. */
@@ -41,8 +38,7 @@ interface JobPaths {
   cliPath: string;
 }
 
-/** A problem worth telling the user about; its message is fixed text and carries no input. */
-export class ScheduleError extends Error {}
+export class ScheduleError extends UserError {}
 
 const CONTROL = /[\u0000-\u001f\u007f]/;
 
@@ -161,17 +157,11 @@ export function parsePlist(text: string): { nodePath: string; cliPath: string } 
 
 export function realDeps(): ScheduleDeps {
   return {
-    run: (file, args, input) =>
-      new Promise((resolve, reject) => {
-        // launchctl and crontab are called by absolute path, so nothing earlier in PATH can stand in for them.
-        const abs = file === "launchctl" ? "/bin/launchctl" : file === "crontab" ? "/usr/bin/crontab" : undefined;
-        const child = execFile(abs && existsSync(abs) ? abs : file, args, { timeout: 30_000, maxBuffer: 1 << 20, windowsHide: true }, (e, stdout, stderr) => {
-          if (e && typeof (e as NodeJS.ErrnoException).code !== "number") return reject(e);
-          resolve({ code: e ? ((e as NodeJS.ErrnoException).code as unknown as number) : 0, stdout, stderr });
-        });
-        child.stdin?.on("error", () => {});
-        child.stdin?.end(input ?? "");
-      }),
+    run: (file, args, input) => {
+      // launchctl and crontab are called by absolute path, so nothing earlier in PATH can stand in for them.
+      const abs = file === "launchctl" ? "/bin/launchctl" : file === "crontab" ? "/usr/bin/crontab" : undefined;
+      return runProgram(abs && existsSync(abs) ? abs : file, args, input);
+    },
     readFile: (f) => {
       try {
         return readFileSync(f, "utf8");
@@ -251,9 +241,8 @@ export async function installSchedule(platform: NodeJS.Platform = process.platfo
   const d = withDeps(deps);
   const uid = d.uid();
   if (uid === 0) throw new ScheduleError("Refusing to install a scheduled job as root; run this as your own user.");
-  const xdg = d.env.XDG_CONFIG_HOME;
-  // Same rule as the config directory: only an absolute XDG_CONFIG_HOME is used.
-  if (xdg && path.isAbsolute(xdg) && path.resolve(xdg) !== path.join(d.homedir(), ".config")) {
+  // launchd and cron start the job without XDG_CONFIG_HOME, so it finds only the default config directory.
+  if (configDir(d.env, d.homedir()) !== path.join(d.homedir(), ".config", APP_NAME)) {
     throw new ScheduleError(
       "The scheduled job cannot see a custom config location (XDG_CONFIG_HOME is set). Run `teamusage setup` without XDG_CONFIG_HOME, then install the schedule again.",
     );

@@ -1,4 +1,4 @@
-import { NAME_CONTROL_CHARS } from "./records.js";
+import { MAX_ORG_CHARS, NAME_CONTROL_CHARS } from "./limits.js";
 
 export type AccountKind = "personal" | "team" | "enterprise" | "api";
 export const CLAUDE_PLANS = ["free", "pro", "max_5x", "max_20x", "team_standard", "team_premium", "enterprise"] as const;
@@ -9,13 +9,6 @@ export interface AccountLabel {
   org?: string;
   plan?: Plan;
 }
-
-/** Organisation name bound, in UTF-16 code units. */
-export const MAX_ORG_CHARS = 100;
-/** Most `account=` values one stats request accepts. */
-export const MAX_ACCOUNTS = 50;
-/** Most `plan=` values one stats request accepts. */
-export const MAX_PLANS = 50;
 
 const KINDS: readonly AccountKind[] = ["personal", "team", "enterprise", "api"];
 const WITH_ORG: readonly AccountKind[] = ["team", "enterprise"];

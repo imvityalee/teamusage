@@ -4,29 +4,29 @@ import { bodyLimit } from "hono/body-limit";
 import { getCookie, setCookie } from "hono/cookie";
 import {
   APP_NAME,
-  MAX_ACCOUNTS,
-  MAX_PLANS,
+  checkRange,
+  isDisplayName,
+  isEmail,
+  isName,
+  MAX_ACCOUNT_FILTERS,
   MAX_AGENT_CHARS,
+  MAX_AGENT_FILTERS,
   MAX_MODEL_CHARS,
-  NAME_CONTROL_CHARS,
+  MAX_MODEL_FILTERS,
+  MAX_PLAN_FILTERS,
   parseAccountKey,
   parsePlanKey,
   validateBatch,
 } from "@teamusage/shared";
-import { authenticate, createSession, hasSession, registerMachine, upsertUsage, type Db } from "./db.js";
+import { authenticate, createSession, hasSession, MachineOwnedError, registerMachine, upsertUsage, type Db } from "./db.js";
 import { createLimiter } from "./limiter.js";
 import { getStats, memberExists } from "./stats.js";
 
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
 const MACHINE_ID = /^[a-f0-9]{32}$/;
 const BEARER = /^Bearer (\S+)$/;
-const CONTROL_CHARS = /[\x00-\x1f\x7f]/;
 const SESSION_COOKIE = "tu_session";
 const SESSION_MAX_AGE_S = 30 * 24 * 60 * 60;
-const MAX_RANGE_DAYS = 730;
-const MAX_AGENT_FILTERS = 20;
-const MAX_MODEL_FILTERS = 50;
-const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 const digest = (s: string): Buffer => createHash("sha256").update(s).digest();
 
@@ -34,9 +34,6 @@ const digest = (s: string): Buffer => createHash("sha256").update(s).digest();
 function safeEqual(a: string, b: string): boolean {
   return timingSafeEqual(digest(a), digest(b));
 }
-
-/** One well-formed name: 1..max characters, no control characters. */
-const validName = (v: string, max: number): boolean => v.length > 0 && v.length <= max && !NAME_CONTROL_CHARS.test(v);
 
 /**
  * Parses repeated `agent`, `model` (`<agent>:<model>`, split on the first colon) and `account` (an account key,
@@ -49,17 +46,17 @@ function parseFilters(
   planValues: string[] = [],
 ): { agents: string[]; models: { agent: string; model: string }[]; accounts: string[]; plans: string[] } | undefined {
   if (agentValues.length > MAX_AGENT_FILTERS || modelValues.length > MAX_MODEL_FILTERS) return undefined;
-  if (accountValues.length > MAX_ACCOUNTS) return undefined;
+  if (accountValues.length > MAX_ACCOUNT_FILTERS) return undefined;
   if (!accountValues.every((k) => parseAccountKey(k) !== undefined)) return undefined;
-  if (planValues.length > MAX_PLANS || !planValues.every((k) => parsePlanKey(k) !== undefined)) return undefined;
-  if (!agentValues.every((a) => validName(a, MAX_AGENT_CHARS))) return undefined;
+  if (planValues.length > MAX_PLAN_FILTERS || !planValues.every((k) => parsePlanKey(k) !== undefined)) return undefined;
+  if (!agentValues.every((a) => isName(a, MAX_AGENT_CHARS))) return undefined;
   const models = new Map<string, { agent: string; model: string }>();
   for (const v of modelValues) {
     const i = v.indexOf(":");
     if (i < 0) return undefined;
     const agent = v.slice(0, i);
     const model = v.slice(i + 1);
-    if (!validName(agent, MAX_AGENT_CHARS) || !validName(model, MAX_MODEL_CHARS)) return undefined;
+    if (!isName(agent, MAX_AGENT_CHARS) || !isName(model, MAX_MODEL_CHARS)) return undefined;
     models.set(v, { agent, model });
   }
   return {
@@ -87,31 +84,15 @@ type RegisterInput = { name: string; email: string; machineId: string; machineLa
 
 function parseRegister(b: Record<string, unknown>): RegisterInput | string {
   const { name, email, machineId, machineLabel } = b;
-  if (typeof name !== "string" || name.trim().length < 1 || name.trim().length > 100 || CONTROL_CHARS.test(name)) {
-    return "invalid name";
-  }
-  if (typeof email !== "string" || email.length > 254 || !email.includes("@") || CONTROL_CHARS.test(email)) return "invalid email";
+  if (!isDisplayName(name)) return "invalid name";
+  if (!isEmail(email)) return "invalid email";
   if (typeof machineId !== "string" || !MACHINE_ID.test(machineId)) return "invalid machineId";
-  if (
-    typeof machineLabel !== "string" ||
-    machineLabel.trim().length < 1 ||
-    machineLabel.trim().length > 100 ||
-    CONTROL_CHARS.test(machineLabel)
-  ) {
-    return "invalid machineLabel";
-  }
+  if (!isDisplayName(machineLabel)) return "invalid machineLabel";
   return { name: name.trim(), email: email.trim(), machineId, machineLabel: machineLabel.trim() };
 }
 
 const forwardedProto = (c: Context): string =>
   (c.req.header("X-Forwarded-Proto")?.split(",")[0] ?? "").trim().toLowerCase();
-
-/** A strict YYYY-MM-DD that is a real calendar date, as epoch ms (UTC); undefined otherwise. */
-function parseDate(s: string | undefined): number | undefined {
-  if (s === undefined || !DATE.test(s)) return undefined;
-  const t = Date.parse(`${s}T00:00:00Z`);
-  return Number.isNaN(t) || new Date(t).toISOString().slice(0, 10) !== s ? undefined : t;
-}
 
 /**
  * The error's class name and its `code`, for an operator's trace of a 500. Never the message, which can hold
@@ -185,9 +166,7 @@ export function createApp(
     try {
       return c.json(registerMachine(db, input));
     } catch (err) {
-      if (err instanceof Error && /another member/.test(err.message)) {
-        return fail(c, 409, "machine already registered to another member");
-      }
+      if (err instanceof MachineOwnedError) return fail(c, 409, "machine already registered to another member");
       throw err;
     }
   });
@@ -237,14 +216,10 @@ export function createApp(
     // Only `agent`, `model`, `account` and `plan` are lists and may repeat.
     const repeated = ["from", "to", "member"].some((k) => (c.req.queries(k)?.length ?? 0) > 1);
     if (repeated) return fail(c, 400, "invalid query");
-    const f = parseDate(from);
-    const t = parseDate(to);
-    if (f === undefined || t === undefined || f > t || (t - f) / 86_400_000 + 1 > MAX_RANGE_DAYS) {
-      return fail(c, 400, "invalid date range");
-    }
+    if (from === undefined || to === undefined || checkRange(from, to) !== "ok") return fail(c, 400, "invalid date range");
     const filters = parseFilters(c.req.queries("agent"), c.req.queries("model"), c.req.queries("account"), c.req.queries("plan"));
     if (!filters) return fail(c, 400, "invalid query");
-    const range = { from: from as string, to: to as string, ...filters };
+    const range = { from, to, ...filters };
     if (member === undefined) return c.json(getStats(db, range));
     if (member === "me") {
       // `me` is the token's member; a cookie or demo session has no member of its own.

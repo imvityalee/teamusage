@@ -45,10 +45,3 @@ export interface Stats {
     unpriced: boolean;
   }[];
 }
-
-/** Inclusive range of exactly `days` days ending at `today` (YYYY-MM-DD). */
-export function presetRange(days: 30 | 90 | 180, today: string): { from: string; to: string } {
-  const [y, m, d] = today.split("-").map(Number) as [number, number, number];
-  const from = new Date(Date.UTC(y, m - 1, d - (days - 1)));
-  return { from: from.toISOString().slice(0, 10), to: today };
-}

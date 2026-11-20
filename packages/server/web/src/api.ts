@@ -19,9 +19,6 @@ export type LoginResult =
   | { kind: "error" }
   | { kind: "network" };
 
-/** The server's longest allowed range, in days, both ends included. */
-export const MAX_RANGE_DAYS = 730;
-const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const DEFAULT_RETRY_AFTER_SEC = 60;
 
 const isAbort = (err: unknown) => err instanceof DOMException && err.name === "AbortError";
@@ -129,20 +126,4 @@ export async function login(inviteCode: string): Promise<LoginResult> {
     return { kind: "tooMany", retryAfterSec: sec };
   }
   return { kind: "error" };
-}
-
-/** Epoch ms of a real YYYY-MM-DD calendar date, or undefined. */
-function parseDate(s: string): number | undefined {
-  if (!DATE.test(s)) return undefined;
-  const t = Date.parse(`${s}T00:00:00Z`);
-  return Number.isNaN(t) || new Date(t).toISOString().slice(0, 10) !== s ? undefined : t;
-}
-
-/** Whether a custom range can be asked for, with the same rules as the server. */
-export function checkRange(from: string, to: string): "ok" | "incomplete" | "order" | "tooLong" {
-  const f = parseDate(from);
-  const t = parseDate(to);
-  if (f === undefined || t === undefined) return "incomplete";
-  if (f > t) return "order";
-  return (t - f) / 86_400_000 + 1 > MAX_RANGE_DAYS ? "tooLong" : "ok";
 }

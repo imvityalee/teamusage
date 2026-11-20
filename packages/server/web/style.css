@@ -160,7 +160,6 @@ td.strong { font-weight: 600; }
 .mix { width: 150px; min-width: 90px; }
 .mix-bar { display: flex; gap: 2px; height: 8px; border-radius: 4px; overflow: hidden; }
 .mix-bar i { display: block; flex: 1 1 0; min-width: 0; }
-.mix-bar .share { background: var(--ag-claude); }
 .mix-bar .ag-claude { background: var(--ag-claude); } .mix-bar .ag-codex { background: var(--ag-codex); }
 .mix-bar .ag-gemini { background: var(--ag-gemini); } .mix-bar .ag-opencode { background: var(--ag-opencode); }
 .mix-bar .ag-copilot { background: var(--ag-copilot); } .mix-bar .ag-other { background: var(--ag-other); }
