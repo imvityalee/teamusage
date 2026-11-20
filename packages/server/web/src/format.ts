@@ -20,12 +20,6 @@ export function usd(n: number): string {
   return "$" + n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-/** The local calendar day of `d` as YYYY-MM-DD. */
-export function localIsoDate(d: Date): string {
-  const pad = (v: number) => String(v).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-
 /** A YYYY-MM-DD calendar date as a local Date at midnight. */
 function calendarDate(iso: string): Date {
   const [y, m, d] = iso.split("-").map(Number) as [number, number, number];

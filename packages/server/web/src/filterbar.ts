@@ -2,9 +2,21 @@ import type { Stats } from "@teamusage/shared";
 import { accountName, planName } from "./accounts.js";
 import { agentIcon, agentLogo, agentName } from "./agents.js";
 import { h, icon } from "./dom.js";
-import { agentTotals, canFilterModel, cleanAvailable, isActive, summary, withSelection, type Filters, type ModelRef } from "./filters.js";
+import {
+  availableAgentTotals,
+  canFilterModel,
+  cleanAvailable,
+  FILTER_KINDS,
+  isActive,
+  KEY_KINDS,
+  withSelection,
+  type FilterKind,
+  type Filters,
+  type KeyKind,
+  type ModelRef,
+} from "./filters.js";
 import { compact } from "./format.js";
-import { count, t, type Lang, type MessageKey } from "./i18n.js";
+import { count, t, type CountedNoun, type Lang, type MessageKey } from "./i18n.js";
 
 /**
  * The Agents, Models, Accounts and Plans buttons, their popovers and the chips under the bar. Agent ids, model names and
@@ -12,14 +24,24 @@ import { count, t, type Lang, type MessageKey } from "./i18n.js";
  * class, id or URL.
  */
 
-export type PopoverKind = "agents" | "models" | "accounts" | "plans";
+/**
+ * The words of each filter: its popover's title, its button's "All …" label (nothing selected) and the noun counted
+ * otherwise, and the note shown when its list is full.
+ */
+export const FILTER_TEXT = {
+  agents: { title: "agentsTitle", all: "allAgents", noun: "agents", limit: "agentLimit" },
+  models: { title: "modelsTitle", all: "allModels", noun: "models", limit: "modelLimit" },
+  accounts: { title: "accountsTitle", all: "allAccounts", noun: "accounts", limit: "accountLimit" },
+  plans: { title: "plansTitle", all: "allPlans", noun: "plans", limit: "planLimit" },
+} as const satisfies Record<FilterKind, { title: MessageKey; all: MessageKey; noun: CountedNoun; limit: MessageKey }>;
 
-const TITLES = { agents: "agentsTitle", models: "modelsTitle", accounts: "accountsTitle", plans: "plansTitle" } as const satisfies Record<PopoverKind, MessageKey>;
+/** Display names of account and plan keys. */
+const KEY_NAMES: Record<KeyKind, (key: string, lang: Lang) => string> = { accounts: accountName, plans: planName };
 
 export interface FilterBarModel {
   available: Stats["available"];
   filters: Filters;
-  open: PopoverKind | null;
+  open: FilterKind | null;
   /** The models search text. Compared as a plain substring only; never sent, stored or inserted as markup. */
   modelQuery: string;
   /** A short message inside the open popover, such as the selection limit. */
@@ -27,12 +49,11 @@ export interface FilterBarModel {
 }
 
 export interface FilterBarHandlers {
-  toggleOpen(kind: PopoverKind): void;
+  toggleOpen(kind: FilterKind): void;
   toggleAgent(id: string): void;
   toggleModel(ref: ModelRef): void;
-  toggleAccount(key: string): void;
-  togglePlan(key: string): void;
-  showAll(kind: PopoverKind): void;
+  toggleKey(kind: KeyKind, key: string): void;
+  showAll(kind: FilterKind): void;
   modelQuery(query: string): void;
   clear(): void;
 }
@@ -47,11 +68,11 @@ function checkRow(doc: Document, checked: boolean, disabled: boolean, onChange: 
   return h(doc, "li", {}, label);
 }
 
-function popover(doc: Document, kind: PopoverKind, lang: Lang, m: FilterBarModel, on: FilterBarHandlers, ...body: Node[]): HTMLElement {
+function popover(doc: Document, kind: FilterKind, lang: Lang, m: FilterBarModel, on: FilterBarHandlers, ...body: Node[]): HTMLElement {
   const titleId = `${kind}-pop-title`;
   const showAll = h(doc, "button", { type: "button", class: "link" }, t(lang, "showAll"));
   showAll.addEventListener("click", () => on.showAll(kind));
-  const head = h(doc, "div", { class: "pop-head" }, h(doc, "span", { class: "pop-title", id: titleId }, t(lang, TITLES[kind])), showAll);
+  const head = h(doc, "div", { class: "pop-head" }, h(doc, "span", { class: "pop-title", id: titleId }, t(lang, FILTER_TEXT[kind].title)), showAll);
   const pop = h(doc, "div", { class: "popover", id: `${kind}-pop`, role: "dialog", "aria-labelledby": titleId }, head);
   if (m.note) pop.append(h(doc, "p", { class: "pop-note", role: "alert" }, t(lang, m.note.key, m.note.vars)));
   pop.append(...body);
@@ -59,7 +80,7 @@ function popover(doc: Document, kind: PopoverKind, lang: Lang, m: FilterBarModel
 }
 
 function agentsPopover(doc: Document, lang: Lang, m: FilterBarModel, on: FilterBarHandlers): HTMLElement {
-  const totals = agentTotals(m.available);
+  const totals = availableAgentTotals(m.available);
   const selected = new Set(m.filters.agents);
   const rows = m.available.agents.map((id) =>
     checkRow(
@@ -76,41 +97,29 @@ function agentsPopover(doc: Document, lang: Lang, m: FilterBarModel, on: FilterB
   return popover(doc, "agents", lang, m, on, list);
 }
 
-/** One row per account in the period, largest first as the server sends them; names only, no colour or icon. */
-function accountsPopover(doc: Document, lang: Lang, m: FilterBarModel, on: FilterBarHandlers): HTMLElement {
-  const selected = new Set(m.filters.accounts);
-  const rows = m.available.accounts.map((a) =>
+/** One row per account or plan in the period, largest first as the server sends them; names only, no colour or icon. */
+function keyedPopover(doc: Document, kind: KeyKind, lang: Lang, m: FilterBarModel, on: FilterBarHandlers): HTMLElement {
+  const selected = new Set(m.filters[kind]);
+  const rows = m.available[kind].map((entry) =>
     checkRow(
       doc,
-      selected.has(a.key),
+      selected.has(entry.key),
       false,
-      () => on.toggleAccount(a.key),
-      h(doc, "span", { class: "pop-name" }, accountName(a.key, lang)),
-      h(doc, "span", { class: "pop-num" }, compact(a.tokens)),
+      () => on.toggleKey(kind, entry.key),
+      h(doc, "span", { class: "pop-name" }, KEY_NAMES[kind](entry.key, lang)),
+      h(doc, "span", { class: "pop-num" }, compact(entry.tokens)),
     ),
   );
   const list = rows.length > 0 ? h(doc, "ul", { class: "pop-list" }, ...rows) : h(doc, "p", { class: "pop-empty" }, t(lang, "nothingInPeriod"));
-  return popover(doc, "accounts", lang, m, on, list);
+  return popover(doc, kind, lang, m, on, list);
 }
 
-/** One row per plan in the period, largest first as the server sends them; names only. */
-function plansPopover(doc: Document, lang: Lang, m: FilterBarModel, on: FilterBarHandlers): HTMLElement {
-  const selected = new Set(m.filters.plans);
-  const rows = m.available.plans.map((p) =>
-    checkRow(
-      doc,
-      selected.has(p.key),
-      false,
-      () => on.togglePlan(p.key),
-      h(doc, "span", { class: "pop-name" }, planName(p.key, lang)),
-      h(doc, "span", { class: "pop-num" }, compact(p.tokens)),
-    ),
-  );
-  const list = rows.length > 0 ? h(doc, "ul", { class: "pop-list" }, ...rows) : h(doc, "p", { class: "pop-empty" }, t(lang, "nothingInPeriod"));
-  return popover(doc, "plans", lang, m, on, list);
-}
-
-const POPOVERS = { agents: agentsPopover, models: modelsPopover, accounts: accountsPopover, plans: plansPopover } as const;
+const POPOVERS: Record<FilterKind, (doc: Document, lang: Lang, m: FilterBarModel, on: FilterBarHandlers) => HTMLElement> = {
+  agents: agentsPopover,
+  models: modelsPopover,
+  accounts: (doc, lang, m, on) => keyedPopover(doc, "accounts", lang, m, on),
+  plans: (doc, lang, m, on) => keyedPopover(doc, "plans", lang, m, on),
+};
 
 /** Agents whose models the popover lists, in `available` order: the selected agents, or all of them. */
 function modelAgents(m: FilterBarModel): string[] {
@@ -172,7 +181,7 @@ function modelsPopover(doc: Document, lang: Lang, m: FilterBarModel, on: FilterB
   return popover(doc, "models", lang, m, on, ...body);
 }
 
-function filterButton(doc: Document, kind: PopoverKind, text: string, selected: boolean, m: FilterBarModel, on: FilterBarHandlers, lang: Lang): HTMLElement {
+function filterButton(doc: Document, kind: FilterKind, text: string, selected: boolean, m: FilterBarModel, on: FilterBarHandlers, lang: Lang): HTMLElement {
   const open = m.open === kind;
   const button = h(
     doc,
@@ -198,19 +207,13 @@ function filterButton(doc: Document, kind: PopoverKind, text: string, selected: 
 export function renderFilterControls(doc: Document, model: FilterBarModel, lang: Lang, on: FilterBarHandlers): DocumentFragment {
   // Well-formed entries only, plus any selection this period or member lacks, so it can be seen and unticked.
   const m = { ...model, available: withSelection(cleanAvailable(model.available), model.filters) };
-  const { agents, models, accounts, plans } = m.filters;
-  const agentsText = summary(agents.length, m.available.agents.length) === "all" ? t(lang, "allAgents") : count(lang, "agents", agents.length);
-  const modelsText = summary(models.length, m.available.models.length) === "all" ? t(lang, "allModels") : count(lang, "models", models.length);
-  const accountsText =
-    summary(accounts.length, m.available.accounts.length) === "all" ? t(lang, "allAccounts") : count(lang, "accounts", accounts.length);
-  const plansText = summary(plans.length, m.available.plans.length) === "all" ? t(lang, "allPlans") : count(lang, "plans", plans.length);
   const out = doc.createDocumentFragment();
-  out.append(
-    filterButton(doc, "agents", agentsText, agents.length > 0, m, on, lang),
-    filterButton(doc, "models", modelsText, models.length > 0, m, on, lang),
-    filterButton(doc, "accounts", accountsText, accounts.length > 0, m, on, lang),
-    filterButton(doc, "plans", plansText, plans.length > 0, m, on, lang),
-  );
+  for (const kind of FILTER_KINDS) {
+    // "All …" only when nothing is selected, even when every item is ticked, so it never says "All" while chips show.
+    const n = m.filters[kind].length;
+    const text = n === 0 ? t(lang, FILTER_TEXT[kind].all) : count(lang, FILTER_TEXT[kind].noun, n);
+    out.append(filterButton(doc, kind, text, n > 0, m, on, lang));
+  }
   if (isActive(m.filters)) {
     const clear = h(doc, "button", { type: "button", id: "clear-filters", class: "link" }, t(lang, "clearFilters"));
     clear.addEventListener("click", () => on.clear());
@@ -234,13 +237,11 @@ export function renderChips(doc: Document, f: Filters, lang: Lang, on: FilterBar
     ...f.models.map((ref) =>
       chip(doc, ref.model, t(lang, "removeFilter", { name: `${ref.model} (${agentName(ref.agent)})` }), () => on.toggleModel(ref), null),
     ),
-    ...f.accounts.map((key) => {
-      const name = accountName(key, lang);
-      return chip(doc, name, t(lang, "removeFilter", { name }), () => on.toggleAccount(key), null);
-    }),
-    ...f.plans.map((key) => {
-      const name = planName(key, lang);
-      return chip(doc, name, t(lang, "removeFilter", { name }), () => on.togglePlan(key), null);
-    }),
+    ...KEY_KINDS.flatMap((kind) =>
+      f[kind].map((key) => {
+        const name = KEY_NAMES[kind](key, lang);
+        return chip(doc, name, t(lang, "removeFilter", { name }), () => on.toggleKey(kind, key), null);
+      }),
+    ),
   ];
 }

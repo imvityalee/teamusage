@@ -1,7 +1,7 @@
 import { parseAccountKey, parsePlanKey, type Stats } from "@teamusage/shared";
 import { accountPlanName, planShort } from "./accounts.js";
 import { agentIcon, agentName, OTHER_SERIES, SERIES, SERIES_CLASS, otherAgentsIcon, seriesOf } from "./agents.js";
-import { agentTotals, buckets, drawChart, presentSeries, rankAgents, WEEKLY_AFTER_DAYS } from "./chart.js";
+import { dailyAgentTotals, buckets, drawChart, presentSeries, rankAgents, WEEKLY_AFTER_DAYS } from "./chart.js";
 import { h, icon, type Child } from "./dom.js";
 import { availableTotal, isActive, NO_FILTERS, type Filters } from "./filters.js";
 import { compact, daysSince, full, initials, longDate, shortDate, usd } from "./format.js";
@@ -65,11 +65,14 @@ function panel(doc: Document, heading: Child[], headingId: string, ...children: 
 /** "Members 3": the heading with its count. */
 const counted = (doc: Document, label: string, n: number): Child[] => [label, " ", h(doc, "span", { class: "n" }, String(n))];
 
-/** A member's tokens by agent when the server sends them (newer servers), as a Map; null otherwise. */
-function byAgentOf(m: Stats["members"][number]): Map<string, number> | null {
-  const v = (m as { byAgent?: unknown }).byAgent;
-  if (typeof v !== "object" || v === null || Array.isArray(v)) return null;
+/**
+ * A member's tokens by agent, as a Map. The answer is server data checked only for its shape, so a malformed `byAgent`
+ * gives an empty Map and entries without a finite, positive number are left out.
+ */
+function agentMixOf(m: Stats["members"][number]): Map<string, number> {
+  const v: unknown = m.byAgent;
   const out = new Map<string, number>();
+  if (typeof v !== "object" || v === null || Array.isArray(v)) return out;
   for (const [agent, n] of Object.entries(v)) if (typeof n === "number" && Number.isFinite(n) && n > 0) out.set(agent, n);
   return out;
 }
@@ -126,31 +129,26 @@ function mixOrder(mix: Map<string, number>): [string, number][] {
 
 /**
  * The agent-mix bar: its length is the member's share of the top member's tokens, its segments the member's
- * tokens by agent in agent colours. Without per-agent numbers it is a plain share bar.
+ * tokens by agent in agent colours.
  */
 function mixBar(doc: Document, lang: Lang, m: Stats["members"][number], top: number, teamTokens: number, filtered: boolean): HTMLElement {
   const bar = h(doc, "div", { class: "mix-bar" });
   bar.style.width = `${top > 0 ? Number(((m.tokens / top) * 100).toFixed(1)) : 0}%`;
   const share = pct(m.tokens, teamTokens);
-  const mix = byAgentOf(m);
-  let label = t(lang, filtered ? "shareLabelFiltered" : "shareLabel", { share });
-  if (mix === null) {
-    if (m.tokens > 0) bar.append(h(doc, "i", { class: "share" }));
-  } else {
-    const parts = mixOrder(mix);
-    const total = parts.reduce((s, [, n]) => s + n, 0);
-    // One segment per series, so all agents outside the fixed five share one grey segment.
-    const bySeries = new Map<number, number>();
-    for (const [agent, n] of parts) bySeries.set(seriesOf(agent), (bySeries.get(seriesOf(agent)) ?? 0) + n);
-    for (const [series, n] of [...bySeries].sort((a, b) => a[0] - b[0])) {
-      const seg = h(doc, "i", { class: SERIES_CLASS[series] as string });
-      seg.style.flexGrow = (n / total).toFixed(4);
-      bar.append(seg);
-    }
-    if (parts.length > 0) {
-      label = t(lang, filtered ? "mixLabelFiltered" : "mixLabel", { share, parts: parts.map(([agent, n]) => `${agentName(agent)} ${pct(n, total)}%`).join(", ") });
-    }
+  const parts = mixOrder(agentMixOf(m));
+  const total = parts.reduce((s, [, n]) => s + n, 0);
+  // One segment per series, so all agents outside the fixed five share one grey segment.
+  const bySeries = new Map<number, number>();
+  for (const [agent, n] of parts) bySeries.set(seriesOf(agent), (bySeries.get(seriesOf(agent)) ?? 0) + n);
+  for (const [series, n] of [...bySeries].sort((a, b) => a[0] - b[0])) {
+    const seg = h(doc, "i", { class: SERIES_CLASS[series] as string });
+    seg.style.flexGrow = (n / total).toFixed(4);
+    bar.append(seg);
   }
+  const label =
+    parts.length === 0
+      ? t(lang, filtered ? "shareLabelFiltered" : "shareLabel", { share })
+      : t(lang, filtered ? "mixLabelFiltered" : "mixLabel", { share, parts: parts.map(([agent, n]) => `${agentName(agent)} ${pct(n, total)}%`).join(", ") });
   return h(doc, "div", { class: "mix", role: "img", "aria-label": label }, bar);
 }
 
@@ -210,7 +208,6 @@ function membersPanel(doc: Document, stats: Stats, lang: Lang, today: string, qu
   const input = h(doc, "input", { type: "search", id: "member-search", autocomplete: "off", spellcheck: "false" }) as HTMLInputElement;
   input.placeholder = t(lang, "searchPlaceholder");
   input.value = query; // a property, never markup
-  const hasMix = stats.members.length > 0 && stats.members.every((m) => byAgentOf(m) !== null);
   const head = h(
     doc,
     "thead",
@@ -219,12 +216,12 @@ function membersPanel(doc: Document, stats: Stats, lang: Lang, today: string, qu
       doc,
       "tr",
       {},
-      headCell(doc, t(lang, "mh0"), true, false),
-      headCell(doc, t(lang, "mh1"), false, true),
-      headCell(doc, t(lang, "mh2"), false, false),
-      headCell(doc, t(lang, hasMix ? "mixHead" : "mh3"), true, false),
-      headCell(doc, t(lang, "mhAccounts"), true, false),
-      headCell(doc, t(lang, "mh5"), false, false),
+      headCell(doc, t(lang, "colMember"), true, false),
+      headCell(doc, t(lang, "colTokens"), false, true),
+      headCell(doc, t(lang, "colCost"), false, false),
+      headCell(doc, t(lang, "colAgentMix"), true, false),
+      headCell(doc, t(lang, "colAccounts"), true, false),
+      headCell(doc, t(lang, "colLastSync"), false, false),
       h(doc, "td", { class: "chev-cell", "aria-hidden": "true" }),
     ),
   );
@@ -242,8 +239,8 @@ function membersPanel(doc: Document, stats: Stats, lang: Lang, today: string, qu
     ),
     h(doc, "p", { id: "members-count", class: "count", "aria-live": "polite" }),
     h(doc, "div", { class: "scroll" }, table),
+    h(doc, "p", { class: "mix-note" }, t(lang, "mixNote")),
   );
-  if (hasMix) section.append(h(doc, "p", { class: "mix-note" }, t(lang, "mixNote")));
   applyMemberSearch(doc, section, stats, lang, today, query, filtered);
   return section;
 }
@@ -269,8 +266,8 @@ function modelsTable(doc: Document, stats: Stats, lang: Lang): HTMLElement {
       h(doc, "td", {}, usd(m.costUsd)),
     );
   });
-  const keys = ["oh0", "oh1", "oh2", "oh3", "oh4", "oh5", "oh6", "oh7"] as const;
-  const head = h(doc, "thead", {}, h(doc, "tr", {}, ...keys.map((k, i) => headCell(doc, t(lang, k), i < 2, k === "oh6"))));
+  const keys = ["colAgent", "colModel", "colInput", "colOutput", "colCacheCreate", "colCacheRead", "colTokens", "colCost"] as const;
+  const head = h(doc, "thead", {}, h(doc, "tr", {}, ...keys.map((k, i) => headCell(doc, t(lang, k), i < 2, k === "colTokens"))));
   return h(doc, "table", { id: "models" }, head, h(doc, "tbody", {}, ...body));
 }
 
@@ -285,7 +282,7 @@ interface TileContext {
 /** Total tokens, cost, a third tile that depends on the view, and the most used agent. */
 function tiles(doc: Document, stats: Stats, lang: Lang, third: HTMLElement, ctx: TileContext): HTMLElement {
   const filtered = isActive(ctx.filters);
-  const totals = agentTotals(stats.daily);
+  const totals = dailyAgentTotals(stats.daily);
   const topAgent = rankAgents(totals)[0];
   const tokens = stats.totals.tokens;
   const first = filtered ? t(lang, "ofAllInPeriod", { n: pct(tokens, availableTotal(stats.available)) }) : ctx.firstSub;
@@ -295,12 +292,12 @@ function tiles(doc: Document, stats: Stats, lang: Lang, third: HTMLElement, ctx:
     doc,
     "div",
     { class: "tiles" },
-    tile(doc, t(lang, filtered ? "k0f" : "k0"), [compact(tokens)], first, full(tokens)),
-    tile(doc, t(lang, filtered ? "k1f" : "k1"), [usd(stats.totals.costUsd)], t(lang, "apiPrices")),
+    tile(doc, t(lang, filtered ? "tileTokensFiltered" : "tileTokens"), [compact(tokens)], first, full(tokens)),
+    tile(doc, t(lang, filtered ? "tileCostFiltered" : "tileCost"), [usd(stats.totals.costUsd)], t(lang, "apiPrices")),
     third,
     topAgent === undefined || tokens <= 0
-      ? tile(doc, t(lang, "k3"), ["—"], "")
-      : tile(doc, t(lang, "k3"), [agentIcon(doc, topAgent), h(doc, "span", { class: "tile-text" }, agentName(topAgent))], t(lang, agentSub, { n: agentShare })),
+      ? tile(doc, t(lang, "tileTopAgent"), ["—"], "")
+      : tile(doc, t(lang, "tileTopAgent"), [agentIcon(doc, topAgent), h(doc, "span", { class: "tile-text" }, agentName(topAgent))], t(lang, agentSub, { n: agentShare })),
   );
 }
 
@@ -311,7 +308,7 @@ function chartPanel(doc: Document, stats: Stats, lang: Lang): HTMLElement {
     doc,
     "div",
     { class: "legend" },
-    ...presentSeries(agentTotals(stats.daily)).map((i) =>
+    ...presentSeries(dailyAgentTotals(stats.daily)).map((i) =>
       h(doc, "span", {}, i === OTHER_SERIES ? otherAgentsIcon(doc) : agentIcon(doc, SERIES[i] as string), h(doc, "span", { class: "legend-name" }, names[i] ?? "")),
     ),
   );
@@ -360,7 +357,7 @@ export function renderStats(doc: Document, stats: Stats, lang: Lang, today: stri
   const days = Math.max(1, stats.daily.length);
   const active = tile(
     doc,
-    t(lang, "k2"),
+    t(lang, "tileActiveMembers"),
     nOfM(doc, lang, stats.totals.activeMembers, stats.totals.memberCount),
     t(lang, activeSub(filters)),
   );
@@ -413,7 +410,7 @@ function machineStatus(doc: Document, lang: Lang, at: string | null, today: stri
 
 function machinesPanel(doc: Document, stats: Stats, lang: Lang, today: string): HTMLElement {
   const machines = stats.machines ?? [];
-  const heading = counted(doc, t(lang, "mh4"), machines.length);
+  const heading = counted(doc, t(lang, "machinesHeading"), machines.length);
   if (machines.length === 0) return panel(doc, heading, "machines-heading", h(doc, "p", { class: "machines-none" }, t(lang, "noMachines")));
   const items = machines.map((m) => {
     const { pill, note } = machineStatus(doc, lang, m.lastSyncAt, today);
@@ -453,14 +450,13 @@ export function renderMember(
   opts: { filters?: Filters; teamTokens?: number | null } = {},
 ): DocumentFragment {
   const filters = opts.filters ?? NO_FILTERS;
-  const member = stats.members.find((m) => m.id === id);
   const activeDays = stats.daily.filter((d) => Object.values(d.byAgent).reduce((a, n) => a + n, 0) > 0).length;
   // The share of the team only when it is known for this period; otherwise no guess.
   const team = opts.teamTokens ?? null;
   const firstSub = team !== null && team > 0 ? t(lang, "teamShare", { n: pct(stats.totals.tokens, team) }) : "";
   const out = doc.createDocumentFragment();
   out.append(
-    tiles(doc, stats, lang, tile(doc, t(lang, "k4"), nOfM(doc, lang, activeDays, stats.daily.length), t(lang, "activeDaysSub")), {
+    tiles(doc, stats, lang, tile(doc, t(lang, "tileActiveDays"), nOfM(doc, lang, activeDays, stats.daily.length), t(lang, "activeDaysSub")), {
       filters,
       view: "member",
       firstSub,

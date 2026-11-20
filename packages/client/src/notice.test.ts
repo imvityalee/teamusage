@@ -6,8 +6,8 @@ import { ApiError } from "./api.js";
 import { CollectError } from "./collect.js";
 import { ConfigError } from "./config.js";
 import { clearCodexNotice, isSetupProblem, noticePath, writeCodexNotice } from "./notice.js";
-import { clientVersion } from "./codex.js";
-import { SyncError } from "./sync.js";
+import { clientVersion } from "./version.js";
+import { SyncError } from "./errors.js";
 
 let home: string;
 beforeEach(() => {
@@ -57,8 +57,8 @@ test("a failing notice write is ignored", () => {
 
 test("isSetupProblem: config and sync errors yes; api, collect, lock, unknown no", () => {
   expect(isSetupProblem(new ConfigError("x"))).toBe(true);
-  expect(isSetupProblem(new SyncError("x"))).toBe(true);
-  expect(isSetupProblem(new SyncError("lock", { notSetup: true }))).toBe(false);
+  expect(isSetupProblem(new SyncError("notSetUp"))).toBe(true);
+  expect(isSetupProblem(new SyncError("lock"))).toBe(false);
   expect(isSetupProblem(new ApiError(500, "x"))).toBe(false);
   expect(isSetupProblem(new CollectError("x"))).toBe(false);
   expect(isSetupProblem(new Error("x"))).toBe(false);

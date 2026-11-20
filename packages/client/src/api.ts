@@ -1,4 +1,5 @@
-import type { Stats, UsageRecord } from "@teamusage/shared";
+import type { UsageRecord } from "@teamusage/shared";
+import { UserError } from "./errors.js";
 import { clean } from "./text.js";
 
 const TIMEOUT_MS = 15_000;
@@ -8,11 +9,10 @@ const MAX_BODY_BYTES = 5 * 1024 * 1024;
  * `status` is the HTTP status, or 0 when the server could not be reached.
  * Messages hold only the status and the server's `error` string (cleaned and truncated); never tokens or invite codes.
  */
-export class ApiError extends Error {
+export class ApiError extends UserError {
   readonly status: number;
   constructor(status: number, message: string) {
     super(message);
-    this.name = "ApiError";
     this.status = status;
   }
 }
@@ -105,19 +105,15 @@ export async function upload(
   return { stored: res.stored, kept: res.kept };
 }
 
+/** The parsed stats answer, unchecked beyond being JSON; `readReport` checks and cleans it. */
 export async function fetchStats(
   serverUrl: string,
   token: string,
   q: { from: string; to: string; member?: "me" },
-): Promise<Stats> {
+): Promise<unknown> {
   const params = new URLSearchParams({ from: q.from, to: q.to });
   if (q.member) params.set("member", q.member);
-  const res = await request(`${serverUrl}/api/stats?${params}`, {
-    method: "GET",
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!isObj(res)) throw unexpected();
-  return res as unknown as Stats;
+  return request(`${serverUrl}/api/stats?${params}`, { method: "GET", headers: { Authorization: `Bearer ${token}` } });
 }
 
 /** True when GET /api/health answers 200. */

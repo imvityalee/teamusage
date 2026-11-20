@@ -128,10 +128,10 @@ describe("filter and design strings", () => {
     expect(both("onlySelectedAgents")).toEqual(["Only models of the selected agents are listed.", "Показаны только модели выбранных агентов."]);
     expect(both("showingOnly")).toEqual(["Showing only", "Показаны только"]);
     expect(both("clearFilters")).toEqual(["Clear filters", "Сбросить фильтры"]);
-    expect(t("en", "k0f")).toBe("Total tokens · filtered");
-    expect(t("en", "k1f")).toBe("Estimated cost · filtered");
+    expect(t("en", "tileTokensFiltered")).toBe("Total tokens · filtered");
+    expect(t("en", "tileCostFiltered")).toBe("Estimated cost · filtered");
     expect(t("en", "ofAllInPeriod", { n: 57 })).toBe("57% of all tokens in this period");
-    expect(t("en", "k3")).toBe("Most used agent");
+    expect(t("en", "tileTopAgent")).toBe("Most used agent");
     expect(t("en", "sentUsage")).toBe("sent usage in this period");
     expect(t("en", "membersHint")).toBe("Select a member to see their own usage");
     expect(t("en", "searchPlaceholder")).toBe("Search by name or email");
@@ -151,7 +151,7 @@ describe("filter and design strings", () => {
     const both = (key: keyof typeof messages.en) => [t("en", key), t("ru", key)];
     expect(both("allAccounts")).toEqual(["All accounts", "Все аккаунты"]);
     expect(both("accountsTitle")).toEqual(["Accounts in this period", "Аккаунты за этот период"]);
-    expect(both("mhAccounts")).toEqual(["Accounts", "Аккаунты"]);
+    expect(both("colAccounts")).toEqual(["Accounts", "Аккаунты"]);
     expect(both("byAccount")).toEqual(["By account", "По аккаунтам"]);
     expect(both("usedSelectedAccounts")).toEqual(["used the selected accounts", "пользовались выбранными аккаунтами"]);
     expect(t("en", "accountLimit", { n: 50 })).toBe("You can select up to 50 accounts.");
@@ -163,10 +163,10 @@ describe("filter and design strings", () => {
 
 describe("more design strings", () => {
   test("Russian wording for the tiles, members and machines", () => {
-    expect(t("ru", "k0f")).toBe("Всего токенов · с фильтром");
-    expect(t("ru", "k1f")).toBe("Оценка стоимости · с фильтром");
+    expect(t("ru", "tileTokensFiltered")).toBe("Всего токенов · с фильтром");
+    expect(t("ru", "tileCostFiltered")).toBe("Оценка стоимости · с фильтром");
     expect(t("ru", "ofAllInPeriod", { n: 57 })).toBe("57% всех токенов за этот период");
-    expect(t("ru", "k3")).toBe("Самый используемый агент");
+    expect(t("ru", "tileTopAgent")).toBe("Самый используемый агент");
     expect(t("ru", "teamShare", { n: 29 })).toBe("29% токенов команды");
     expect(t("ru", "allMembers")).toBe("Все участники");
     expect(t("ru", "syncedToday")).toBe("Отправлено сегодня");

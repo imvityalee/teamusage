@@ -39,6 +39,14 @@ create table if not exists settings (key text primary key, value text not null);
 create table if not exists sessions (id text primary key, created_at text not null);
 `;
 
+/** The machine id is already registered to a different member. */
+export class MachineOwnedError extends Error {
+  constructor() {
+    super("machine id already registered to another member");
+    this.name = "MachineOwnedError";
+  }
+}
+
 const now = (): string => new Date().toISOString();
 const sha256 = (s: string): string => createHash("sha256").update(s).digest("hex");
 
@@ -104,7 +112,7 @@ export function registerMachine(
       | { member_id: number }
       | undefined;
     if (existing && existing.member_id !== memberId) {
-      throw new Error("machine id already registered to another member");
+      throw new MachineOwnedError();
     }
     if (existing) {
       db.prepare("update machines set label = ?, token_hash = ? where id = ?").run(

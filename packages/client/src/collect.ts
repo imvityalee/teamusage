@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import {
+  isIsoDate,
   MAX_AGENT_CHARS,
   MAX_COST_USD,
   MAX_MODEL_CHARS,
@@ -10,13 +11,9 @@ import {
   NAME_CONTROL_CHARS,
   type UsageRecord,
 } from "@teamusage/shared";
+import { UserError } from "./errors.js";
 
-export class CollectError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "CollectError";
-  }
-}
+export class CollectError extends UserError {}
 
 const TIMEOUT_MS = 120_000;
 
@@ -81,7 +78,7 @@ export function toRecords(ccusageJson: unknown): UsageRecord[] {
   for (const day of ccusageJson.daily) {
     if (!isObj(day)) throw new CollectError("unexpected ccusage output: day is not an object");
     const date = text(day, "period");
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new CollectError("unexpected ccusage output: invalid period");
+    if (!isIsoDate(date)) throw new CollectError("unexpected ccusage output: invalid period");
     if (!Array.isArray(day.agents)) throw new CollectError("unexpected ccusage output: day has no agents array");
     // Keyed by agent and model; neither contains control characters, so "\0" cannot occur inside them.
     const merged = new Map<string, UsageRecord>();
@@ -173,7 +170,7 @@ export function runCcusage(since?: string, opts: RunOptions = {}): Promise<unkno
     const args = ["daily", "--by-agent", "--json"];
     try {
       if (since !== undefined) {
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(since)) throw new CollectError("since must be YYYY-MM-DD");
+        if (!isIsoDate(since)) throw new CollectError("since must be YYYY-MM-DD");
         args.push("--since", since.replaceAll("-", ""));
       }
       command = opts.command ?? [process.execPath, ccusageBin()];

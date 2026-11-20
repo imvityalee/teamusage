@@ -1,4 +1,6 @@
 import { validateAccount, type AccountLabel } from "./account.js";
+import { isIsoDate } from "./dates.js";
+import { isName, MAX_AGENT_CHARS, MAX_BATCH, MAX_COST_USD, MAX_MODEL_CHARS, MAX_TOKENS, MAX_TOTAL_TOKENS } from "./limits.js";
 
 export interface UsageRecord {
   date: string; // YYYY-MM-DD, the machine's local day
@@ -11,42 +13,17 @@ export interface UsageRecord {
   total: number; // input + output + cacheCreate + cacheRead
   costUsd: number;
   unpriced: boolean;
-  account?: AccountLabel; // Claude records only
+  account?: AccountLabel; // Claude and Codex records only
 }
-
-export const MAX_BATCH = 1000;
-
-/**
- * Upload bounds. They keep any number of rows far from SQLite's integer overflow and every sum finite,
- * and keep names short enough to show. Lengths are in UTF-16 code units (String.length).
- */
-export const MAX_TOKENS = 1e12; // each of input, output, cacheCreate, cacheRead
-export const MAX_TOTAL_TOKENS = 4e12;
-export const MAX_COST_USD = 1e7;
-export const MAX_AGENT_CHARS = 64;
-export const MAX_MODEL_CHARS = 128;
-/** Control characters refused in agent and model names. */
-export const NAME_CONTROL_CHARS = /[\x00-\x1f\x7f]/;
 
 type BatchResult = { ok: true; records: UsageRecord[] } | { ok: false; error: string };
 
-function isRealDate(s: string): boolean {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
-  if (!m) return false;
-  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
-  const dt = new Date(Date.UTC(y, mo - 1, d));
-  return dt.getUTCFullYear() === y && dt.getUTCMonth() === mo - 1 && dt.getUTCDate() === d;
-}
-
 const isCount = (v: unknown, max: number): v is number =>
   typeof v === "number" && Number.isSafeInteger(v) && v >= 0 && v <= max;
-const isName = (v: unknown, max: number): v is string =>
-  typeof v === "string" && v.length > 0 && v.length <= max && !NAME_CONTROL_CHARS.test(v);
-
 function validateRecord(raw: unknown): UsageRecord | string {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return "not an object";
   const r = raw as Record<string, unknown>;
-  if (typeof r.date !== "string" || !isRealDate(r.date)) return "invalid date";
+  if (!isIsoDate(r.date)) return "invalid date";
   if (!isName(r.agent, MAX_AGENT_CHARS)) return "invalid agent";
   if (!isName(r.model, MAX_MODEL_CHARS)) return "invalid model";
   const { input, output, cacheCreate, cacheRead, total, costUsd, unpriced } = r;

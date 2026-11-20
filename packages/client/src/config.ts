@@ -2,7 +2,8 @@ import { randomBytes } from "node:crypto";
 import { chmodSync, closeSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { APP_NAME, ENV_PREFIX } from "@teamusage/shared";
+import { APP_NAME, ENV_PREFIX, isIsoDate } from "@teamusage/shared";
+import { SyncError, UserError } from "./errors.js";
 
 export interface Config {
   serverUrl: string;
@@ -32,13 +33,7 @@ export type ConfigUpdate = Pick<
   "token" | "tokenServerUrl" | "tokenEmail" | "lastSuccessfulSync" | "lastSyncAgents" | "fallbackMachineId"
 >;
 
-/** Its messages are fixed text and never include file contents, tokens or invite codes. */
-export class ConfigError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "ConfigError";
-  }
-}
+export class ConfigError extends UserError {}
 
 const STRING_KEYS = [
   "serverUrl",
@@ -55,14 +50,23 @@ const KEYS = [...STRING_KEYS, "lastSyncAgents", "allowInsecureHttp"] as const;
 const ENV_KEYS = { serverUrl: "SERVER_URL", inviteCode: "INVITE_CODE", name: "NAME", email: "EMAIL" } as const;
 const PLUGIN_PREFIX = "CLAUDE_PLUGIN_OPTION_";
 
-export function configDir(): string {
-  const xdg = process.env.XDG_CONFIG_HOME;
-  const base = xdg && path.isAbsolute(xdg) ? xdg : path.join(os.homedir(), ".config");
+/**
+ * `$XDG_CONFIG_HOME/teamusage` when that variable is an absolute path, else `~/.config/teamusage`. The Codex plugin's
+ * Stop hook applies the same rule in sh to find the notice file (see scripts/check-plugin.mjs).
+ */
+export function configDir(env: NodeJS.ProcessEnv = process.env, home: string = os.homedir()): string {
+  const xdg = env.XDG_CONFIG_HOME;
+  const base = xdg && path.isAbsolute(xdg) ? xdg : path.join(home, ".config");
   return path.join(base, APP_NAME);
 }
 
+/** A file in the config directory. */
+export function configFile(name: string): string {
+  return path.join(configDir(), name);
+}
+
 export function configPath(): string {
-  return path.join(configDir(), "config.json");
+  return configFile("config.json");
 }
 
 const isLoopback = (hostname: string) =>
@@ -145,7 +149,7 @@ export function readConfigFile(): Partial<Config> | null {
     }
     out.lastSyncAgents = a as string[];
   }
-  if (out.lastSuccessfulSync !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(out.lastSuccessfulSync)) {
+  if (out.lastSuccessfulSync !== undefined && !isIsoDate(out.lastSuccessfulSync)) {
     throw new ConfigError("the config file is malformed (lastSuccessfulSync)");
   }
   if (out.fallbackMachineId !== undefined && !/^[a-f0-9]{32}$/.test(out.fallbackMachineId)) {
@@ -185,6 +189,19 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config | null 
   return cfg;
 }
 
+/** Emails are compared trimmed and lower-cased, as the server stores them. */
+export const normalEmail = (email: string): string => email.trim().toLowerCase();
+
+/**
+ * A stored token may only go to the server and email it was issued for. Every token this tool writes is saved
+ * with both; a token missing either was damaged or edited by hand, so it is refused rather than sent anywhere.
+ */
+export function assertTokenBound(cfg: Config): void {
+  if (!cfg.token) return;
+  if (cfg.tokenServerUrl === undefined || cfg.tokenEmail === undefined) throw new SyncError("tokenUnbound");
+  if (cfg.tokenServerUrl !== cfg.serverUrl || cfg.tokenEmail !== normalEmail(cfg.email)) throw new SyncError("identityChanged");
+}
+
 /** Creates the config directory with mode 0700 (and tightens it if it already existed); returns its path. */
 export function ensureConfigDir(): string {
   const dir = configDir();
@@ -194,23 +211,37 @@ export function ensureConfigDir(): string {
   return dir;
 }
 
-/** Atomic write: a 0600 temp file in a 0700 directory, then rename over the config file. */
-function writeFile(data: Partial<Config>): void {
+/**
+ * Writes `text` to the file `name` in the config directory, readable only by this user (0600). It goes through a temp
+ * file in the same directory that is renamed over the target, so a reader never sees half a file.
+ */
+export function writePrivateFile(name: string, text: string): void {
   const dir = ensureConfigDir();
-  const clean: Record<string, unknown> = {};
-  for (const k of KEYS) if (data[k] !== undefined) clean[k] = data[k];
-  const tmp = path.join(dir, `.config.json.${process.pid}.${randomBytes(6).toString("hex")}.tmp`);
+  const tmp = path.join(dir, `.${name}.${process.pid}.${randomBytes(6).toString("hex")}.tmp`);
   let fd: number | undefined;
   try {
     fd = openSync(tmp, "wx", 0o600);
-    writeSync(fd, `${JSON.stringify(clean, null, 2)}\n`);
+    writeSync(fd, text);
     fsyncSync(fd);
     closeSync(fd);
     fd = undefined;
-    renameSync(tmp, configPath());
+    renameSync(tmp, path.join(dir, name));
+  } catch (e) {
+    try {
+      if (fd !== undefined) closeSync(fd);
+    } finally {
+      rmSync(tmp, { force: true });
+    }
+    throw e;
+  }
+}
+
+function writeFile(data: Partial<Config>): void {
+  const clean: Record<string, unknown> = {};
+  for (const k of KEYS) if (data[k] !== undefined) clean[k] = data[k];
+  try {
+    writePrivateFile("config.json", `${JSON.stringify(clean, null, 2)}\n`);
   } catch {
-    if (fd !== undefined) closeSync(fd);
-    rmSync(tmp, { force: true });
     throw new ConfigError("could not write the config file");
   }
 }

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { compact, daysSince, full, initials, localIsoDate, rangeText, shortDate, usd } from "./format.js";
+import { compact, daysSince, full, initials, rangeText, shortDate, usd } from "./format.js";
 import { agentName } from "./agents.js";
 
 describe("full", () => {
@@ -33,10 +33,6 @@ describe("usd", () => {
 });
 
 describe("dates", () => {
-  test("localIsoDate uses the local calendar day", () => {
-    expect(localIsoDate(new Date(2026, 10, 18, 23, 59))).toBe("2026-11-18");
-    expect(localIsoDate(new Date(2026, 0, 5, 0, 1))).toBe("2026-01-05");
-  });
 
   test("daysSince counts local calendar days, never below zero", () => {
     const at = (y: number, m: number, d: number, h: number) => new Date(y, m - 1, d, h).toISOString();

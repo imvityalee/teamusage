@@ -1,23 +1,26 @@
 import { randomBytes } from "node:crypto";
-import { chmodSync, closeSync, openSync, readFileSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs";
-import path from "node:path";
-import type { UsageRecord } from "@teamusage/shared";
+import { closeSync, openSync, readFileSync, rmSync, statSync, writeSync } from "node:fs";
+import { addDays, isDisplayName, isEmail, localIsoDate, MAX_DISPLAY_NAME_CHARS, MAX_EMAIL_CHARS, type UsageRecord } from "@teamusage/shared";
 import { describeLogin, labelRecords, readLogins, type Logins } from "./account.js";
-import { ApiError, health, register, upload } from "./api.js";
-import { collect, CollectError } from "./collect.js";
+import { ApiError, health, register, upload, type RegisterBody } from "./api.js";
+import { collect } from "./collect.js";
 import {
+  assertTokenBound,
   ConfigError,
-  configDir,
+  configFile,
   configPath,
   ensureConfigDir,
   insecureHttpAllowedByEnv,
   loadConfig,
+  normalEmail,
   normalizeServerUrl,
   readConfigFile,
   saveConfig,
   updateConfigFile,
+  writePrivateFile,
   type Config,
 } from "./config.js";
+import { errorMessage, SyncError } from "./errors.js";
 import { clearCodexNotice, isSetupProblem, writeCodexNotice } from "./notice.js";
 import { machineId, machineLabel, readOsId } from "./machine.js";
 
@@ -25,7 +28,7 @@ export interface Deps {
   collect: typeof collect;
   env: NodeJS.ProcessEnv;
   today: () => string; // local YYYY-MM-DD
-  /** The current Claude and Codex logins, read once per sync; one reader failing gives null for that agent only. */
+  /** The current Claude and Codex logins, read once per sync; never throws (see readLogins). */
   accounts: () => Logins;
   log: (line: string) => void;
 }
@@ -40,21 +43,11 @@ export interface SyncResult {
   skipped?: boolean;
 }
 
-/** Its messages are fixed text and never include tokens or invite codes. */
-export class SyncError extends Error {
-  /** True for errors that are not a setup or token problem (the sync lock), so they get no Codex notice. */
-  readonly notSetup: boolean;
-  constructor(message: string, opts: { notSetup?: boolean } = {}) {
-    super(message);
-    this.name = "SyncError";
-    this.notSetup = opts.notSetup === true;
-  }
-}
-
 const CHUNK = 500;
 const LOG_LINES = 200;
-const SETUP_HINT = "run `teamusage setup`";
 const LOCK_STALE_MS = 10 * 60 * 1000;
+const LAST_ATTEMPT_FILE = "last-attempt";
+const SYNC_LOG_FILE = "sync.log";
 
 /** Milliseconds for `<n>m` (1-1440) or `<n>h` (1-24); anything else is undefined. */
 export function parseThrottle(s: string): number | undefined {
@@ -67,7 +60,7 @@ export function parseThrottle(s: string): number | undefined {
 
 /** One ISO timestamp: when a real sync attempt last started (kept even when it failed). */
 export function lastAttemptPath(): string {
-  return path.join(configDir(), "last-attempt");
+  return configFile(LAST_ATTEMPT_FILE);
 }
 
 /** The stored attempt time, or undefined when there is none. */
@@ -92,43 +85,23 @@ export function shouldSkip(throttleMs: number, now: Date, readAttempt: () => str
 /** Records that a sync attempt starts now; best effort. */
 export function writeLastAttempt(): void {
   try {
-    const file = path.join(ensureConfigDir(), "last-attempt");
-    writeFileSync(file, `${new Date().toISOString()}\n`, { mode: 0o600 });
-    chmodSync(file, 0o600);
+    writePrivateFile(LAST_ATTEMPT_FILE, `${new Date().toISOString()}\n`);
   } catch {
     // the throttle is best effort; it must never make a sync fail
   }
 }
 
-const pad = (n: number) => String(n).padStart(2, "0");
-
-/** The machine's local calendar day. */
-export function localToday(now: Date = new Date()): string {
-  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-}
-
-const defaults = (): Deps => ({
+export const syncDefaults = (): Deps => ({
   collect,
   env: process.env,
-  today: () => localToday(),
+  today: () => localIsoDate(),
   accounts: () => readLogins(),
   log: (line) => process.stdout.write(`${line}\n`),
 });
 
 /** undefined = all history; otherwise two calendar days before the last successful sync. */
 export function syncSince(lastSuccessfulSync: string | undefined): string | undefined {
-  if (lastSuccessfulSync === undefined) return undefined;
-  const [y, m, d] = lastSuccessfulSync.split("-").map(Number) as [number, number, number];
-  return new Date(Date.UTC(y, m - 1, d - 2)).toISOString().slice(0, 10);
-}
-
-/** Safe to show or log: known errors carry fixed or truncated text; anything else is reduced to its code. */
-export function errorMessage(e: unknown): string {
-  if (e instanceof ApiError || e instanceof CollectError || e instanceof ConfigError || e instanceof SyncError) {
-    return e.message;
-  }
-  const code = typeof e === "object" && e !== null ? (e as { code?: unknown }).code : undefined;
-  return typeof code === "string" && /^[A-Z_]+$/.test(code) ? `unexpected error (${code})` : "unexpected error";
+  return lastSuccessfulSync === undefined ? undefined : addDays(lastSuccessfulSync, -2);
 }
 
 /** Copies exactly the UsageRecord fields, so nothing else collect() returned can reach the server. */
@@ -154,20 +127,22 @@ function currentMachineId(
 
 function appendSyncLog(message: string): void {
   try {
-    const file = path.join(ensureConfigDir(), "sync.log");
     let lines: string[] = [];
     try {
-      lines = readFileSync(file, "utf8").split("\n").filter((l) => l !== "");
+      lines = readFileSync(configFile(SYNC_LOG_FILE), "utf8").split("\n").filter((l) => l !== "");
     } catch {
       // no log yet
     }
     lines.push(`${new Date().toISOString()} ${message}`);
-    writeFileSync(file, `${lines.slice(-LOG_LINES).join("\n")}\n`, { mode: 0o600 });
-    chmodSync(file, 0o600);
+    writePrivateFile(SYNC_LOG_FILE, `${lines.slice(-LOG_LINES).join("\n")}\n`);
   } catch {
     // logging must never make a quiet sync fail
   }
 }
+
+/** What a sync collected; SyncResult adds what the server did with it. */
+type Collected = Pick<SyncResult, "days" | "agents" | "records">;
+type Counts = Pick<SyncResult, "stored" | "kept">;
 
 const empty = (): SyncResult => ({ days: 0, agents: [], records: 0, stored: 0, kept: 0 });
 
@@ -176,7 +151,8 @@ const empty = (): SyncResult => ({ days: 0, agents: [], records: 0, stored: 0, k
  * another sync holds a lock younger than 10 minutes. An older lock is treated as left by a crash and replaced.
  */
 function acquireLock(): (() => void) | null {
-  const file = path.join(ensureConfigDir(), "sync.lock");
+  ensureConfigDir();
+  const file = configFile("sync.lock");
   const mine = `${process.pid} ${randomBytes(8).toString("hex")}`;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
@@ -194,7 +170,7 @@ function acquireLock(): (() => void) | null {
         }
       };
     } catch (e) {
-      if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw new SyncError("could not create the sync lock", { notSetup: true });
+      if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw new SyncError("lock");
     }
     let age: number;
     try {
@@ -208,37 +184,17 @@ function acquireLock(): (() => void) | null {
   return null;
 }
 
-const normalEmail = (email: string) => email.trim().toLowerCase();
-
 /** True when the invite code and the server URL both came from the config file, or both from the environment. */
 const sameSource = (cfg: Config): boolean =>
   cfg.inviteCode !== undefined && cfg.sources?.inviteCode !== undefined && cfg.sources.inviteCode === cfg.sources.serverUrl;
 
-/**
- * A stored token may only go to the server and email it was issued for. Every token this tool writes is saved
- * with both; a token missing either was damaged or edited by hand, so it is refused rather than sent anywhere.
- */
-export function assertTokenBound(cfg: Config): void {
-  if (!cfg.token) return;
-  if (cfg.tokenServerUrl === undefined || cfg.tokenEmail === undefined) {
-    throw new SyncError(`this machine's token is not bound to a server and email, so nothing was sent; ${SETUP_HINT}`);
-  }
-  const serverChanged = cfg.tokenServerUrl !== cfg.serverUrl;
-  const emailChanged = cfg.tokenEmail !== normalEmail(cfg.email);
-  if (serverChanged || emailChanged) {
-    throw new SyncError(
-      `the server URL or email changed since this machine registered, so nothing was sent; ${SETUP_HINT} to confirm`,
-    );
-  }
-}
-
 export async function sync(
   opts: { dryRun?: boolean; quiet?: boolean; labelHistory?: boolean; deps?: Partial<Deps> } = {},
 ): Promise<SyncResult> {
-  const deps: Deps = { ...defaults(), ...opts.deps };
+  const deps: Deps = { ...syncDefaults(), ...opts.deps };
   const quiet = opts.quiet === true;
   try {
-    return await run(deps, opts.dryRun === true, quiet, opts.labelHistory === true);
+    return await run(deps, { dryRun: opts.dryRun === true, quiet, history: opts.labelHistory === true });
   } catch (e) {
     if (deps.env.TEAMUSAGE_HOOK === "codex" && isSetupProblem(e)) writeCodexNotice(errorMessage(e));
     if (!quiet) throw e;
@@ -247,152 +203,185 @@ export async function sync(
   }
 }
 
-async function run(deps: Deps, dryRun: boolean, quiet: boolean, history: boolean): Promise<SyncResult> {
+/** `history`: --label-history. */
+type SyncOptions = { dryRun: boolean; quiet: boolean; history: boolean };
+
+async function run(deps: Deps, opts: SyncOptions): Promise<SyncResult> {
   const cfg = loadConfig(deps.env);
-  if (!cfg) throw new SyncError(`teamusage is not set up; ${SETUP_HINT}`);
-  if (dryRun) return collectAndUpload(deps, cfg, true, quiet, history);
+  if (!cfg) throw new SyncError("notSetUp");
+  if (opts.dryRun) return collectAndUpload(deps, cfg, opts);
   assertTokenBound(cfg);
   const release = acquireLock();
   if (release === null) {
-    if (!quiet) deps.log("Another sync is already running; skipped.");
+    if (!opts.quiet) deps.log("Another sync is already running; skipped.");
     return { ...empty(), skipped: true };
   }
   try {
     writeLastAttempt();
-    return await collectAndUpload(deps, cfg, false, quiet, history);
+    return await collectAndUpload(deps, cfg, opts);
   } finally {
     release();
   }
 }
 
-async function collectAndUpload(
+/** The record lists to upload, in order, and what they hold. */
+interface UploadPlan {
+  passes: UsageRecord[][];
+  summary: Collected;
+}
+
+const summarize = (records: UsageRecord[]): Collected => ({
+  days: new Set(records.map((r) => r.date)).size,
+  agents: [...new Set(records.map((r) => r.agent))].sort(),
+  records: records.length,
+});
+
+/**
+ * Collects and labels what to upload. A plain sync is one pass from `since`. With --label-history a normal pass goes
+ * first (labels only today and yesterday, as a plain sync does), so the totals on the server are already equal when the
+ * history pass (all history, every day labelled) arrives: it can then only fill labels and plans that are missing,
+ * never replace one. A dry run shows only the history pass.
+ */
+async function planUpload(
   deps: Deps,
-  cfg: Config,
-  dryRun: boolean,
-  quiet: boolean,
-  history: boolean,
-): Promise<SyncResult> {
-  const today = deps.today();
-  const since = syncSince(cfg.lastSuccessfulSync);
-  // A login file must never fail a sync: a throwing reader means no label for that agent only.
-  const logins = ((): Logins => {
-    let all: Partial<Logins> = {};
-    try {
-      all = deps.accounts();
-    } catch {
-      // fall through to no labels
-    }
-    return { claude: all.claude ?? null, codex: all.codex ?? null };
-  })();
-  const collectLabelled = async (from: string | undefined, hist: boolean) =>
-    labelRecords((await deps.collect(from)).map(onlyRecordFields), logins, today, { history: hist });
-  const summarize = (records: UsageRecord[]): SyncResult => ({
-    ...empty(),
-    days: new Set(records.map((r) => r.date)).size,
-    agents: [...new Set(records.map((r) => r.agent))].sort(),
-    records: records.length,
-  });
-  /**
-   * Upload passes, in order. A plain sync is one pass. With --label-history a normal pass goes first (labels only
-   * today and yesterday, as a plain sync does), so the totals on the server are already equal when the history pass
-   * (every day labelled) arrives: it can then only fill labels and plans that are missing, never replace one.
-   */
-  const gather = async (from: string | undefined) => {
-    if (!history) {
-      const plain = await collectLabelled(from, false);
-      return { passes: [plain], summary: summarize(plain) };
-    }
-    const all = await collectLabelled(undefined, true);
-    if (dryRun) return { passes: [all], summary: summarize(all) };
-    return { passes: [await collectLabelled(from, false), all], summary: summarize(all) };
-  };
-  let { passes, summary: result } = await gather(since);
-  if (history && !quiet) {
-    for (const [agent, title] of [["claude", "Claude"], ["codex", "Codex"]] as const) {
-      if (!result.agents.includes(agent)) continue;
-      const login = logins[agent];
-      deps.log(
-        login === null
-          ? `${title} history: no login found, left as it is.`
-          : `Labels all ${title} history as ${describeLogin(agent, login)}.`,
-      );
+  labels: { logins: Logins; today: string },
+  since: string | undefined,
+  opts: Pick<SyncOptions, "history" | "dryRun">,
+): Promise<UploadPlan> {
+  const pass = async (from: string | undefined, labelAll: boolean) =>
+    labelRecords((await deps.collect(from)).map(onlyRecordFields), labels.logins, labels.today, { history: labelAll });
+  if (!opts.history) {
+    const plain = await pass(since, false);
+    return { passes: [plain], summary: summarize(plain) };
+  }
+  const all = await pass(undefined, true);
+  const passes = opts.dryRun ? [all] : [await pass(since, false), all];
+  return { passes, summary: summarize(all) };
+}
+
+/** Sends every pass in order, in chunks of CHUNK records, and adds up the server's counts. */
+async function uploadPasses(serverUrl: string, token: string, passes: UsageRecord[][]): Promise<Counts> {
+  const counts = { stored: 0, kept: 0 };
+  for (const pass of passes) {
+    for (let i = 0; i < pass.length; i += CHUNK) {
+      const res = await upload(serverUrl, token, pass.slice(i, i + CHUNK));
+      counts.stored += res.stored;
+      counts.kept += res.kept;
     }
   }
+  return counts;
+}
 
-  let machine: string | undefined;
-  const identity = () => {
-    if (machine === undefined) {
+type Identity = Omit<RegisterBody, "inviteCode">;
+
+/**
+ * This machine's registration fields, worked out on first use only: a newly generated machine-id seed is saved then,
+ * and a second call must not generate another.
+ */
+function lazyIdentity(cfg: Config): () => Identity {
+  let identity: Identity | undefined;
+  return () => {
+    if (identity === undefined) {
       const m = currentMachineId(cfg.email, cfg.fallbackMachineId);
       if (m.generated) updateConfigFile({ fallbackMachineId: m.seed });
-      machine = m.id;
+      identity = { name: cfg.name, email: cfg.email, machineId: m.id, machineLabel: machineLabel() };
     }
-    return { name: cfg.name, email: cfg.email, machineId: machine, machineLabel: machineLabel() };
+    return identity;
   };
+}
 
-  if (dryRun) {
-    if (!quiet) printDryRun(deps.log, passes[0] as UsageRecord[], identity());
-    return result;
+/**
+ * Registers and saves the new token, bound to this server and email. `forgetHistory` also clears the saved sync state:
+ * after a 401 the server may have lost this machine's history, and if the resend fails the next sync sends it all.
+ */
+async function registerAndSave(cfg: Config, inviteCode: string, identity: Identity, forgetHistory: boolean): Promise<string> {
+  const { token } = await register(cfg.serverUrl, { inviteCode, ...identity });
+  updateConfigFile({
+    token,
+    tokenServerUrl: cfg.serverUrl,
+    tokenEmail: normalEmail(cfg.email),
+    ...(forgetHistory ? { lastSuccessfulSync: undefined, lastSyncAgents: undefined } : {}),
+  });
+  return token;
+}
+
+const isUnauthorized = (e: unknown): boolean => e instanceof ApiError && e.status === 401;
+
+function logHistoryLabels(log: Deps["log"], agents: string[], logins: Logins): void {
+  for (const [agent, title] of [["claude", "Claude"], ["codex", "Codex"]] as const) {
+    if (!agents.includes(agent)) continue;
+    const login = logins[agent];
+    log(login === null ? `${title} history: no login found, left as it is.` : `Labels all ${title} history as ${describeLogin(agent, login)}.`);
   }
+}
 
-  const binding = { tokenServerUrl: cfg.serverUrl, tokenEmail: normalEmail(cfg.email) };
-  const registerNow = async (inviteCode: string, forgetHistory = false): Promise<string> => {
-    const { token } = await register(cfg.serverUrl, { inviteCode, ...identity() });
-    // After a 401 the server may have lost this machine's history. The resend can still fail, so the saved
-    // sync state is cleared together with the new token: the next sync then sends everything again.
-    updateConfigFile({
-      token,
-      ...binding,
-      ...(forgetHistory ? { lastSuccessfulSync: undefined, lastSyncAgents: undefined } : {}),
-    });
-    return token;
-  };
+/**
+ * After the server rejected the token (401): registers again with the invite code, then sends the plan from
+ * `fullPlan` (all history when the last sync was partial: the server may have lost this machine's history, for example
+ * when an operator removed it). A second 401 is final.
+ */
+async function reregisterAndResend(
+  cfg: Config,
+  inviteCode: string,
+  identity: Identity,
+  fullPlan: () => Promise<UploadPlan>,
+): Promise<{ plan: UploadPlan; counts: Counts }> {
+  let token: string;
+  try {
+    token = await registerAndSave(cfg, inviteCode, identity, true);
+  } catch (e) {
+    // The saved invite is refused (the server answers 403): a setup problem, not a network one.
+    if (e instanceof ApiError && e.status === 403) throw new SyncError("inviteRefused");
+    throw e;
+  }
+  const plan = await fullPlan();
+  try {
+    return { plan, counts: await uploadPasses(cfg.serverUrl, token, plan.passes) };
+  } catch (e) {
+    throw isUnauthorized(e) ? new SyncError("tokenRejected") : e;
+  }
+}
+
+async function collectAndUpload(deps: Deps, cfg: Config, opts: SyncOptions): Promise<SyncResult> {
+  const today = deps.today();
+  const since = syncSince(cfg.lastSuccessfulSync);
+  const labels = { logins: deps.accounts(), today };
+  const plan = await planUpload(deps, labels, since, opts);
+  if (opts.history && !opts.quiet) logHistoryLabels(deps.log, plan.summary.agents, labels.logins);
+  const identity = lazyIdentity(cfg);
+  if (opts.dryRun) {
+    if (!opts.quiet) printDryRun(deps.log, plan.passes[0] ?? [], identity());
+    return { ...plan.summary, stored: 0, kept: 0 };
+  }
 
   // Registering without `setup` sends the invite code, so only to a server configured in the same place as it:
   // an invite code from the plugin's settings never goes to a server from the config file, or the reverse.
   const inviteCode = sameSource(cfg) ? cfg.inviteCode : undefined;
-
   let token = cfg.token;
   if (!token) {
-    if (!inviteCode) throw new SyncError(`this machine has no token; ${SETUP_HINT}`);
-    token = await registerNow(inviteCode);
+    if (!inviteCode) throw new SyncError("noToken");
+    token = await registerAndSave(cfg, inviteCode, identity(), false);
   }
 
-  let reRegistered = false;
-  for (;;) {
-    try {
-      for (const pass of passes) {
-        for (let i = 0; i < pass.length; i += CHUNK) {
-          const res = await upload(cfg.serverUrl, token, pass.slice(i, i + CHUNK));
-          result.stored += res.stored;
-          result.kept += res.kept;
-        }
-      }
-      break;
-    } catch (e) {
-      if (!(e instanceof ApiError) || e.status !== 401) throw e;
-      if (!inviteCode || reRegistered) {
-        throw new SyncError(`the server rejected this machine's token; ${SETUP_HINT}`);
-      }
-      reRegistered = true;
-      try {
-        token = await registerNow(inviteCode, true);
-      } catch (re) {
-        // The saved invite is refused (the server answers 403): a setup problem, not a network one.
-        if (re instanceof ApiError && re.status === 403) {
-          throw new SyncError(`the server refused the invite code; ${SETUP_HINT}`);
-        }
-        throw re;
-      }
-      // The server may have lost this machine's history (an operator removed it), so send all of it again,
-      // from the first chunk.
-      if (since !== undefined) ({ passes, summary: result } = await gather(undefined));
-      else result = { ...result, stored: 0, kept: 0 };
-    }
+  let sent: { plan: UploadPlan; counts: Counts };
+  try {
+    sent = { plan, counts: await uploadPasses(cfg.serverUrl, token, plan.passes) };
+  } catch (e) {
+    if (!isUnauthorized(e)) throw e;
+    if (!inviteCode) throw new SyncError("tokenRejected");
+    const fullPlan = since === undefined ? async () => plan : () => planUpload(deps, labels, undefined, opts);
+    sent = await reregisterAndResend(cfg, inviteCode, identity(), fullPlan);
   }
+  const result: SyncResult = { ...sent.plan.summary, ...sent.counts };
 
-  updateConfigFile({ lastSuccessfulSync: today, lastSyncAgents: result.agents, ...binding });
+  updateConfigFile({
+    lastSuccessfulSync: today,
+    lastSyncAgents: result.agents,
+    tokenServerUrl: cfg.serverUrl,
+    tokenEmail: normalEmail(cfg.email),
+  });
   clearCodexNotice();
-  if (!quiet) {
+  if (!opts.quiet) {
     const agents = result.agents.length ? result.agents.join(", ") : "none";
     deps.log(
       `Sent ${result.records} records over ${result.days} days (agents: ${agents}): ` +
@@ -402,11 +391,7 @@ async function collectAndUpload(
   return result;
 }
 
-function printDryRun(
-  log: (line: string) => void,
-  records: UsageRecord[],
-  identity: { name: string; email: string; machineId: string; machineLabel: string },
-): void {
+function printDryRun(log: Deps["log"], records: UsageRecord[], identity: Identity): void {
   const requests = Math.ceil(records.length / CHUNK);
   log(
     `Dry run: nothing was sent. The upload body would be the following` +
@@ -438,11 +423,11 @@ export async function setup(
   const optIn = input.allowInsecureHttp === true;
   const serverUrl = normalizeServerUrl(input.serverUrl, optIn || insecureHttpAllowedByEnv(env));
   const name = input.name.trim();
-  if (name.length < 1 || name.length > 100) throw new ConfigError("name must be 1 to 100 characters");
-  const email = input.email.trim();
-  if (!email.includes("@") || email.length > 254) {
-    throw new ConfigError("email must contain @ and be at most 254 characters");
+  if (!isDisplayName(name)) {
+    throw new ConfigError(`name must be 1 to ${MAX_DISPLAY_NAME_CHARS} characters, without control characters`);
   }
+  const email = input.email.trim();
+  if (!isEmail(email)) throw new ConfigError(`email must contain @ and be at most ${MAX_EMAIL_CHARS} characters`);
   const inviteCode = input.inviteCode.trim();
   if (!inviteCode) throw new ConfigError("an invite code is required");
 

@@ -6,14 +6,13 @@ import { Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { APP_NAME } from "@teamusage/shared";
-import { insecureHttpAllowedByEnv, isInsecureRemoteHttp, loadConfig, type Config } from "./config.js";
-import type { Stats } from "@teamusage/shared";
-import { ApiError } from "./api.js";
-import { defaults as mcpDefaults, COST_NOTE, loadStats, startMcp, RANGES, type Range } from "./mcp.js";
-import { clean } from "./text.js";
-import { errorMessage, getStatus, SyncError, parseThrottle, readLastAttempt, setup, shouldSkip, sync, writeLastAttempt, type Deps } from "./sync.js";
 import { codexDeps, registerCodex, type CodexDeps } from "./codex.js";
-import { installSchedule, removeSchedule, ScheduleError, scheduleStatus, type ScheduleDeps } from "./schedule.js";
+import { insecureHttpAllowedByEnv, isInsecureRemoteHttp, loadConfig, type Config } from "./config.js";
+import { errorMessage, UsageError } from "./errors.js";
+import { startMcp } from "./mcp.js";
+import { COST_NOTE, loadReport, RANGES, reportDefaults, type Range } from "./report.js";
+import { installSchedule, removeSchedule, scheduleStatus, type ScheduleDeps } from "./schedule.js";
+import { getStatus, parseThrottle, readLastAttempt, setup, shouldSkip, sync, writeLastAttempt, type Deps } from "./sync.js";
 
 /** `Deps` plus test hooks for the scheduled job, Codex and the terminal; the real entry point passes none. */
 export type CliDeps = Partial<Deps> & {
@@ -55,7 +54,6 @@ Commands:
       Serve the tools sync_usage, get_my_usage and get_team_usage to an MCP client over stdio.
 `;
 
-const message = (e: unknown) => (e instanceof ScheduleError ? e.message : errorMessage(e));
 const out = (s: string) => process.stdout.write(s);
 const err = (s: string) => process.stderr.write(s);
 
@@ -130,14 +128,14 @@ async function runSetup(args: string[], deps: CliDeps): Promise<number> {
     } else if (current) {
       return current;
     }
-    throw new Error(`missing ${option}`);
+    throw new UsageError(`missing ${option}`);
   };
   let input;
   try {
     const serverUrl = await value(values.server, existing?.serverUrl, "Server URL", "--server");
     let inviteCode = values.invite ?? existing?.inviteCode;
     if (inviteCode === undefined && interactive) inviteCode = (await ask.secret("Invite code (not shown): ")).trim();
-    if (!inviteCode) throw new Error("missing --invite");
+    if (!inviteCode) throw new UsageError("missing --invite");
     const name = await value(values.name, existing?.name, "Your name", "--name");
     const email = await value(values.email, existing?.email, "Your email", "--email");
     input = {
@@ -149,7 +147,7 @@ async function runSetup(args: string[], deps: CliDeps): Promise<number> {
       allowInsecureHttp: values["allow-insecure-http"] === true,
     };
   } catch (e) {
-    err(`${APP_NAME} setup: ${e instanceof Error && e.message.startsWith("missing --") ? e.message : "could not read input"}\n`);
+    err(`${APP_NAME} setup: ${e instanceof UsageError ? e.message : "could not read input"}\n`);
     return 2;
   } finally {
     ask.close();
@@ -166,7 +164,7 @@ async function runSetup(args: string[], deps: CliDeps): Promise<number> {
     try {
       out(`${await installSchedule(deps.platform, deps.schedule)}\n`);
     } catch (e) {
-      err(`${APP_NAME}: setup is saved, but the schedule was not installed: ${message(e)}\n`);
+      err(`${APP_NAME}: setup is saved, but the schedule was not installed: ${errorMessage(e)}\n`);
       code = 1;
     }
   }
@@ -205,7 +203,7 @@ async function offerCodex(flag: boolean, deps: CliDeps): Promise<number> {
     out("Registered the MCP tools with Codex.\n");
     return 0;
   } catch (e) {
-    err(`${APP_NAME}: ${message(e)}\n`);
+    err(`${APP_NAME}: ${errorMessage(e)}\n`);
     return 1;
   }
 }
@@ -224,13 +222,21 @@ async function runSchedule(args: string[], deps: CliDeps): Promise<number> {
   return 0;
 }
 
+/**
+ * Whether a sync command line runs quietly: --quiet, or --detach (whose background run is quiet). A quiet sync prints
+ * nothing and exits 0 whatever happens, except for --label-history combined with --detach or --throttle, which is
+ * refused first. Read from the raw arguments, so that it holds even when they cannot be parsed. --dry-run wins over
+ * --detach: a dry run never goes to the background and never sends anything.
+ */
+function isQuietSync(args: string[]): boolean {
+  return args.includes("--quiet") || (args.includes("--detach") && !args.includes("--dry-run"));
+}
+
 async function runSync(args: string[], deps: Partial<Deps>): Promise<number> {
   if (args.includes("--label-history") && (args.includes("--detach") || args.some((a) => a === "--throttle" || a.startsWith("--throttle=")))) {
-    throw new SyncError("--label-history cannot be used with --detach or --throttle");
+    throw new UsageError("--label-history cannot be used with --detach or --throttle");
   }
-  const dryRun = args.includes("--dry-run");
-  // --dry-run wins over --detach: a dry run never goes to the background and never sends anything.
-  const quiet = args.includes("--quiet") || (args.includes("--detach") && !dryRun);
+  const quiet = isQuietSync(args);
   try {
     const { values } = parseArgs({
       args,
@@ -240,9 +246,7 @@ async function runSync(args: string[], deps: Partial<Deps>): Promise<number> {
     });
     if (values.throttle !== undefined) {
       const ms = parseThrottle(values.throttle);
-      if (ms === undefined) {
-        throw Object.assign(new Error("invalid --throttle"), { code: "ERR_PARSE_ARGS_INVALID_THROTTLE" });
-      }
+      if (ms === undefined) throw new UsageError("--throttle must be 1m to 1440m or 1h to 24h");
       // Checked before detaching, so nothing is spawned when the window has not passed. A dry run never skips.
       if (!values["dry-run"] && shouldSkip(ms, new Date(), readLastAttempt)) {
         if (!quiet) out(`Skipped: the last sync attempt was less than ${values.throttle} ago.\n`);
@@ -301,7 +305,6 @@ async function runStatus(args: string[], deps: CliDeps): Promise<number> {
   return 0;
 }
 
-const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
 const n = (v: number) => Math.round(v).toLocaleString("en-US");
 const usd = (v: number) => v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -309,27 +312,18 @@ async function runStats(args: string[], deps: Partial<Deps>): Promise<number> {
   const { values } = parseArgs({ args, options: { range: { type: "string" } }, strict: true, allowPositionals: false });
   const range = values.range ?? "1m";
   if (!(RANGES as readonly string[]).includes(range)) {
-    err(`${APP_NAME}: --range must be 1m, 3m or 6m\n`);
+    err(`${APP_NAME}: --range must be one of ${RANGES.join(", ")}\n`);
     return 2;
   }
-  const d = { ...mcpDefaults(), ...deps };
-  const mine = await loadStats("me", range as Range, d);
-  const team = await loadStats(undefined, range as Range, d);
-  const bad = () => new ApiError(200, "the server sent an unexpected response");
-  const okShape = (s: Stats) =>
-    typeof s === "object" && s !== null && Array.isArray(s.models) && typeof s.totals === "object" && s.totals !== null &&
-    s.models.every((m) => typeof m === "object" && m !== null) && /^\d{4}-\d{2}-\d{2}$/.test(String(s.from)) &&
-    /^\d{4}-\d{2}-\d{2}$/.test(String(s.to));
-  if (!okShape(mine) || !okShape(team)) throw bad();
-  const rows = [
-    ["Agent", "Model", "Tokens", "Cost (USD)"],
-    ...mine.models.map((m) => [clean(m.agent), clean(m.model), n(num(m.total)), usd(num(m.costUsd))]),
-  ];
+  const d = { ...reportDefaults(), ...deps };
+  const mine = await loadReport("me", range as Range, d);
+  const team = await loadReport(undefined, range as Range, d);
+  const rows = [["Agent", "Model", "Tokens", "Cost (USD)"], ...mine.models.map((m) => [m.agent, m.model, n(m.total), usd(m.costUsd)])];
   const widths = rows[0]!.map((_, i) => Math.max(...rows.map((r) => r[i]!.length)));
   const line = (r: string[]) =>
     r.map((c, i) => (i < 2 ? c.padEnd(widths[i]!) : c.padStart(widths[i]!))).join("  ").trimEnd();
-  out(`Your usage, ${clean(mine.from)} to ${clean(mine.to)}\n${rows.map(line).join("\n")}\n`);
-  out(`Team total: ${n(num(team.totals.tokens))} tokens, ${usd(num(team.totals.costUsd))} USD\n${COST_NOTE}\n`);
+  out(`Your usage, ${mine.from} to ${mine.to}\n${rows.map(line).join("\n")}\n`);
+  out(`Team total: ${n(team.totals.tokens)} tokens, ${usd(team.totals.costUsd)} USD\n${COST_NOTE}\n`);
   return 0;
 }
 
@@ -361,10 +355,17 @@ export async function main(argv: string[], deps: CliDeps = {}): Promise<number> 
         return 2;
     }
   } catch (e) {
+    if (e instanceof UsageError) {
+      err(`${APP_NAME}: ${e.message}; see \`${APP_NAME} --help\`\n`);
+      return 2;
+    }
     // parseArgs messages can quote what was typed (perhaps an invite code), so they are not shown.
-    const usage = e instanceof Error && "code" in e && String(e.code).startsWith("ERR_PARSE_ARGS");
-    err(`${APP_NAME}: ${usage ? `invalid arguments; see \`${APP_NAME} --help\`` : message(e)}\n`);
-    return usage ? 2 : 1;
+    if (e instanceof Error && "code" in e && String(e.code).startsWith("ERR_PARSE_ARGS")) {
+      err(`${APP_NAME}: invalid arguments; see \`${APP_NAME} --help\`\n`);
+      return 2;
+    }
+    err(`${APP_NAME}: ${errorMessage(e)}\n`);
+    return 1;
   }
 }
 
@@ -383,7 +384,7 @@ if (isEntryPoint()) {
       process.exitCode = code;
     },
     () => {
-      process.exitCode = argv.includes("--quiet") || (argv.includes("--detach") && !argv.includes("--dry-run")) ? 0 : 1;
+      process.exitCode = argv[0] === "sync" && isQuietSync(argv.slice(1)) ? 0 : 1;
     },
   );
 }

@@ -4,9 +4,10 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi, type MockInstance } from "vitest";
 import type { UsageRecord } from "@teamusage/shared";
 import type { Db } from "../../server/src/db.js";
+import { readLogins } from "./account.js";
 import { CollectError } from "./collect.js";
 import { configPath, saveConfig, updateConfigFile, type Config } from "./config.js";
-import { clientVersion } from "./codex.js";
+import { clientVersion } from "./version.js";
 import { noticePath, writeCodexNotice } from "./notice.js";
 import { getStatus, setup, sync, syncSince, type Deps } from "./sync.js";
 import { machineId } from "./machine.js";
@@ -218,7 +219,7 @@ describe("account label", () => {
     const boom = () => {
       throw new Error("login file");
     };
-    await sync({ deps: deps({ collect: async () => recs(), accounts: boom }) });
+    await sync({ deps: deps({ collect: async () => recs(), accounts: () => readLogins({ claude: boom, codex: boom }) }) });
     const body = calls("/api/usage")[0];
     expect(body.records).toHaveLength(3);
     for (const r of body.records) expect("account" in r).toBe(false);

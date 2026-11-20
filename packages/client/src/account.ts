@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { readCodexAccount } from "./codex-account.js";
-import { MAX_ORG_CHARS, planShortName, type AccountLabel, type Plan, type UsageRecord } from "@teamusage/shared";
+import { addDays, MAX_ORG_CHARS, planShortName, type AccountLabel, type Plan, type UsageRecord } from "@teamusage/shared";
 
 /**
  * Claude Code keeps its account details in `.claude.json`: under `CLAUDE_CONFIG_DIR` when that is set,
@@ -91,11 +91,6 @@ export function readClaudeAccount(
   return label;
 }
 
-const dayBefore = (day: string): string => {
-  const [y, m, d] = day.split("-").map(Number) as [number, number, number];
-  return new Date(Date.UTC(y, m - 1, d - 1)).toISOString().slice(0, 10);
-};
-
 export interface Logins {
   claude: AccountLabel | null;
   codex: AccountLabel | null;
@@ -111,7 +106,7 @@ export function labelRecords(
   today: string,
   opts: { history?: boolean } = {},
 ): UsageRecord[] {
-  const recent = new Set([today, dayBefore(today)]);
+  const recent = new Set([today, addDays(today, -1)]);
   return records.map((r) => {
     const { account: _drop, ...rest } = r;
     const login = r.agent === "claude" ? logins.claude : r.agent === "codex" ? logins.codex : null;

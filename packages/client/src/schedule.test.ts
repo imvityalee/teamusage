@@ -3,7 +3,8 @@ import { mkdtempSync, readdirSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, test, vi } from "vitest";
-import { cronLine, installSchedule, launchdPlist, mergeCrontab, removeFromCrontab, removeSchedule, scheduleStatus, unstableLocation, parseCronLine, parsePlist, type RunResult, type ScheduleDeps } from "./schedule.js";
+import { cronLine, installSchedule, launchdPlist, mergeCrontab, removeFromCrontab, removeSchedule, scheduleStatus, unstableLocation, parseCronLine, parsePlist, type ScheduleDeps } from "./schedule.js";
+import type { RunResult } from "./run.js";
 
 const NODE = "/usr/local/bin/node";
 const CLI = "/usr/local/lib/node_modules/teamusage/dist/cli.js";

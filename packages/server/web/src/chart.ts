@@ -26,7 +26,7 @@ export function buckets(daily: Stats["daily"]): Bucket[] {
 }
 
 /** Total tokens per agent over the days. */
-export function agentTotals(daily: Stats["daily"]): Map<string, number> {
+export function dailyAgentTotals(daily: Stats["daily"]): Map<string, number> {
   const totals = new Map<string, number>();
   for (const day of daily) {
     for (const [agent, n] of Object.entries(day.byAgent)) totals.set(agent, (totals.get(agent) ?? 0) + n);

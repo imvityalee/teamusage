@@ -7,7 +7,8 @@ import { ApiError } from "./api.js";
 import type { Config } from "./config.js";
 import { ensureConfigDir } from "./config.js";
 import { z } from "zod";
-import { COST_NOTE, handleTool, mcpServerInfo, rangeInput, syncInput, resetSyncThrottle, TOOLS, type Deps } from "./mcp.js";
+import { handleTool, mcpServerInfo, rangeInput, syncInput, resetSyncThrottle, TOOLS, type Deps } from "./mcp.js";
+import { COST_NOTE } from "./report.js";
 import { clean } from "./text.js";
 import { startServer, type TestServer } from "./test-server.js";
 
@@ -160,8 +161,10 @@ test("an ApiError becomes error text; unexpected errors become a generic message
   expect(r.text).not.toContain(TOKEN);
   expect(r.text).not.toContain(INVITE);
   const malformed = mk({ fetchStats: vi.fn(async () => ({ members: 5, models: "x", totals: null }) as unknown as Stats) });
-  const m = await handleTool("get_team_usage", {}, malformed);
-  expect(JSON.parse(m.text).members).toEqual([]);
+  expect(await handleTool("get_team_usage", {}, malformed)).toEqual({
+    text: "server error: the server sent an unexpected response",
+    isError: true,
+  });
 });
 
 test("server strings are data: control characters stripped, length capped, only inside JSON", async () => {
@@ -269,7 +272,19 @@ test("results are capped: 150 members -> 100 (highest tokens first) with truncat
   expect(mine.models).toHaveLength(200);
 });
 
-test("hand-written JSON schemas and zod schemas accept and reject the same inputs", () => {
+test("the published input schemas are plain JSON Schema objects that accept and reject what the tools do", () => {
+  const range = {
+    type: "object",
+    properties: {
+      range: { default: "1m", description: "Last 1, 3 or 6 months (30, 90 or 180 days) ending today.", type: "string", enum: ["1m", "3m", "6m"] },
+    },
+    additionalProperties: false,
+  };
+  expect(Object.fromEntries(TOOLS.map((t) => [t.name, t.inputSchema]))).toEqual({
+    sync_usage: { type: "object", properties: { labelHistory: { type: "boolean" } }, additionalProperties: false },
+    get_my_usage: range,
+    get_team_usage: range,
+  });
   const samples = [{}, { range: "1m" }, { range: "3m" }, { range: "6m" }, { range: "2m" }, { range: 1 }, { range: "1m", x: 1 }, { x: 1 },
     { labelHistory: true }, { labelHistory: "yes" }, { labelHistory: true, x: 1 }];
   for (const tool of TOOLS) {

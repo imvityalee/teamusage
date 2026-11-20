@@ -190,9 +190,6 @@ describe("members table", () => {
     const label = (lang: "en" | "ru") => render(codexOnly(), lang, CODEX_ONLY).querySelector("#members .mix")?.getAttribute("aria-label");
     expect(label("en")).toBe("90% of the filtered tokens: Codex 100%");
     expect(label("ru")).toBe("90% отфильтрованных токенов: Codex 100%");
-    const plain = codexOnly();
-    for (const m of plain.members) delete (m as { byAgent?: unknown }).byAgent;
-    expect(render(plain, "en", CODEX_ONLY).querySelector("#members .mix")?.getAttribute("aria-label")).toBe("90% of the filtered tokens");
     expect(render(statsFixture(), "ru").querySelector("#members thead")?.textContent).toContain("Состав по агентам");
   });
 
@@ -201,16 +198,6 @@ describe("members table", () => {
     (stats.members[0] as Stats["members"][number] & { byAgent: unknown }).byAgent = { copilot: 1, gemini: 30_000, claude: 9_999 };
     const segs = [...render(stats).querySelectorAll("#members tbody tr:first-child .mix-bar i")].map((i) => i.getAttribute("class"));
     expect(segs).toEqual(["ag-claude", "ag-gemini", "ag-copilot"]);
-  });
-
-  test("without per-agent numbers from the server, a plain share bar and no explanation", () => {
-    const stats = statsFixture();
-    for (const m of stats.members) delete (m as { byAgent?: unknown }).byAgent;
-    const root = render(stats);
-    expect(root.querySelector("#members thead")?.textContent).toContain("Share");
-    expect([...root.querySelectorAll("#members .mix-bar i")].map((i) => i.getAttribute("class"))).toEqual(["share", "share"]);
-    expect(root.querySelector("#members .mix")?.getAttribute("aria-label")).toBe("66% of the team's tokens");
-    expect(root.querySelector(".mix-note")).toBeNull();
   });
 
   test("headers are scoped; the sorted column says so; the row chevron is decorative", () => {
