@@ -17,6 +17,8 @@ export const MAX_ORG_CHARS = 100;
 /** Longest member name or machine label, once trimmed. */
 export const MAX_DISPLAY_NAME_CHARS = 100;
 export const MAX_EMAIL_CHARS = 254;
+/** Longest name of a hosted team. */
+export const MAX_TEAM_NAME_CHARS = 60;
 /** Control characters refused in every name. */
 export const NAME_CONTROL_CHARS = /[\x00-\x1f\x7f]/;
 

@@ -1,0 +1,150 @@
+import { beforeEach, expect, test } from "vitest";
+import { MAX_TEAM_NAME_CHARS } from "@teamusage/shared";
+import { codeHash, openCode } from "./codes.js";
+import { openDb, type Db } from "./db.js";
+import {
+  createHostedTeam,
+  hostedTeamCodes,
+  MAX_TEAMS_PER_USER,
+  roleIn,
+  TeamLimitError,
+  teamById,
+  teamByPublicId,
+  teamsOf,
+} from "./hosted-teams.js";
+import { createTeam } from "./teams.js";
+import { ensureUser, findUser } from "./users.js";
+
+const KEY = Buffer.alloc(32, 1);
+const ann = { githubId: 1, login: "ann" };
+const bob = { githubId: 2, login: "bob" };
+
+let db: Db;
+beforeEach(() => {
+  db = openDb(":memory:");
+});
+
+const make = (over = {}) =>
+  createHostedTeam(db, { name: "Acme", dashboardAccess: "code", owner: ann, codeKey: KEY, maxTeams: 200, ...over });
+const count = (table: string) => (db.prepare(`select count(*) as n from ${table}`).get() as { n: number }).n;
+const refusal = (act: () => unknown): TeamLimitError => {
+  try { act(); } catch (e) { return e as TeamLimitError; }
+  throw new Error("expected a refusal");
+};
+
+test("a new team has an owner, a code that opens it, and stores the code only hashed and sealed", () => {
+  const { team, code } = make();
+  expect(team).toMatchObject({ name: "Acme", dashboardAccess: "code" });
+  expect(team.publicId).toMatch(/^[a-f0-9]{16}$/);
+  expect(code).toMatch(/^[a-f0-9]{24}$/);
+  expect(hostedTeamCodes(db)(code)).toBe(team.id);
+  expect(roleIn(db, team.id, ann.githubId)).toBe("owner");
+  const row = db.prepare("select code_hash, code_sealed from teams where id = ?").get(team.id) as { code_hash: string; code_sealed: string };
+  expect(row.code_hash).toBe(codeHash(code));
+  expect(openCode(row.code_sealed, KEY)).toBe(code);
+  expect(JSON.stringify(db.prepare("select * from teams").all())).not.toContain(code);
+});
+test("a code opens only its own team", () => {
+  const a = make({ name: "A" });
+  const b = make({ name: "B", owner: { githubId: 2, login: "bob" } });
+  const find = hostedTeamCodes(db);
+  expect([find(a.code), find(b.code)]).toEqual([a.team.id, b.team.id]);
+  for (const bad of ["", "nope", a.code.toUpperCase(), `${a.code}0`, 42, null, undefined, { code: a.code }]) expect(find(bad)).toBeNull();
+});
+test("the team of a self-hosted server is not opened by any hosted code", () => {
+  createTeam(db, "Team");
+  expect(hostedTeamCodes(db)("a".repeat(24))).toBeNull();
+});
+test("a sixth team for one owner is refused and leaves nothing behind", () => {
+  for (let i = 0; i < 5; i++) make({ name: `T${i}` });
+  expect(() => make({ name: "T5" })).toThrow(TeamLimitError);
+  expect(db.prepare("select count(*) as n from teams").get()).toEqual({ n: 5 });
+});
+test("a full server refuses a new team and creates no user", () => {
+  make({ maxTeams: 1 });
+  let caught: unknown;
+  try { make({ owner: { githubId: 2, login: "bob" }, maxTeams: 1 }); } catch (e) { caught = e; }
+  expect((caught as TeamLimitError).limit).toBe("server");
+  expect(findUser(db, 2)).toBeNull();
+});
+test("roles and teams are seen only by their own user", () => {
+  const a = make();
+  expect(roleIn(db, a.team.id, 2)).toBeNull();
+  expect(teamsOf(db, 2)).toEqual([]);
+  expect(teamsOf(db, 1)).toEqual([{ id: a.team.publicId, name: "Acme", role: "owner", dashboardAccess: "code" }]);
+  expect(teamByPublicId(db, a.team.publicId)).toEqual(a.team);
+  expect(teamByPublicId(db, "0".repeat(16))).toBeNull();
+});
+
+test("hostedTeamCodes refuses a 24-character code in upper case or with a non-hex character", () => {
+  const { code } = make();
+  const find = hostedTeamCodes(db);
+  expect(find(code.toUpperCase().replace(/[0-9]/g, "A"))).toBeNull();
+  expect(find(`${code.slice(0, 23)}g`)).toBeNull();
+  expect(find(` ${code.slice(1)}`)).toBeNull();
+});
+test("hostedTeamCodes does not query the database for a code that is not 24 lowercase hex characters", () => {
+  make();
+  const find = hostedTeamCodes(db);
+  db.close();
+  for (const bad of ["", "A".repeat(24), "a".repeat(23), "a".repeat(25), 42, null, undefined, ["a".repeat(24)]])
+    expect(find(bad)).toBeNull();
+  expect(() => find("a".repeat(24))).toThrow();
+});
+test("the server limit counts every team, the self-hosted one included", () => {
+  createTeam(db, "Team");
+  expect(refusal(() => make({ maxTeams: 1 })).limit).toBe("server");
+  expect([count("teams"), count("users"), count("team_roles")]).toEqual([1, 0, 0]);
+});
+test("a refusal is a TeamLimitError that names its limit and not the owner", () => {
+  for (let i = 0; i < MAX_TEAMS_PER_USER; i++) make({ name: `T${i}` });
+  const e = refusal(() => make());
+  expect(e).toBeInstanceOf(TeamLimitError);
+  expect(e.limit).toBe("user");
+  expect(e.message).not.toContain("ann");
+});
+test("a refusal for the user limit leaves no new team, role or user", () => {
+  for (let i = 0; i < MAX_TEAMS_PER_USER; i++) make({ name: `T${i}` });
+  const before = [count("teams"), count("users"), count("team_roles")];
+  expect(refusal(() => make({ owner: { githubId: 1, login: "ann-renamed" } })).limit).toBe("user");
+  expect([count("teams"), count("users"), count("team_roles")]).toEqual(before);
+  expect(findUser(db, 1)?.login).toBe("ann");
+});
+test("the per-user limit counts only the teams the user owns, not those they administer", () => {
+  const annUser = ensureUser(db, ann);
+  for (let i = 0; i < MAX_TEAMS_PER_USER; i++) {
+    const { team } = make({ name: `B${i}`, owner: bob });
+    db.prepare("insert into team_roles (team_id, user_id, role, created_at) values (?, ?, 'admin', 't')").run(team.id, annUser.id);
+  }
+  expect(() => make()).not.toThrow();
+});
+test("the owner's users row is created with the team", () => {
+  const { team } = make();
+  expect(findUser(db, ann.githubId)).toMatchObject({ githubId: 1, login: "ann" });
+  expect(teamById(db, team.id)).toEqual(team);
+  expect(teamById(db, team.id + 1)).toBeNull();
+});
+test("a team keeps its dashboard access", () => {
+  const { team } = make({ dashboardAccess: "admins" });
+  expect(team.dashboardAccess).toBe("admins");
+  expect(teamByPublicId(db, team.publicId)).toEqual(team);
+});
+test("teamsOf lists the user's teams with each role, by name and then public id", () => {
+  const [z, a1, a2] = [make({ name: "Zeta" }), make({ name: "Alpha" }), make({ name: "Alpha" })];
+  const bobTeam = make({ name: "Bob's", owner: bob });
+  const annUser = findUser(db, ann.githubId)!;
+  db.prepare("insert into team_roles (team_id, user_id, role, created_at) values (?, ?, 'viewer', 't')").run(bobTeam.team.id, annUser.id);
+  const alphas = [a1, a2].map((t) => t.team.publicId).sort();
+  expect(teamsOf(db, ann.githubId).map((t) => [t.name, t.id, t.role])).toEqual([
+    ["Alpha", alphas[0], "owner"],
+    ["Alpha", alphas[1], "owner"],
+    ["Bob's", bobTeam.team.publicId, "viewer"],
+    ["Zeta", z.team.publicId, "owner"],
+  ]);
+  expect(roleIn(db, bobTeam.team.id, ann.githubId)).toBe("viewer");
+  expect(roleIn(db, z.team.id, bob.githubId)).toBeNull();
+});
+test("a team name may be as long as MAX_TEAM_NAME_CHARS", () => {
+  expect(MAX_TEAM_NAME_CHARS).toBe(60);
+  expect(make({ name: "n".repeat(MAX_TEAM_NAME_CHARS) }).team.name).toHaveLength(MAX_TEAM_NAME_CHARS);
+});
