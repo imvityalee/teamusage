@@ -2,8 +2,10 @@
 import { closeSync, openSync, readSync, statSync } from "node:fs";
 import Database from "better-sqlite3";
 import { join } from "node:path";
-import { getSetting, getStoredInviteCode, listMembers, openDb, removeMachine, removeMember, rotateInviteCode, type Db } from "./db.js";
+import { getSetting, getStoredInviteCode, openDb, type Db } from "./db.js";
 import { isMain } from "./entry.js";
+import { forTeam } from "./team-data.js";
+import { ensureSingleTeam, rotateInviteCode } from "./teams.js";
 
 const MACHINE_ID = /^[a-f0-9]{32}$/;
 const CONTROL = /[\x00-\x1f\x7f]/g;
@@ -33,10 +35,12 @@ export function runAdmin(
     return 2;
   };
   const [cmd, arg, ...rest] = argv;
+  const teamId = ensureSingleTeam(db);
+  const team = forTeam(db, teamId);
   switch (cmd) {
     case "members": {
       if (arg !== undefined) return usage();
-      const members = listMembers(db);
+      const members = team.listMembers();
       if (members.length === 0) out("no members");
       for (const m of members) {
         out(`${clean(m.name)} <${clean(m.email)}>`);
@@ -46,7 +50,7 @@ export function runAdmin(
     }
     case "remove-member": {
       if (arg === undefined || rest.length > 0 || !arg.includes("@")) return usage();
-      if (!removeMember(db, arg)) {
+      if (!team.removeMember(arg)) {
         out("no such member");
         return 1;
       }
@@ -55,7 +59,7 @@ export function runAdmin(
     }
     case "remove-machine": {
       if (arg === undefined || rest.length > 0 || !MACHINE_ID.test(arg)) return usage();
-      if (!removeMachine(db, arg)) {
+      if (!team.removeMachine(arg)) {
         out("no such machine");
         return 1;
       }
@@ -82,7 +86,7 @@ export function runAdmin(
         out("The invite code is pinned by the TEAMUSAGE_INVITE_CODE environment variable. Change it there and restart the server; nothing was rotated.");
         return 1;
       }
-      out(`new invite code: ${rotateInviteCode(db)}`);
+      out(`new invite code: ${rotateInviteCode(db, teamId)}`);
       out("all dashboard sessions have ended");
       return 0;
     }

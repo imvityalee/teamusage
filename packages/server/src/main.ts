@@ -12,6 +12,7 @@ import { getInviteCode, getStoredInviteCode, openDb, setSetting, type Db } from 
 import { seedDemo } from "./demo.js";
 import { isMain } from "./entry.js";
 import { clientKeyFrom } from "./limiter.js";
+import { NewerSchemaError } from "./migrate.js";
 import { ensureSingleTeam, singleTeamCodes } from "./teams.js";
 
 export interface ServerConfig {
@@ -115,7 +116,6 @@ export function buildServer(config: ServerConfig, opts: { webRoot?: string } = {
   let db: Db;
   if (config.demo) {
     db = openDb(":memory:");
-    seedDemo(db, new Date().toISOString().slice(0, 10));
   } else {
     if (!existsSync(config.dataDir)) mkdirSync(config.dataDir, { recursive: true, mode: 0o700 });
     const file = join(config.dataDir, "teamusage.sqlite");
@@ -132,6 +132,7 @@ export function buildServer(config: ServerConfig, opts: { webRoot?: string } = {
   setSetting(db, "invite_pinned", fromEnv ? "1" : "0");
 
   const teamId = ensureSingleTeam(db);
+  if (config.demo) seedDemo(db, teamId, new Date().toISOString().slice(0, 10));
   const api = createApp(db, {
     teamForCode: singleTeamCodes(teamId, inviteCode),
     demoTeamId: config.demo ? teamId : undefined,
@@ -169,6 +170,12 @@ function codeOf(err: unknown): string {
   return typeof code === "string" && /^[A-Z0-9_]{1,40}$/.test(code) ? ` (${code})` : "";
 }
 
+/** The line `start()` prints when storage cannot be opened; it never includes the error's message, which can hold paths. */
+export function openFailureMessage(err: unknown): string {
+  if (err instanceof NewerSchemaError) return "teamusage: this database was written by a newer teamusage; upgrade the server";
+  return `teamusage: could not open the data directory or database${codeOf(err)}`;
+}
+
 /** Log lines after listening. The invite code appears only on the start that generated it. */
 export function startupLines(config: ServerConfig, built: BuiltServer, port: number): string[] {
   const lines = [`teamusage listening on http://${config.host}:${port}`];
@@ -191,7 +198,7 @@ function start(): void {
   try {
     built = buildServer(config);
   } catch (err) {
-    console.error(`teamusage: could not open the data directory or database${codeOf(err)}`);
+    console.error(openFailureMessage(err));
     process.exit(1);
   }
   // No createServer option is passed, so this is a plain HTTP/1 server.

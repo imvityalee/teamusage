@@ -1,5 +1,6 @@
 import type { AccountLabel, UsageRecord } from "@teamusage/shared";
-import { registerMachine, upsertUsage, type Db } from "./db.js";
+import type { Db } from "./db.js";
+import { forTeam } from "./team-data.js";
 
 const DAYS = 180;
 const DAY_MS = 86_400_000;
@@ -60,12 +61,14 @@ const MEMBERS: { name: string; email: string; agents: string[]; scale: number; l
  * Fills the database with deterministic made-up usage: 6 members, 4 agents, 180 days ending at `today`, some with Claude and Codex account labels and plans.
  * No real time or `Math.random`; rows go through the same write paths as real data.
  */
-export function seedDemo(db: Db, today: string): void {
+export function seedDemo(db: Db, teamId: number, today: string): void {
+  // upsertUsage stamps last_sync_at from the clock; the demo must not depend on the real one.
+  const team = forTeam(db, teamId, () => `${today}T12:00:00.000Z`);
   const rand = prng(20260818);
   const end = Date.parse(`${today}T00:00:00Z`);
   MEMBERS.forEach((m) => {
     const machineId = Array.from({ length: 32 }, () => Math.floor(rand() * 16).toString(16)).join("");
-    const who = registerMachine(db, { name: m.name, email: m.email, machineId, machineLabel: `${m.name.split(" ")[0]}'s laptop` });
+    const who = team.registerMachine({ name: m.name, email: m.email, machineId, machineLabel: `${m.name.split(" ")[0]}'s laptop` });
     const records: UsageRecord[] = [];
     for (let d = DAYS - 1; d >= 0; d--) {
       const day = new Date(end - d * DAY_MS);
@@ -99,8 +102,6 @@ export function seedDemo(db: Db, today: string): void {
         });
       });
     }
-    upsertUsage(db, { memberId: who.memberId, machineId }, records);
+    team.upsertUsage({ memberId: who.memberId, machineId }, records);
   });
-  // upsertUsage stamps the real clock; the demo must not depend on it.
-  db.prepare("update machines set last_sync_at = ?").run(`${today}T12:00:00.000Z`);
 }

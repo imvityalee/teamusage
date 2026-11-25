@@ -6,8 +6,9 @@ import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import { afterEach, describe, expect, test } from "vitest";
 import { createApp } from "./app.js";
-import { getInviteCode, openDb, registerMachine, setSetting, type Db } from "./db.js";
+import { getInviteCode, openDb, setSetting, type Db } from "./db.js";
 import { createSession, findSession } from "./sessions.js";
+import { forTeam } from "./team-data.js";
 import { ensureSingleTeam, singleTeamCodes } from "./teams.js";
 import { runAdmin } from "./admin.js";
 
@@ -16,8 +17,9 @@ const M2 = "b".repeat(32);
 
 function setup(): { db: Db; token: string } {
   const db = openDb(":memory:");
-  const { token } = registerMachine(db, { name: "Ann", email: "ann@x.com", machineId: M1, machineLabel: "mbp" });
-  registerMachine(db, { name: "Bob", email: "bob@x.com", machineId: M2, machineLabel: "box" });
+  const team = forTeam(db, ensureSingleTeam(db));
+  const { token } = team.registerMachine({ name: "Ann", email: "ann@x.com", machineId: M1, machineLabel: "mbp" });
+  team.registerMachine({ name: "Bob", email: "bob@x.com", machineId: M2, machineLabel: "box" });
   return { db, token };
 }
 

@@ -1,11 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import Database from "better-sqlite3";
-import type { UsageRecord } from "@teamusage/shared";
 import { migrate } from "./migrate.js";
-import { forTeam, type TeamData } from "./team-data.js";
-import { ensureSingleTeam } from "./teams.js";
-
-export { authenticate, MachineOwnedError } from "./team-data.js";
 
 export type Db = import("better-sqlite3").Database;
 
@@ -41,37 +36,4 @@ export function getInviteCode(db: Db, fromEnv?: string): string {
     randomBytes(12).toString("hex"),
   );
   return (db.prepare("select value from settings where key = 'invite_code'").get() as { value: string }).value;
-}
-
-export function rotateInviteCode(db: Db): string {
-  const code = randomBytes(12).toString("hex");
-  const teamId = ensureSingleTeam(db);
-  db.transaction(() => {
-    setSetting(db, "invite_code", code);
-    db.prepare("delete from sessions where team_id = ?").run(teamId);
-  })();
-  return code;
-}
-
-/** The data of the one team of a self-hosted server. */
-const singleTeam = (db: Db): TeamData => forTeam(db, ensureSingleTeam(db));
-
-export function registerMachine(db: Db, a: Parameters<TeamData["registerMachine"]>[0]) {
-  return singleTeam(db).registerMachine(a);
-}
-
-export function upsertUsage(db: Db, who: Parameters<TeamData["upsertUsage"]>[0], records: UsageRecord[]) {
-  return singleTeam(db).upsertUsage(who, records);
-}
-
-export function listMembers(db: Db) {
-  return singleTeam(db).listMembers();
-}
-
-export function removeMember(db: Db, email: string) {
-  return singleTeam(db).removeMember(email);
-}
-
-export function removeMachine(db: Db, machineId: string) {
-  return singleTeam(db).removeMachine(machineId);
 }

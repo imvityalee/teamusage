@@ -1,10 +1,15 @@
 import { describe, expect, test } from "vitest";
+import type { UsageRecord } from "@teamusage/shared";
 import Database from "better-sqlite3";
-import { openDb, registerMachine, upsertUsage, type Db } from "./db.js";
+import { openDb, type Db } from "./db.js";
 import { migrate } from "./migrate.js";
 import { getStats } from "./stats.js";
-import { forTeam } from "./team-data.js";
+import { forTeam, type TeamData } from "./team-data.js";
 import { createTeam, ensureSingleTeam } from "./teams.js";
+
+const registerMachine = (db: Db, a: Parameters<TeamData["registerMachine"]>[0]) => forTeam(db, ensureSingleTeam(db)).registerMachine(a);
+const upsertUsage = (db: Db, who: Parameters<TeamData["upsertUsage"]>[0], records: UsageRecord[]) =>
+  forTeam(db, ensureSingleTeam(db)).upsertUsage(who, records);
 
 const M1 = "1".repeat(32);
 const M2 = "2".repeat(32);

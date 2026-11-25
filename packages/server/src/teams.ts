@@ -1,5 +1,6 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { now, type Db } from "./db.js";
+import { now, setSetting, type Db } from "./db.js";
+import { endTeamSessions } from "./sessions.js";
 
 /** Adds a team whose dashboard opens with the invite code; returns its id. */
 export function createTeam(db: Db, name: string): number {
@@ -28,4 +29,14 @@ function safeEqual(a: string, b: string): boolean {
 /** The invite codes of a single-team server: `teamId` for a string equal to `inviteCode()`, read on each call. */
 export function singleTeamCodes(teamId: number, inviteCode: () => string): (code: unknown) => number | null {
   return (code) => (typeof code === "string" && safeEqual(code, inviteCode()) ? teamId : null);
+}
+
+/** Stores a new invite code and ends the sessions of team `teamId` in one step; returns the code. */
+export function rotateInviteCode(db: Db, teamId: number): string {
+  const code = randomBytes(12).toString("hex");
+  db.transaction(() => {
+    setSetting(db, "invite_code", code);
+    endTeamSessions(db, teamId);
+  })();
+  return code;
 }

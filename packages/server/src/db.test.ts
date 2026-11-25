@@ -1,7 +1,5 @@
 import { beforeEach, describe, expect, test } from "vitest";
-import { getInviteCode, openDb, rotateInviteCode, type Db } from "./db.js";
-import { createSession, findSession } from "./sessions.js";
-import { ensureSingleTeam } from "./teams.js";
+import { getInviteCode, openDb, type Db } from "./db.js";
 
 let db: Db;
 beforeEach(() => {
@@ -14,16 +12,6 @@ describe("invite code", () => {
     const code = getInviteCode(db);
     expect(code).toMatch(/^[0-9a-f]{24}$/);
     expect(getInviteCode(db)).toBe(code);
-  });
-
-  test("rotateInviteCode changes the code and ends sessions", () => {
-    const old = getInviteCode(db);
-    const sid = createSession(db, ensureSingleTeam(db));
-    expect(findSession(db, sid)).not.toBeNull();
-    const next = rotateInviteCode(db);
-    expect(next).not.toBe(old);
-    expect(getInviteCode(db)).toBe(next);
-    expect(findSession(db, sid)).toBeNull();
   });
 });
 
