@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import Database from "better-sqlite3";
 import { migrate } from "./migrate.js";
 
@@ -6,6 +6,11 @@ export type Db = import("better-sqlite3").Database;
 
 export const now = (): string => new Date().toISOString();
 export const sha256 = (s: string): string => createHash("sha256").update(s).digest("hex");
+
+/** Constant-time: both sides are hashed first, so neither content nor length leaks through timing. */
+export function safeEqual(a: string, b: string): boolean {
+  return timingSafeEqual(Buffer.from(sha256(a)), Buffer.from(sha256(b)));
+}
 
 export function openDb(path: string): Db {
   const db = new Database(path);

@@ -1,5 +1,5 @@
 import type { Hono } from "hono";
-import { getCookie, setCookie } from "hono/cookie";
+import { getCookie } from "hono/cookie";
 import {
   checkRange,
   isName,
@@ -13,7 +13,7 @@ import {
   parsePlanKey,
 } from "@teamusage/shared";
 import type { RouteContext } from "./app-context.js";
-import { bearerToken, fail, forwardedProto, isObject, readJson, SESSION_COOKIE, SESSION_MAX_AGE_S } from "./http.js";
+import { bearerToken, fail, isObject, readJson, SESSION_COOKIE, setSessionCookie } from "./http.js";
 import { createTeamSession, findSession } from "./sessions.js";
 import { getStats } from "./stats.js";
 import { authenticate, forTeam, type MachineIdentity } from "./team-data.js";
@@ -75,14 +75,7 @@ export function dashboardRoutes(app: Hono, ctx: RouteContext): void {
     if (!isObject(body)) return fail(c, 400, "body must be an object");
     const teamId = teamOfInvite(c, body.inviteCode);
     if (teamId === null) return fail(c, 403, "invalid invite code");
-    const https = new URL(c.req.url).protocol === "https:" || forwardedProto(c) === "https";
-    setCookie(c, SESSION_COOKIE, createTeamSession(db, teamId), {
-      httpOnly: true,
-      sameSite: "Lax",
-      path: "/",
-      maxAge: SESSION_MAX_AGE_S,
-      secure: https,
-    });
+    setSessionCookie(c, createTeamSession(db, teamId));
     return c.body(null, 204);
   });
 

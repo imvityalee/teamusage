@@ -5,6 +5,7 @@ import type { AppOptions, RouteContext } from "./app-context.js";
 import type { Db } from "./db.js";
 import { errorTrace, fail, MAX_BODY_BYTES } from "./http.js";
 import { createLimiter } from "./limiter.js";
+import { authRoutes } from "./routes-auth.js";
 import { dashboardRoutes } from "./routes-dashboard.js";
 import { machineRoutes } from "./routes-machines.js";
 
@@ -47,6 +48,7 @@ export function createApp(db: Db, opts: AppOptions): Hono {
   const ctx: RouteContext = { db, opts, throttled, teamOfInvite };
   machineRoutes(app, ctx);
   dashboardRoutes(app, ctx);
+  authRoutes(app, ctx);
 
   return app;
 }

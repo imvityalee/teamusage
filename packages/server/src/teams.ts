@@ -1,5 +1,5 @@
-import { randomBytes, timingSafeEqual } from "node:crypto";
-import { now, sha256, storeInviteCode, type Db } from "./db.js";
+import { randomBytes } from "node:crypto";
+import { now, safeEqual, storeInviteCode, type Db } from "./db.js";
 import { endTeamSessions } from "./sessions.js";
 
 /** Adds a team whose dashboard opens with the invite code; returns its id. */
@@ -17,11 +17,6 @@ export function ensureSingleTeam(db: Db): number {
     const { id } = db.prepare("select min(id) as id from teams").get() as { id: number | null };
     return id ?? createTeam(db, "Team");
   }).immediate();
-}
-
-/** Constant-time: both sides are hashed first, so neither content nor length leaks through timing. */
-function safeEqual(a: string, b: string): boolean {
-  return timingSafeEqual(Buffer.from(sha256(a)), Buffer.from(sha256(b)));
 }
 
 /** The invite codes of a single-team server: `teamId` for a string equal to `inviteCode()`, read on each call. */
