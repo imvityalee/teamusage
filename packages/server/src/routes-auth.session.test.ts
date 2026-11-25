@@ -1,8 +1,7 @@
 import { beforeEach, expect, test } from "vitest";
 import { createApp } from "./app.js";
 import { openDb, type Db } from "./db.js";
-import { createHostedTeam } from "./hosted-teams.js";
-import { cookieOf, hostedApp, KEY, PUBLIC, signIn } from "./hosted.fixture.js";
+import { cookieOf, hostedApp, hostedTeam, PUBLIC, signIn } from "./hosted.fixture.js";
 import { createTeamSession } from "./sessions.js";
 
 let db: Db;
@@ -13,8 +12,7 @@ beforeEach(() => {
 
 const me = (cookie: string) => app.request("/api/me", { headers: { Cookie: cookie } });
 const logout = (headers: Record<string, string>) => app.request("/api/logout", { method: "POST", headers });
-const acme = () =>
-  createHostedTeam(db, { name: "Acme", dashboardAccess: "admins", owner: { githubId: 1, login: "ann" }, codeKey: KEY, maxTeams: 200 }).team;
+const acme = () => hostedTeam(db, { githubId: 1, login: "ann" }, "admins", "Acme").team;
 
 test("logout needs the server's own origin and ends the session", async () => {
   const cookie = await signIn(app, "code-ann");

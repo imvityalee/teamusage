@@ -13,10 +13,10 @@ import {
   teamByPublicId,
   teamsOf,
 } from "./hosted-teams.js";
+import { grantRole, KEY } from "./hosted.fixture.js";
 import { createTeam } from "./teams.js";
-import { ensureUser, findUser } from "./users.js";
+import { findUser } from "./users.js";
 
-const KEY = Buffer.alloc(32, 1);
 const ann = { githubId: 1, login: "ann" };
 const bob = { githubId: 2, login: "bob" };
 
@@ -112,11 +112,7 @@ test("a refusal for the user limit leaves no new team, role or user", () => {
   expect(findUser(db, 1)?.login).toBe("ann");
 });
 test("the per-user limit counts only the teams the user owns, not those they administer", () => {
-  const annUser = ensureUser(db, ann);
-  for (let i = 0; i < MAX_TEAMS_PER_USER; i++) {
-    const { team } = make({ name: `B${i}`, owner: bob });
-    db.prepare("insert into team_roles (team_id, user_id, role, created_at) values (?, ?, 'admin', 't')").run(team.id, annUser.id);
-  }
+  for (let i = 0; i < MAX_TEAMS_PER_USER; i++) grantRole(db, make({ name: `B${i}`, owner: bob }).team.id, ann, "admin");
   expect(() => make()).not.toThrow();
 });
 test("the owner's users row is created with the team", () => {
@@ -138,8 +134,7 @@ test("opensWithCode is true only for a team that exists and opens its dashboard 
 test("teamsOf lists the user's teams with each role, by name and then public id", () => {
   const [z, a1, a2] = [make({ name: "Zeta" }), make({ name: "Alpha" }), make({ name: "Alpha" })];
   const bobTeam = make({ name: "Bob's", owner: bob });
-  const annUser = findUser(db, ann.githubId)!;
-  db.prepare("insert into team_roles (team_id, user_id, role, created_at) values (?, ?, 'viewer', 't')").run(bobTeam.team.id, annUser.id);
+  grantRole(db, bobTeam.team.id, ann, "viewer");
   const alphas = [a1, a2].map((t) => t.team.publicId).sort();
   expect(teamsOf(db, ann.githubId).map((t) => [t.name, t.id, t.role])).toEqual([
     ["Alpha", alphas[0], "owner"],

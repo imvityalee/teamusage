@@ -8,8 +8,7 @@ import { afterEach, describe, expect, test } from "vitest";
 import { createApp } from "./app.js";
 import { getInviteCode, openDb, setSetting, type Db } from "./db.js";
 import { markHostedDatabase } from "./db-mode.js";
-import { createHostedTeam } from "./hosted-teams.js";
-import { KEY } from "./hosted.fixture.js";
+import { hostedTeam } from "./hosted.fixture.js";
 import { createTeamSession, findSession } from "./sessions.js";
 import { forTeam } from "./team-data.js";
 import { ensureSingleTeam, singleTeamCodes } from "./teams.js";
@@ -32,7 +31,7 @@ const HOSTED_REFUSAL = "this database belongs to a hosted server; teamusage-admi
 function makeHosted(db: Db, withTeam: boolean): void {
   markHostedDatabase(db);
   if (!withTeam) return;
-  const { team } = createHostedTeam(db, { name: "Acme", dashboardAccess: "code", owner: { githubId: 1, login: "ann" }, codeKey: KEY, maxTeams: 200 });
+  const { team } = hostedTeam(db, { githubId: 1, login: "ann" }, "code", "Acme");
   forTeam(db, team.id).registerMachine({ name: "Ann", email: "ann@x.com", machineId: M1, machineLabel: "mbp" });
   createTeamSession(db, team.id);
 }

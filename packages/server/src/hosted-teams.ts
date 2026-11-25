@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { codeHash, newTeamCode, sealCode } from "./codes.js";
+import { codeHash, isTeamCode, newTeamCode, sealCode } from "./codes.js";
 import { now, type Db } from "./db.js";
 import { ensureUser } from "./users.js";
 
@@ -23,7 +23,13 @@ export class TeamLimitError extends Error {
 }
 
 const TEAM_COLUMNS = "id, public_id as publicId, name, dashboard_access as dashboardAccess";
-const TEAM_CODE = /^[a-f0-9]{24}$/;
+const PUBLIC_ID = /^[a-f0-9]{16}$/;
+
+/** A new public id: 16 lowercase hex characters, the id a team is known by outside the server. */
+export const newPublicId = (): string => randomBytes(8).toString("hex");
+
+/** True for a string in the format of newPublicId. */
+export const isPublicId = (v: unknown): v is string => typeof v === "string" && PUBLIC_ID.test(v);
 
 const countOf = (db: Db, sql: string, ...params: unknown[]): number => (db.prepare(sql).get(...params) as { n: number }).n;
 
@@ -56,7 +62,7 @@ export function createHostedTeam(
     const owned = countOf(db, "select count(*) as n from team_roles where user_id = ? and role = 'owner'", user.id);
     if (owned >= MAX_TEAMS_PER_USER) throw new TeamLimitError("user");
     const code = newTeamCode();
-    const fields = { publicId: randomBytes(8).toString("hex"), name: a.name, dashboardAccess: a.dashboardAccess };
+    const fields = { publicId: newPublicId(), name: a.name, dashboardAccess: a.dashboardAccess };
     const id = insertTeam(db, fields, code, a.codeKey);
     db.prepare("insert into team_roles (team_id, user_id, role, created_at) values (?, ?, 'owner', ?)").run(id, user.id, now());
     return { team: { id, ...fields }, code };
@@ -67,7 +73,7 @@ export function createHostedTeam(
 export function hostedTeamCodes(db: Db): (code: unknown) => number | null {
   const byHash = db.prepare("select id from teams where code_hash = ?");
   return (code) => {
-    if (typeof code !== "string" || !TEAM_CODE.test(code)) return null;
+    if (!isTeamCode(code)) return null;
     return (byHash.get(codeHash(code)) as { id: number } | undefined)?.id ?? null;
   };
 }

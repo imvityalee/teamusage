@@ -1,5 +1,5 @@
 import type { Db } from "./db.js";
-import { opensWithCode, roleIn, teamByPublicId } from "./hosted-teams.js";
+import { isPublicId, opensWithCode, roleIn, teamByPublicId } from "./hosted-teams.js";
 import type { Session } from "./sessions.js";
 import type { MachineIdentity } from "./team-data.js";
 
@@ -9,7 +9,6 @@ export type StatsAccess =
   | { ok: true; teamId: number; member: MachineIdentity | null; teamNumbers: boolean }
   | { ok: false; status: 400 | 401 | 404; error: string };
 
-const PUBLIC_ID = /^[a-f0-9]{16}$/;
 const UNAUTHORIZED: StatsAccess = { ok: false, status: 401, error: "unauthorized" };
 const INVALID_TEAM: StatsAccess = { ok: false, status: 400, error: "invalid query" };
 /** The one answer for a team that does not exist and for a team the caller has no role in. */
@@ -17,7 +16,7 @@ const TEAM_NOT_FOUND: StatsAccess = { ok: false, status: 404, error: "team not f
 
 /** The team named by public id in which the GitHub user has a role; any other team is not found. */
 function userAccess(db: Db, githubId: number, teamParam: string | undefined): StatsAccess {
-  if (teamParam === undefined || !PUBLIC_ID.test(teamParam)) return INVALID_TEAM;
+  if (!isPublicId(teamParam)) return INVALID_TEAM;
   const team = teamByPublicId(db, teamParam);
   if (team === null || roleIn(db, team.id, githubId) === null) return TEAM_NOT_FOUND;
   return { ok: true, teamId: team.id, member: null, teamNumbers: true };

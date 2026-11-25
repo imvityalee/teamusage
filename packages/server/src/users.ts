@@ -5,6 +5,7 @@ export type User = { id: number; githubId: number; login: string };
 
 const USER_COLUMNS = "id, github_id as githubId, login";
 
+/** The user with GitHub id `githubId`; null when the user has no row. */
 export function findUser(db: Db, githubId: number): User | null {
   return (db.prepare(`select ${USER_COLUMNS} from users where github_id = ?`).get(githubId) as User | undefined) ?? null;
 }

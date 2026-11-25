@@ -1,9 +1,10 @@
 import type { Hono } from "hono";
 import { createApp } from "./app.js";
 import type { AppOptions } from "./app-context.js";
-import { openDb } from "./db.js";
+import { now, openDb, type Db } from "./db.js";
 import type { GithubClient, GithubUser } from "./github.js";
-import { hostedTeamCodes } from "./hosted-teams.js";
+import { createHostedTeam, hostedTeamCodes, type DashboardAccess, type Role } from "./hosted-teams.js";
+import { ensureUser } from "./users.js";
 
 /** The hosted test server's own origin. */
 export const PUBLIC = "https://teamusage.example";
@@ -37,6 +38,18 @@ export function fakeGithub(users: Record<string, GithubUser>): FakeGithub {
       return user;
     },
   };
+}
+
+/** A GitHub user as the team helpers name one. */
+type Person = { githubId: number; login: string };
+
+/** Creates a team owned by `owner`, sealed with the fixture's key; it is named after the owner unless `name` is given. */
+export const hostedTeam = (db: Db, owner: Person, dashboardAccess: DashboardAccess, name = owner.login) =>
+  createHostedTeam(db, { name, dashboardAccess, owner, codeKey: KEY, maxTeams: 200 });
+
+/** Gives `user` the `role` in team `teamId`, creating the user's row when it has none. */
+export function grantRole(db: Db, teamId: number, user: Person, role: Role): void {
+  db.prepare("insert into team_roles (team_id, user_id, role, created_at) values (?, ?, ?, ?)").run(teamId, ensureUser(db, user).id, role, now());
 }
 
 /** A hosted app on a fresh in-memory database, with the fake GitHub it signs users in with. */

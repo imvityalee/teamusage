@@ -1,42 +1,22 @@
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 import { goodReg } from "./app.fixture.js";
 import type { ServerConfig } from "./config.js";
 import { openDb } from "./db.js";
 import { HostedDatabaseError, SelfHostedDatabaseError } from "./db-mode.js";
-import { createHostedTeam } from "./hosted-teams.js";
-import { cookieOf, fakeGithub, KEY, signIn } from "./hosted.fixture.js";
+import { cookieOf, fakeGithub, hostedTeam, KEY, signIn } from "./hosted.fixture.js";
+import { serverConfig, tempDataDir } from "./main.fixture.js";
 import { buildServer, startupLines } from "./main.js";
-
-const dirs: string[] = [];
-afterEach(() => {
-  for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
-});
-const dataDir = (): string => {
-  const d = mkdtempSync(join(tmpdir(), "tu-hosted-"));
-  dirs.push(d);
-  return join(d, "data");
-};
 
 const PUBLIC_URL = "https://usage.example.org";
 const SECRET = "github-secret-value-0123";
-const selfHosted = (dir: string): ServerConfig => ({
-  port: 8787,
-  host: "127.0.0.1",
-  dataDir: dir,
-  inviteCodeFromEnv: undefined,
-  demo: false,
-  trustedProxies: 0,
-  mode: "self-hosted",
-  hosted: undefined,
-});
-const hosted = (dir: string): ServerConfig => ({
-  ...selfHosted(dir),
-  mode: "hosted",
-  hosted: { publicUrl: PUBLIC_URL, githubClientId: "github-client-id", githubClientSecret: SECRET, codeKey: KEY, maxTeams: 200 },
-});
+const selfHosted = (dataDir: string): ServerConfig => serverConfig({ dataDir });
+const hosted = (dataDir: string): ServerConfig =>
+  serverConfig({
+    dataDir,
+    mode: "hosted",
+    hosted: { publicUrl: PUBLIC_URL, githubClientId: "github-client-id", githubClientSecret: SECRET, codeKey: KEY, maxTeams: 200 },
+  });
 const github = () => fakeGithub({ "code-ann": { id: 1, login: "ann" } });
 const from = (address: string) => ({ incoming: { socket: { remoteAddress: address } } });
 const conn = from("1.2.3.4");
@@ -91,10 +71,8 @@ async function selfHostedServerInUse(dir: string): Promise<void> {
 
 describe("a hosted buildServer", () => {
   test("marks the database as a hosted server's, creates no team and no invite code, and has no invite code to give", () => {
-    const config = hosted(dataDir());
-    const s = buildServer(config, { github: github() });
+    const s = buildServer(hosted(tempDataDir()), { github: github() });
     try {
-      startupLines(config, s, 8787);
       expect(s.inviteCode).toBeUndefined();
       expect(s.inviteGenerated).toBe(false);
       expect(count(s.db, "teams")).toEqual({ n: 0 });
@@ -105,7 +83,7 @@ describe("a hosted buildServer", () => {
   });
 
   test("forwards /auth to the app, with the security headers every response carries", async () => {
-    const s = buildServer(hosted(dataDir()), { github: github() });
+    const s = buildServer(hosted(tempDataDir()), { github: github() });
     try {
       const res = await s.app.request("/auth/github/start", {}, conn);
       expect(res.status).toBe(302);
@@ -118,7 +96,7 @@ describe("a hosted buildServer", () => {
   });
 
   test("answers /api/health, and /api/me without a session is 401", async () => {
-    const s = buildServer(hosted(dataDir()), { github: github() });
+    const s = buildServer(hosted(tempDataDir()), { github: github() });
     try {
       expect((await s.app.request("/api/health", {}, conn)).status).toBe(200);
       const me = await s.app.request("/api/me", {}, conn);
@@ -130,7 +108,7 @@ describe("a hosted buildServer", () => {
   });
 
   test("without a fake, signs in with GitHub through the configured app and checks Origin against the public URL", async () => {
-    const s = buildServer(hosted(dataDir()));
+    const s = buildServer(hosted(tempDataDir()));
     try {
       const start = await s.app.request("/auth/github/start", {}, conn);
       const location = new URL(start.headers.get("location") ?? "");
@@ -146,7 +124,7 @@ describe("a hosted buildServer", () => {
   });
 
   test("a second start on the same directory keeps the team created through the first, and its code", async () => {
-    const dir = dataDir();
+    const dir = tempDataDir();
     const code = await hostedServerWithTeam(dir);
     const second = buildServer(hosted(dir), { github: github() });
     try {
@@ -159,7 +137,7 @@ describe("a hosted buildServer", () => {
   });
 
   test("refuses a self-hosted server's database, and changes nothing in it", async () => {
-    const dir = dataDir();
+    const dir = tempDataDir();
     await selfHostedServerInUse(dir);
     const before = snapshot(dir);
     expect([before.teams, before.members, before.sessions].map((rows) => rows.length)).toEqual([1, 1, 1]);
@@ -168,7 +146,7 @@ describe("a hosted buildServer", () => {
   });
 
   test("logs exactly the listening line and where people sign in, with no secret and no code", () => {
-    const config = hosted(dataDir());
+    const config = hosted(tempDataDir());
     const s = buildServer(config, { github: github() });
     try {
       const lines = startupLines(config, s, 8787);
@@ -184,8 +162,8 @@ describe("a hosted buildServer counts wrong codes per address", () => {
   const WRONG = "0".repeat(24);
   /** A hosted server with one team; `register(code, address, headers)` sends a registration from that address. */
   function serverWithTeam(over: Partial<ServerConfig> = {}) {
-    const s = buildServer({ ...hosted(dataDir()), ...over }, { github: github() });
-    const { code } = createHostedTeam(s.db, { name: "Acme", dashboardAccess: "code", owner: { githubId: 1, login: "ann" }, codeKey: KEY, maxTeams: 200 });
+    const s = buildServer({ ...hosted(tempDataDir()), ...over }, { github: github() });
+    const { code } = hostedTeam(s.db, { githubId: 1, login: "ann" }, "code");
     const register = (inviteCode: string, address: string, headers: Record<string, string> = {}) =>
       s.app.request("/api/register", { method: "POST", body: JSON.stringify(goodReg({ inviteCode })), headers }, from(address));
     return { s, code, register };
@@ -219,7 +197,7 @@ describe("a hosted buildServer counts wrong codes per address", () => {
 
 describe("a self-hosted buildServer", () => {
   test("answers 404 on /auth/github/start", async () => {
-    const s = buildServer(selfHosted(dataDir()));
+    const s = buildServer(selfHosted(tempDataDir()));
     try {
       const res = await s.app.request("/auth/github/start", {}, conn);
       expect(res.status).toBe(404);
@@ -230,7 +208,7 @@ describe("a self-hosted buildServer", () => {
   });
 
   test("refuses a hosted server's database that holds a team, and changes nothing in it", async () => {
-    const dir = dataDir();
+    const dir = tempDataDir();
     await hostedServerWithTeam(dir);
     const before = snapshot(dir);
     expect(before.teams).toHaveLength(1);
@@ -240,7 +218,7 @@ describe("a self-hosted buildServer", () => {
   });
 
   test("refuses a hosted server's database that holds no team yet, and changes nothing in it", () => {
-    const dir = dataDir();
+    const dir = tempDataDir();
     buildServer(hosted(dir), { github: github() }).close();
     const before = snapshot(dir);
     expect(before.teams).toEqual([]);

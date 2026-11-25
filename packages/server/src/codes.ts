@@ -8,10 +8,15 @@ const TAG_BYTES = 16;
 const VERSION = "v1.";
 const BASE64URL = /^[A-Za-z0-9_-]+$/;
 
+const TEAM_CODE = /^[a-f0-9]{24}$/;
+
 /** A new team code: 24 lowercase hex characters, the format clients already accept. */
 export function newTeamCode(): string {
   return randomBytes(12).toString("hex");
 }
+
+/** True for a string in the format of newTeamCode. */
+export const isTeamCode = (v: unknown): v is string => typeof v === "string" && TEAM_CODE.test(v);
 
 export function codeHash(code: string): string {
   return sha256(code);
@@ -22,7 +27,10 @@ function requireKey(key: Buffer): void {
   if (key.length !== KEY_BYTES) throw new Error(`the team code key must be ${KEY_BYTES} bytes`);
 }
 
-/** AES-256-GCM under `key` with a fresh 12-byte iv: "v1." + base64url(iv + ciphertext + tag). */
+/**
+ * AES-256-GCM under `key` with a fresh 12-byte iv: "v1." + base64url(iv + ciphertext + tag). Throws for a key that
+ * is not 32 bytes.
+ */
 export function sealCode(code: string, key: Buffer): string {
   requireKey(key);
   const iv = randomBytes(IV_BYTES);
@@ -41,7 +49,10 @@ function sealedBytes(sealed: string): Buffer | null {
   return bytes;
 }
 
-/** The sealed code, or null when the key is another one or the text was altered. */
+/**
+ * The sealed code; null when the text was altered or was sealed under another 32-byte key. Throws for a key that is
+ * not 32 bytes.
+ */
 export function openCode(sealed: string, key: Buffer): string | null {
   requireKey(key);
   const bytes = typeof sealed === "string" ? sealedBytes(sealed) : null;

@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, test } from "vitest";
 import { goodReg, record } from "./app.fixture.js";
 import type { Db } from "./db.js";
-import { createHostedTeam, type TeamInfo } from "./hosted-teams.js";
-import { codeLogin, cookieOf, hostedApp, KEY, postFromPage, PUBLIC, signIn } from "./hosted.fixture.js";
+import type { TeamInfo } from "./hosted-teams.js";
+import { codeLogin, cookieOf, hostedApp, hostedTeam, postFromPage, PUBLIC, signIn } from "./hosted.fixture.js";
 import { DASHBOARD_LIMITED } from "./stats-access.js";
 import { authenticate, forTeam } from "./team-data.js";
 
@@ -13,10 +13,8 @@ let a: { team: TeamInfo; code: string }, b: { team: TeamInfo; code: string };
 
 beforeEach(() => {
   ({ db, app } = hostedApp());
-  const make = (githubId: number, login: string, dashboardAccess: "code" | "admins") =>
-    createHostedTeam(db, { name: login, dashboardAccess, owner: { githubId, login }, codeKey: KEY, maxTeams: 200 });
-  a = make(1, "ann", "code");
-  b = make(2, "bob", "admins");
+  a = hostedTeam(db, { githubId: 1, login: "ann" }, "code");
+  b = hostedTeam(db, { githubId: 2, login: "bob" }, "admins");
 });
 
 const WRONG = "0".repeat(24);

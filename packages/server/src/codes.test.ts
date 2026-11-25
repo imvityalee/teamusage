@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { expect, test } from "vitest";
-import { codeHash, newTeamCode, openCode, sealCode } from "./codes.js";
+import { codeHash, isTeamCode, newTeamCode, openCode, sealCode } from "./codes.js";
 
 const KEY = Buffer.alloc(32, 1);
 const OTHER_KEY = Buffer.alloc(32, 2);
@@ -14,6 +14,12 @@ test("a new code is 24 lowercase hex characters and two codes differ", () => {
   expect(a).toMatch(/^[a-f0-9]{24}$/);
   expect(b).toMatch(/^[a-f0-9]{24}$/);
   expect(a).not.toBe(b);
+});
+
+test("isTeamCode accepts exactly the format of a new code", () => {
+  expect(isTeamCode(newTeamCode())).toBe(true);
+  for (const bad of ["", "a".repeat(23), "a".repeat(25), "A".repeat(24), `${"a".repeat(23)}g`, 42, null, undefined, ["a".repeat(24)]])
+    expect(isTeamCode(bad)).toBe(false);
 });
 
 test("a sealed code opens with its key", () => {

@@ -1,32 +1,9 @@
-import { mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync, existsSync, symlinkSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, statSync, writeFileSync, existsSync, symlinkSync } from "node:fs";
 import { join, sep } from "node:path";
-import { afterEach, describe, expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 import { getSetting } from "./db.js";
-import type { ServerConfig } from "./config.js";
+import { serverConfig, tempDir } from "./main.fixture.js";
 import { DEFAULT_WEB_ROOT, buildServer, startupLines } from "./main.js";
-
-const dirs: string[] = [];
-const tmp = (): string => {
-  const d = mkdtempSync(join(tmpdir(), "tu-main-"));
-  dirs.push(d);
-  return d;
-};
-afterEach(() => {
-  for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
-});
-
-const cfg = (over: Partial<ServerConfig> = {}): ServerConfig => ({
-  port: 8787,
-  host: "127.0.0.1",
-  dataDir: join(tmp(), "data"),
-  inviteCodeFromEnv: undefined,
-  demo: false,
-  trustedProxies: 0,
-  mode: "self-hosted",
-  hosted: undefined,
-  ...over,
-});
 const conn = (address = "1.2.3.4") => ({ incoming: { socket: { remoteAddress: address } } });
 
 describe("DEFAULT_WEB_ROOT", () => {
@@ -37,7 +14,7 @@ describe("DEFAULT_WEB_ROOT", () => {
 
 describe("buildServer", () => {
   test("creates the data dir privately and a database that is not world-readable", () => {
-    const c = cfg();
+    const c = serverConfig();
     const s = buildServer(c);
     try {
       expect(statSync(c.dataDir).mode & 0o077).toBe(0);
@@ -48,7 +25,7 @@ describe("buildServer", () => {
   });
 
   test("generates an invite code once and persists it; env code is not flagged as generated", async () => {
-    const c = cfg();
+    const c = serverConfig();
     const a = buildServer(c);
     const code = a.inviteCode!();
     expect(a.inviteGenerated).toBe(true);
@@ -58,14 +35,14 @@ describe("buildServer", () => {
     expect(b.inviteCode!()).toBe(code);
     expect(b.inviteGenerated).toBe(false);
     b.close();
-    const e = buildServer(cfg({ inviteCodeFromEnv: "from-env-code-0123456789" }));
+    const e = buildServer(serverConfig({ inviteCodeFromEnv: "from-env-code-0123456789" }));
     expect(e.inviteCode!()).toBe("from-env-code-0123456789");
     expect(e.inviteGenerated).toBe(false);
     e.close();
   });
 
   test("the invite code is logged on the start that generates it and never again", () => {
-    const c = cfg();
+    const c = serverConfig();
     const first = buildServer(c);
     const code = first.inviteCode!();
     const log1 = startupLines(c, first, 8787).join("\n");
@@ -80,13 +57,13 @@ describe("buildServer", () => {
   });
 
   test("env-pinned and demo starts log no code", () => {
-    const pinnedCfg = cfg({ inviteCodeFromEnv: "pinned-code-0123456789" });
+    const pinnedCfg = serverConfig({ inviteCodeFromEnv: "pinned-code-0123456789" });
     const p = buildServer(pinnedCfg);
     const pLog = startupLines(pinnedCfg, p, 1).join("\n");
     p.close();
     expect(pLog).not.toContain("pinned-code-0123456789");
     expect(pLog).toContain("environment");
-    const demoCfg = cfg({ demo: true });
+    const demoCfg = serverConfig({ demo: true });
     const d = buildServer(demoCfg);
     const dLog = startupLines(demoCfg, d, 1).join("\n");
     d.close();
@@ -95,7 +72,7 @@ describe("buildServer", () => {
   });
 
   test("records whether the invite code is pinned by the environment", () => {
-    const c = cfg();
+    const c = serverConfig();
     const pinned = buildServer({ ...c, inviteCodeFromEnv: "pinned-code-0123456789" });
     expect(getSetting(pinned.db, "invite_pinned")).toBe("1");
     pinned.close();
@@ -105,7 +82,7 @@ describe("buildServer", () => {
   });
 
   test("demo mode opens no database file and has no login", async () => {
-    const c = cfg({ demo: true });
+    const c = serverConfig({ demo: true });
     const s = buildServer(c);
     try {
       expect(existsSync(c.dataDir)).toBe(false);
@@ -119,7 +96,7 @@ describe("buildServer", () => {
   });
 
   test("security headers are on every response", async () => {
-    const s = buildServer(cfg({ demo: true }));
+    const s = buildServer(serverConfig({ demo: true }));
     try {
       for (const path of ["/", "/api/health", "/api/nope", "/nope"]) {
         const res = await s.app.request(path, {}, conn());
@@ -136,7 +113,7 @@ describe("buildServer", () => {
   });
 
   test("API keeps working and throttles by socket address", async () => {
-    const s = buildServer(cfg());
+    const s = buildServer(serverConfig());
     try {
       const health = await s.app.request("/api/health", {}, conn());
       expect(health.status).toBe(200);
@@ -152,7 +129,7 @@ describe("buildServer", () => {
   });
 
   test("trusted proxies take the client from X-Forwarded-For", async () => {
-    const s = buildServer(cfg({ trustedProxies: 1 }));
+    const s = buildServer(serverConfig({ trustedProxies: 1 }));
     try {
       const attempt = (xff: string) =>
         s.app.request("/api/login", { method: "POST", body: JSON.stringify({ inviteCode: "nope" }), headers: { "x-forwarded-for": xff } }, conn("10.0.0.1"));
@@ -165,7 +142,7 @@ describe("buildServer", () => {
   });
 
   test("without a built dashboard GET / is a fixed page and the API still works", async () => {
-    const s = buildServer(cfg({ demo: true }), { webRoot: join(tmp(), "missing") });
+    const s = buildServer(serverConfig({ demo: true }), { webRoot: join(tempDir(), "missing") });
     try {
       const res = await s.app.request("/", {}, conn());
       expect(res.status).toBe(200);
@@ -179,7 +156,7 @@ describe("buildServer", () => {
   });
 
   test("serves web files, and never anything outside the directory", async () => {
-    const root = tmp();
+    const root = tempDir();
     const web = join(root, "dist");
     mkdirSync(join(web, "assets"), { recursive: true });
     writeFileSync(join(web, "index.html"), "<h1>hi</h1>");
@@ -195,7 +172,7 @@ describe("buildServer", () => {
     writeFileSync(join(web, "assets", "app.js.map"), "MAP");
     writeFileSync(join(web, "100%.txt"), "percent");
     symlinkSync(join(root, "secret.txt"), join(web, "link.txt"));
-    const s = buildServer(cfg({ demo: true }), { webRoot: web });
+    const s = buildServer(serverConfig({ demo: true }), { webRoot: web });
     try {
       const idx = await s.app.request("/", {}, conn());
       expect(await idx.text()).toBe("<h1>hi</h1>");
@@ -231,7 +208,7 @@ describe("buildServer", () => {
 });
 
 test("a restart keeps the one team", () => {
-  const c = cfg();
+  const c = serverConfig();
   const first = buildServer(c);
   first.close();
   const second = buildServer(c);
