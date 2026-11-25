@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import { getStoredInviteCode, openDb } from "./db.js";
-import { createSession, findSession } from "./sessions.js";
+import { createTeamSession, findSession } from "./sessions.js";
 import { createTeam, ensureSingleTeam, rotateInviteCode, singleTeamCodes } from "./teams.js";
 
 const teamCount = (db: ReturnType<typeof openDb>) => (db.prepare("select count(*) as n from teams").get() as { n: number }).n;
@@ -42,11 +42,11 @@ test("rotating the code ends only that team's sessions", () => {
   const db = openDb(":memory:");
   const A = createTeam(db, "A");
   const B = createTeam(db, "B");
-  const sa = createSession(db, A);
-  const sb = createSession(db, B);
+  const sa = createTeamSession(db, A);
+  const sb = createTeamSession(db, B);
   const code = rotateInviteCode(db, A);
   expect(code).toMatch(/^[a-f0-9]{24}$/);
   expect(getStoredInviteCode(db)).toBe(code);
   expect(findSession(db, sa)).toBeNull();
-  expect(findSession(db, sb)).toEqual({ teamId: B });
+  expect(findSession(db, sb)).toEqual({ kind: "team", teamId: B });
 });

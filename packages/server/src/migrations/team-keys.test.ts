@@ -61,7 +61,7 @@ test("every column of every row is copied unchanged into team 1", () => {
       account_kind: "team", account_org: "Org", account_plan: "team_premium",
     },
   ]);
-  expect(db.prepare("select * from sessions").all()).toEqual([{ id: S, team_id: 1, created_at: "2026-10-05T05:00:00.000Z" }]);
+  expect(db.prepare("select id, team_id, created_at from sessions").all()).toEqual([{ id: S, team_id: 1, created_at: "2026-10-05T05:00:00.000Z" }]);
 });
 /** Inserts a usage row with dangling references switched off, as a database from before versioned upgrades may hold. */
 const insertOrphanUsage = (db: Db, memberId: number, machineId: string) => {
@@ -90,7 +90,7 @@ test("a database with sessions and no members still moves into team 1 and keeps 
   db.exec(`insert into sessions (id, created_at) values ('${S}', '2026-11-01T00:00:00.000Z')`);
   migrate(db);
   expect(db.prepare("select id from teams").all()).toEqual([{ id: 1 }]);
-  expect(db.prepare("select * from sessions").all()).toEqual([{ id: S, team_id: 1, created_at: "2026-11-01T00:00:00.000Z" }]);
+  expect(db.prepare("select id, team_id, created_at from sessions").all()).toEqual([{ id: S, team_id: 1, created_at: "2026-11-01T00:00:00.000Z" }]);
 });
 test("one email twice in a team is refused, in two teams it is allowed", () => {
   const db = openDb(":memory:");

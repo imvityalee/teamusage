@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import { createApp } from "./app.js";
 import { INVITE, MID, MID2, record } from "./app.fixture.js";
 import { bearer, db, getStatsReq, login, post, RANGE, register, sessionCookie, useFreshApp } from "./app.harness.js";
+import { createUserSession } from "./sessions.js";
 import { ensureSingleTeam, singleTeamCodes } from "./teams.js";
 
 useFreshApp();
@@ -23,6 +24,13 @@ describe("GET /api/stats", () => {
     expect((await getStatsReq(RANGE, { Cookie: "tu_session=" + "0".repeat(64) })).status).toBe(401);
     db.prepare("delete from sessions").run();
     expect((await getStatsReq(RANGE, { Cookie: cookie })).status).toBe(401);
+  });
+
+  test("a user's session reads no team's stats", async () => {
+    const cookie = `tu_session=${createUserSession(db, { githubId: 7, login: "ann" })}`;
+    const res = await getStatsReq(RANGE, { Cookie: cookie });
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "unauthorized" });
   });
 
   test("a bearer token is accepted and wins over a cookie; a bad token is 401 even with a valid cookie", async () => {

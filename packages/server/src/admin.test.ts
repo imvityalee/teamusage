@@ -7,7 +7,7 @@ import Database from "better-sqlite3";
 import { afterEach, describe, expect, test } from "vitest";
 import { createApp } from "./app.js";
 import { getInviteCode, openDb, setSetting, type Db } from "./db.js";
-import { createSession, findSession } from "./sessions.js";
+import { createTeamSession, findSession } from "./sessions.js";
 import { forTeam } from "./team-data.js";
 import { ensureSingleTeam, singleTeamCodes } from "./teams.js";
 import { openServerDb, runAdmin } from "./admin.js";
@@ -89,7 +89,7 @@ describe("runAdmin", () => {
   test("rotate-invite prints a new code once and ends sessions", async () => {
     const { db } = setup();
     const old = getInviteCode(db);
-    const session = createSession(db, ensureSingleTeam(db));
+    const session = createTeamSession(db, ensureSingleTeam(db));
     expect(findSession(db, session)).not.toBeNull();
     const r = run(db, ["rotate-invite"]);
     expect(r.code).toBe(0);
@@ -114,7 +114,7 @@ describe("runAdmin", () => {
     expect(run(db, ["show-invite"]).text).toContain("not generated an invite code yet");
     expect(run(db, ["show-invite"]).code).toBe(1);
     const code = getInviteCode(db);
-    const session = createSession(db, ensureSingleTeam(db));
+    const session = createTeamSession(db, ensureSingleTeam(db));
     const r = run(db, ["show-invite"]);
     expect(r.code).toBe(0);
     expect(r.text).toBe(code);
@@ -156,7 +156,7 @@ describe("runAdmin", () => {
 
   test("rotate-invite refuses when the env pins the code", () => {
     const { db } = setup();
-    const session = createSession(db, ensureSingleTeam(db));
+    const session = createTeamSession(db, ensureSingleTeam(db));
     const before = getInviteCode(db);
     const r = run(db, ["rotate-invite"], { TEAMUSAGE_INVITE_CODE: "pinned-secret-code" });
     expect(r.code).toBe(1);

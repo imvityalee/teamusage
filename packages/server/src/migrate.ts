@@ -1,5 +1,6 @@
 import type { Db } from "./db.js";
 import { baseline } from "./migrations/baseline.js";
+import { hostedTeams } from "./migrations/hosted.js";
 import { teamKeys } from "./migrations/team-keys.js";
 import { orderedUsageIndexes } from "./migrations/usage-indexes.js";
 
@@ -24,7 +25,7 @@ export class UpgradeFailedError extends Error {
 
 const BASELINE = 1;
 
-export const STEPS: readonly Step[] = [baseline, teamKeys, orderedUsageIndexes];
+export const STEPS: readonly Step[] = [baseline, teamKeys, orderedUsageIndexes, hostedTeams];
 
 export const SCHEMA_VERSION = STEPS.length;
 

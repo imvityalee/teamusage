@@ -14,7 +14,7 @@ import {
 } from "@teamusage/shared";
 import type { RouteContext } from "./app-context.js";
 import { bearerToken, fail, forwardedProto, isObject, readJson, SESSION_COOKIE, SESSION_MAX_AGE_S } from "./http.js";
-import { createSession, findSession } from "./sessions.js";
+import { createTeamSession, findSession } from "./sessions.js";
 import { getStats } from "./stats.js";
 import { authenticate, forTeam, type MachineIdentity } from "./team-data.js";
 
@@ -56,12 +56,14 @@ function parseFilters(
 export function dashboardRoutes(app: Hono, ctx: RouteContext): void {
   const { db, opts, throttled, teamOfInvite } = ctx;
 
-  /** The team a stats request reads: the demo team, else a presented token's, else the session's; null when none. */
+  /** The team a stats request reads: the demo team, else a presented token's, else a team session's; null when none. */
   const statsTeam = (token: string | undefined, who: MachineIdentity | null, sessionId: string | undefined): number | null => {
     if (opts.demoTeamId !== undefined) return opts.demoTeamId;
     // A presented bearer token must be valid; it wins over a cookie, but a bad one is never rescued by a cookie.
     if (token !== undefined) return who?.teamId ?? null;
-    return sessionId ? (findSession(db, sessionId)?.teamId ?? null) : null;
+    // A user's session is not a team's: here it counts as no session.
+    const session = sessionId ? findSession(db, sessionId) : null;
+    return session?.kind === "team" ? session.teamId : null;
   };
 
   app.post("/api/login", async (c) => {
@@ -74,7 +76,7 @@ export function dashboardRoutes(app: Hono, ctx: RouteContext): void {
     const teamId = teamOfInvite(c, body.inviteCode);
     if (teamId === null) return fail(c, 403, "invalid invite code");
     const https = new URL(c.req.url).protocol === "https:" || forwardedProto(c) === "https";
-    setCookie(c, SESSION_COOKIE, createSession(db, teamId), {
+    setCookie(c, SESSION_COOKIE, createTeamSession(db, teamId), {
       httpOnly: true,
       sameSite: "Lax",
       path: "/",
