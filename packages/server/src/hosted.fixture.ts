@@ -10,7 +10,10 @@ export const PUBLIC = "https://teamusage.example";
 /** The hosted test server's code key. */
 export const KEY = Buffer.alloc(32, 7);
 /** The GitHub users the fixture's fake GitHub knows, by the callback code that signs each in. */
-const USERS: Record<string, GithubUser> = { "code-ann": { id: 1, login: "ann" } };
+const USERS: Record<string, GithubUser> = {
+  "code-ann": { id: 1, login: "ann" },
+  "code-bob": { id: 2, login: "bob" },
+};
 
 export type FakeGithub = GithubClient & { calls: { code: string; verifier: string }[] };
 

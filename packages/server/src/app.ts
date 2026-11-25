@@ -8,6 +8,7 @@ import { createLimiter } from "./limiter.js";
 import { authRoutes } from "./routes-auth.js";
 import { dashboardRoutes } from "./routes-dashboard.js";
 import { machineRoutes } from "./routes-machines.js";
+import { teamRoutes } from "./routes-teams.js";
 
 export function createApp(db: Db, opts: AppOptions): Hono {
   const app = new Hono();
@@ -49,6 +50,7 @@ export function createApp(db: Db, opts: AppOptions): Hono {
   machineRoutes(app, ctx);
   dashboardRoutes(app, ctx);
   authRoutes(app, ctx);
+  teamRoutes(app, ctx);
 
   return app;
 }

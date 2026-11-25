@@ -7,7 +7,7 @@ const SESSION_MAX_AGE_S = 30 * 24 * 60 * 60;
 
 const BEARER = /^Bearer (\S+)$/;
 
-export const fail = (c: Context, status: 400 | 401 | 403 | 404 | 409 | 413 | 429 | 500 | 502, error: string) => c.json({ error }, status);
+export const fail = (c: Context, status: 400 | 401 | 403 | 404 | 409 | 413 | 429 | 500 | 502 | 503, error: string) => c.json({ error }, status);
 
 /** Parses the JSON body; undefined when it is not valid JSON. */
 export async function readJson(c: Context): Promise<unknown> {
