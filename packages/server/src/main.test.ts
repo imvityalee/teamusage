@@ -50,16 +50,16 @@ describe("buildServer", () => {
   test("generates an invite code once and persists it; env code is not flagged as generated", async () => {
     const c = cfg();
     const a = buildServer(c);
-    const code = a.inviteCode();
+    const code = a.inviteCode!();
     expect(a.inviteGenerated).toBe(true);
     expect(code).toMatch(/^[a-f0-9]{24}$/);
     a.close();
     const b = buildServer(c);
-    expect(b.inviteCode()).toBe(code);
+    expect(b.inviteCode!()).toBe(code);
     expect(b.inviteGenerated).toBe(false);
     b.close();
     const e = buildServer(cfg({ inviteCodeFromEnv: "from-env-code-0123456789" }));
-    expect(e.inviteCode()).toBe("from-env-code-0123456789");
+    expect(e.inviteCode!()).toBe("from-env-code-0123456789");
     expect(e.inviteGenerated).toBe(false);
     e.close();
   });
@@ -67,7 +67,7 @@ describe("buildServer", () => {
   test("the invite code is logged on the start that generates it and never again", () => {
     const c = cfg();
     const first = buildServer(c);
-    const code = first.inviteCode();
+    const code = first.inviteCode!();
     const log1 = startupLines(c, first, 8787).join("\n");
     first.close();
     expect(log1).toContain(code);

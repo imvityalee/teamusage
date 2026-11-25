@@ -7,6 +7,8 @@ import Database from "better-sqlite3";
 import { afterEach, describe, expect, test } from "vitest";
 import { createApp } from "./app.js";
 import { getInviteCode, openDb, setSetting, type Db } from "./db.js";
+import { createHostedTeam } from "./hosted-teams.js";
+import { KEY } from "./hosted.fixture.js";
 import { createTeamSession, findSession } from "./sessions.js";
 import { forTeam } from "./team-data.js";
 import { ensureSingleTeam, singleTeamCodes } from "./teams.js";
@@ -21,6 +23,15 @@ function setup(): { db: Db; token: string } {
   const { token } = team.registerMachine({ name: "Ann", email: "ann@x.com", machineId: M1, machineLabel: "mbp" });
   team.registerMachine({ name: "Bob", email: "bob@x.com", machineId: M2, machineLabel: "box" });
   return { db, token };
+}
+
+const HOSTED_REFUSAL = "this database belongs to a hosted server; teamusage-admin does not manage it yet";
+
+/** Adds a hosted team with a member, a machine and a dashboard session. */
+function addHostedTeam(db: Db): void {
+  const { team } = createHostedTeam(db, { name: "Acme", dashboardAccess: "code", owner: { githubId: 1, login: "ann" }, codeKey: KEY, maxTeams: 200 });
+  forTeam(db, team.id).registerMachine({ name: "Ann", email: "ann@x.com", machineId: M1, machineLabel: "mbp" });
+  createTeamSession(db, team.id);
 }
 
 function run(db: Db, argv: string[], env: Record<string, string | undefined> = {}) {
@@ -167,6 +178,19 @@ describe("runAdmin", () => {
     expect(findSession(db, session)).not.toBeNull();
   });
 
+  test("every command on a database that holds a hosted team is refused and changes nothing", () => {
+    const db = openDb(":memory:");
+    addHostedTeam(db);
+    const state = () => ["teams", "members", "machines", "sessions", "settings"].map((t) => db.prepare(`select * from ${t} order by rowid`).all());
+    const before = state();
+    for (const argv of [["members"], ["remove-member", "ann@x.com"], ["remove-machine", M1], ["show-invite"], ["rotate-invite"]]) {
+      const r = run(db, argv);
+      expect(r.code, argv.join(" ")).toBe(1);
+      expect(r.lines, argv.join(" ")).toEqual([HOSTED_REFUSAL]);
+    }
+    expect(state()).toEqual(before);
+  });
+
   test("show-invite and bad usage on a database without a team create none", () => {
     const db = openDb(":memory:");
     expect(run(db, ["show-invite"]).code).toBe(1);
@@ -239,6 +263,19 @@ describe.skipIf(!built)(built ? "built binaries" : "built binaries (skipped: run
     const r = runBin(link, d, ["members"]);
     expect(r.status).toBe(0);
     expect(r.stdout).toContain("no members");
+  });
+
+  test("admin refuses a hosted server's database", () => {
+    const d = tmp();
+    const db = openDb(join(d, "teamusage.sqlite"));
+    addHostedTeam(db);
+    db.close();
+    const r = runBin(`${dist}admin.js`, d, ["rotate-invite"]);
+    expect(r.status).toBe(1);
+    expect(r.stdout).toBe(`${HOSTED_REFUSAL}\n`);
+    const after = openDb(join(d, "teamusage.sqlite"));
+    expect(after.prepare("select count(*) as n from settings").get()).toEqual({ n: 0 });
+    after.close();
   });
 
   test("admin refuses a missing, zero-byte or foreign file and leaves it untouched", () => {

@@ -72,6 +72,11 @@ export function hostedTeamCodes(db: Db): (code: unknown) => number | null {
   };
 }
 
+/** True when a hosted server has created a team here: a team with a code hash exists. */
+export function holdsHostedTeam(db: Db): boolean {
+  return db.prepare("select 1 from teams where code_hash is not null limit 1").get() !== undefined;
+}
+
 export function teamByPublicId(db: Db, publicId: string): TeamInfo | null {
   return (db.prepare(`select ${TEAM_COLUMNS} from teams where public_id = ?`).get(publicId) as TeamInfo | undefined) ?? null;
 }

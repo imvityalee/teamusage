@@ -4,6 +4,7 @@ import Database from "better-sqlite3";
 import { join } from "node:path";
 import { getSetting, getStoredInviteCode, openDb, type Db } from "./db.js";
 import { isMain } from "./entry.js";
+import { holdsHostedTeam } from "./hosted-teams.js";
 import { NewerSchemaError } from "./migrate.js";
 import { openFailureMessage } from "./open-failure.js";
 import { forTeam } from "./team-data.js";
@@ -23,15 +24,25 @@ const USAGE = [
 const PINNED_SHOW =
   "The invite code is pinned by the TEAMUSAGE_INVITE_CODE environment variable. It is not stored in the database; read it from where the variable is set.";
 
+const HOSTED = "this database belongs to a hosted server; teamusage-admin does not manage it yet";
+
 const clean = (s: string): string => s.replace(CONTROL, "?");
 
-/** Runs one operator command. Returns the process exit code: 0 done, 1 nothing done, 2 bad usage. */
+/**
+ * Runs one operator command. Returns the process exit code: 0 done, 1 nothing done, 2 bad usage. A hosted server's
+ * database is refused whatever the command.
+ */
 export function runAdmin(
   db: Db,
   argv: string[],
   out: (line: string) => void,
   env: Record<string, string | undefined> = process.env,
 ): number {
+  // Before any command, so that none of them can create the single team or an invite code in a hosted database.
+  if (holdsHostedTeam(db)) {
+    out(HOSTED);
+    return 1;
+  }
   const usage = (): number => {
     USAGE.forEach(out);
     return 2;
