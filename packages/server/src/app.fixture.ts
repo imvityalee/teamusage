@@ -2,6 +2,8 @@
 export const INVITE = "invite-code-123";
 /** The machine id `goodReg` registers. */
 export const MID = "a".repeat(32);
+/** A second machine id, for a member's second machine or another member. */
+export const MID2 = "b".repeat(32);
 
 /** A valid `/api/register` body with the fixture invite code. */
 export const goodReg = (over: Record<string, unknown> = {}) => ({
