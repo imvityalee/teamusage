@@ -3,7 +3,8 @@ import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { getSetting } from "./db.js";
-import { DEFAULT_WEB_ROOT, buildServer, parseServerConfig, startupLines, type ServerConfig } from "./main.js";
+import type { ServerConfig } from "./config.js";
+import { DEFAULT_WEB_ROOT, buildServer, startupLines } from "./main.js";
 
 const dirs: string[] = [];
 const tmp = (): string => {
@@ -22,69 +23,11 @@ const cfg = (over: Partial<ServerConfig> = {}): ServerConfig => ({
   inviteCodeFromEnv: undefined,
   demo: false,
   trustedProxies: 0,
+  mode: "self-hosted",
+  hosted: undefined,
   ...over,
 });
 const conn = (address = "1.2.3.4") => ({ incoming: { socket: { remoteAddress: address } } });
-
-describe("parseServerConfig", () => {
-  test("defaults", () => {
-    expect(parseServerConfig({}, [])).toEqual({
-      port: 8787,
-      host: "0.0.0.0",
-      dataDir: "/data",
-      inviteCodeFromEnv: undefined,
-      demo: false,
-      trustedProxies: 0,
-    });
-  });
-
-  test("reads the environment and flags", () => {
-    const c = parseServerConfig(
-      { PORT: "9000", TEAMUSAGE_DATA_DIR: "/x", TEAMUSAGE_INVITE_CODE: "abcdefghij123456", TEAMUSAGE_TRUSTED_PROXIES: "2", TEAMUSAGE_HOST: "127.0.0.1" },
-      [],
-    );
-    expect(c).toMatchObject({ port: 9000, dataDir: "/x", inviteCodeFromEnv: "abcdefghij123456", trustedProxies: 2, host: "127.0.0.1" });
-    expect(parseServerConfig({ TEAMUSAGE_DEMO: "1" }, []).demo).toBe(true);
-    expect(parseServerConfig({}, ["--demo"]).demo).toBe(true);
-    expect(parseServerConfig({ TEAMUSAGE_DEMO: "0" }, []).demo).toBe(false);
-    expect(parseServerConfig({ TEAMUSAGE_INVITE_CODE: "" }, []).inviteCodeFromEnv).toBeUndefined();
-  });
-
-  test("rejects a weak or malformed operator invite code without echoing it", () => {
-    const msg = "TEAMUSAGE_INVITE_CODE must be 16 to 128 characters with no spaces";
-    for (const [name, v] of [
-      ["too short", "s".repeat(15)],
-      ["too long", "l".repeat(129)],
-      ["space", "has a space-0123456789"],
-      ["tab", "tab\tinside-0123456789"],
-      ["newline", "line\nbreak-0123456789"],
-      ["control", "ctl\x01char-0123456789"],
-    ] as const) {
-      let err: Error | undefined;
-      try {
-        parseServerConfig({ TEAMUSAGE_INVITE_CODE: v }, []);
-      } catch (e) {
-        err = e as Error;
-      }
-      expect(err?.message, name).toBe(msg);
-    }
-    expect(parseServerConfig({ TEAMUSAGE_INVITE_CODE: "x".repeat(16) }, []).inviteCodeFromEnv).toBe("x".repeat(16));
-    expect(parseServerConfig({ TEAMUSAGE_INVITE_CODE: "x".repeat(128) }, []).inviteCodeFromEnv).toBe("x".repeat(128));
-  });
-
-  test("rejects invalid PORT and TEAMUSAGE_TRUSTED_PROXIES with a fixed message", () => {
-    for (const PORT of ["0", "65536", "-1", "80.5", "abc", " 80", "1e3", "0x50"]) {
-      expect(() => parseServerConfig({ PORT }, []), PORT).toThrow("PORT must be an integer from 1 to 65535");
-    }
-    for (const v of ["-1", "11", "1.5", "x", "2 "]) {
-      expect(() => parseServerConfig({ TEAMUSAGE_TRUSTED_PROXIES: v }, []), v).toThrow(
-        "TEAMUSAGE_TRUSTED_PROXIES must be an integer from 0 to 10",
-      );
-    }
-    expect(parseServerConfig({ PORT: "65535", TEAMUSAGE_TRUSTED_PROXIES: "10" }, [])).toMatchObject({ port: 65535, trustedProxies: 10 });
-    expect(() => parseServerConfig({ PORT: "bad-secret" }, [])).toThrow(/^PORT must be an integer from 1 to 65535$/);
-  });
-});
 
 describe("DEFAULT_WEB_ROOT", () => {
   test("is packages/server/web/dist", () => {

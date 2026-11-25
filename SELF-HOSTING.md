@@ -93,6 +93,7 @@ then ignores `X-Forwarded-For`, which a client could otherwise forge.
 | `TEAMUSAGE_INVITE_CODE` | generated | The invite code, 16 to 128 characters, no spaces. |
 | `TEAMUSAGE_TRUSTED_PROXIES` | `0` | How many reverse proxies are in front (0 to 10). |
 | `TEAMUSAGE_DEMO` | unset | `1` starts demo mode. The `--demo` flag does the same when you run `node dist/main.js` directly; with Docker, set `TEAMUSAGE_DEMO=1`, because arguments to `docker run` replace the command. |
+| `TEAMUSAGE_MODE` | `self-hosted` | Leave unset. `hosted` runs the public multi-team service and needs more settings. |
 
 An invalid value stops the server at startup with a short message that does not repeat the value.
 The image has a health check that calls `/api/health`.

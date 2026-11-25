@@ -8,43 +8,13 @@ import { serve } from "@hono/node-server";
 import { getConnInfo } from "@hono/node-server/conninfo";
 import { Hono, type Context } from "hono";
 import { createApp } from "./app.js";
+import { parseServerConfig, type ServerConfig } from "./config.js";
 import { getInviteCode, getStoredInviteCode, openDb, setSetting, type Db } from "./db.js";
 import { seedDemo } from "./demo.js";
 import { isMain } from "./entry.js";
 import { clientKeyFrom } from "./limiter.js";
 import { codeOf, openFailureMessage } from "./open-failure.js";
 import { ensureSingleTeam, singleTeamCodes } from "./teams.js";
-
-export interface ServerConfig {
-  port: number;
-  host: string;
-  dataDir: string;
-  inviteCodeFromEnv: string | undefined;
-  demo: boolean;
-  trustedProxies: number;
-}
-
-/** Messages are fixed: they never include the offending value. */
-export function parseServerConfig(env: Record<string, string | undefined>, argv: string[]): ServerConfig {
-  const integer = (v: string | undefined, def: number, min: number, max: number, message: string): number => {
-    if (v === undefined || v === "") return def;
-    const n = /^\d+$/.test(v) ? Number(v) : NaN;
-    if (!Number.isSafeInteger(n) || n < min || n > max) throw new Error(message);
-    return n;
-  };
-  const invite = env.TEAMUSAGE_INVITE_CODE || undefined;
-  if (invite !== undefined && (invite.length < 16 || invite.length > 128 || /[\s\x00-\x1f\x7f]/.test(invite))) {
-    throw new Error("TEAMUSAGE_INVITE_CODE must be 16 to 128 characters with no spaces");
-  }
-  return {
-    port: integer(env.PORT, 8787, 1, 65535, "PORT must be an integer from 1 to 65535"),
-    host: env.TEAMUSAGE_HOST || "0.0.0.0",
-    dataDir: env.TEAMUSAGE_DATA_DIR || "/data",
-    inviteCodeFromEnv: invite,
-    demo: env.TEAMUSAGE_DEMO === "1" || argv.includes("--demo"),
-    trustedProxies: integer(env.TEAMUSAGE_TRUSTED_PROXIES, 0, 0, 10, "TEAMUSAGE_TRUSTED_PROXIES must be an integer from 0 to 10"),
-  };
-}
 
 const CSP =
   "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'";
