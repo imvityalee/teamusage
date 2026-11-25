@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import { openDb } from "./db.js";
-import { createTeam, ensureSingleTeam } from "./teams.js";
+import { createTeam, ensureSingleTeam, singleTeamCodes } from "./teams.js";
 
 const teamCount = (db: ReturnType<typeof openDb>) => (db.prepare("select count(*) as n from teams").get() as { n: number }).n;
 
@@ -27,4 +27,12 @@ test("createTeam gives each team its own 16-hex-character public id", () => {
   );
   for (const id of ids) expect(id).toMatch(/^[a-f0-9]{16}$/);
   expect(ids[0]).not.toBe(ids[1]);
+});
+
+test("singleTeamCodes gives the team for its code and null for anything else", () => {
+  const teamForCode = singleTeamCodes(7, () => "the-code");
+  expect(teamForCode("the-code")).toBe(7);
+  expect(teamForCode("other")).toBeNull();
+  expect(teamForCode(undefined)).toBeNull();
+  expect(teamForCode(42)).toBeNull();
 });

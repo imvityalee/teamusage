@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, test } from "vitest";
 import { APP_NAME, MAX_COST_USD, MAX_TOKENS, MAX_TOTAL_TOKENS } from "@teamusage/shared";
 import { createApp } from "./app.js";
+import { goodReg, INVITE, MID, record } from "./app.fixture.js";
 import { openDb, type Db } from "./db.js";
+import { ensureSingleTeam, singleTeamCodes } from "./teams.js";
 
-const INVITE = "invite-code-123";
-const MID = "a".repeat(32);
 const MID2 = "b".repeat(32);
 
 let db: Db;
@@ -14,16 +14,7 @@ const logError = (line: string) => logged.push(line);
 beforeEach(() => {
   db = openDb(":memory:");
   logged = [];
-  app = createApp(db, { inviteCode: () => INVITE, logError });
-});
-
-const goodReg = (over: Record<string, unknown> = {}) => ({
-  inviteCode: INVITE,
-  name: "Ann",
-  email: "ann@example.com",
-  machineId: MID,
-  machineLabel: "mbp",
-  ...over,
+  app = createApp(db, { teamForCode: singleTeamCodes(ensureSingleTeam(db), () => INVITE), logError });
 });
 
 const post = (path: string, body: unknown, headers: Record<string, string> = {}) =>
@@ -32,20 +23,6 @@ const post = (path: string, body: unknown, headers: Record<string, string> = {})
     body: typeof body === "string" ? body : JSON.stringify(body),
     headers: { "Content-Type": "application/json", ...headers },
   });
-
-const record = (over: Record<string, unknown> = {}) => ({
-  date: "2026-11-01",
-  agent: "claude",
-  model: "m",
-  input: 1,
-  output: 2,
-  cacheCreate: 3,
-  cacheRead: 4,
-  total: 10,
-  costUsd: 0.5,
-  unpriced: false,
-  ...over,
-});
 
 const register = async (over: Record<string, unknown> = {}) => {
   const res = await post("/api/register", goodReg(over));
@@ -85,7 +62,7 @@ describe("POST /api/register", () => {
 
   test("invite code is read on each request (rotation takes effect)", async () => {
     let code = "one";
-    const a = createApp(db, { inviteCode: () => code });
+    const a = createApp(db, { teamForCode: singleTeamCodes(ensureSingleTeam(db), () => code) });
     const send = (c: string) =>
       a.request("/api/register", {
         method: "POST",
@@ -254,9 +231,9 @@ describe("hardening", () => {
 
   test("unexpected errors -> generic 500 that leaks nothing", async () => {
     const boom = createApp(db, {
-      inviteCode: () => {
+      teamForCode: singleTeamCodes(ensureSingleTeam(db), () => {
         throw new Error("secret-internal-detail");
-      },
+      }),
       logError,
     });
     const res = await boom.request("/api/register", {
@@ -275,9 +252,9 @@ describe("hardening", () => {
       code = "SQLITE_ERROR";
     }
     const boom = createApp(db, {
-      inviteCode: () => {
+      teamForCode: singleTeamCodes(ensureSingleTeam(db), () => {
         throw new SqliteLikeError("secret-internal-detail /path/to/db");
-      },
+      }),
       logError,
     });
     const res = await boom.request("/api/register", {
@@ -297,9 +274,9 @@ describe("hardening", () => {
     for (const value of thrown) {
       logged = [];
       const boom = createApp(db, {
-        inviteCode: () => {
+        teamForCode: singleTeamCodes(ensureSingleTeam(db), () => {
           throw value;
-        },
+        }),
         logError,
       });
       const res = await boom.request("/api/register", { method: "POST", body: JSON.stringify(goodReg()) });
@@ -479,7 +456,7 @@ describe("GET /api/stats", () => {
     await post("/api/usage", { records: [record({ total: 10 })] }, bearer(ann.token));
     await post("/api/usage", { records: [record({ output: 91, total: 99 })] }, bearer(bob.token));
     const cookie = { Cookie: sessionCookie(await login()) };
-    const demoApp = createApp(db, { inviteCode: () => INVITE, demo: true });
+    const demoApp = createApp(db, { teamForCode: singleTeamCodes(ensureSingleTeam(db), () => INVITE), demoTeamId: ensureSingleTeam(db) });
     const hashes = (db.prepare("select token_hash as h from machines").all() as { h: string }[]).map((r) => r.h);
     const responses = [
       await getStatsReq(`${RANGE}&member=${bob.memberId}`, cookie),
@@ -544,7 +521,7 @@ describe("GET /api/stats", () => {
   });
 
   test("demo mode needs no auth, and member=me is 400", async () => {
-    const demoApp = createApp(db, { inviteCode: () => INVITE, demo: true });
+    const demoApp = createApp(db, { teamForCode: singleTeamCodes(ensureSingleTeam(db), () => INVITE), demoTeamId: ensureSingleTeam(db) });
     expect((await demoApp.request(`/api/stats?${RANGE}`)).status).toBe(200);
     expect((await demoApp.request(`/api/stats?${RANGE}&member=me`)).status).toBe(400);
     expect((await demoApp.request("/api/stats?from=x&to=y")).status).toBe(400);
@@ -553,7 +530,7 @@ describe("GET /api/stats", () => {
 
 describe("failed-attempt limiting", () => {
   const limited = (clock: { t: number }) =>
-    createApp(db, { inviteCode: () => INVITE, now: () => clock.t });
+    createApp(db, { teamForCode: singleTeamCodes(ensureSingleTeam(db), () => INVITE), now: () => clock.t });
   const attempt = (a: ReturnType<typeof createApp>, path: string, code: string, headers: Record<string, string> = {}) =>
     a.request(path, {
       method: "POST",
@@ -587,7 +564,7 @@ describe("failed-attempt limiting", () => {
 
   test("clients are keyed by the clientKey option, not by any header", async () => {
     const a = createApp(db, {
-      inviteCode: () => INVITE,
+      teamForCode: singleTeamCodes(ensureSingleTeam(db), () => INVITE),
       now: () => 1,
       clientKey: (c) => c.req.header("X-Test-Client") ?? "none",
     });

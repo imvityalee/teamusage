@@ -12,6 +12,7 @@ import { getInviteCode, getStoredInviteCode, openDb, setSetting, type Db } from 
 import { seedDemo } from "./demo.js";
 import { isMain } from "./entry.js";
 import { clientKeyFrom } from "./limiter.js";
+import { ensureSingleTeam, singleTeamCodes } from "./teams.js";
 
 export interface ServerConfig {
   port: number;
@@ -130,9 +131,10 @@ export function buildServer(config: ServerConfig, opts: { webRoot?: string } = {
   // Lets `teamusage-admin`, which runs without the server's environment, know the code is pinned.
   setSetting(db, "invite_pinned", fromEnv ? "1" : "0");
 
+  const teamId = ensureSingleTeam(db);
   const api = createApp(db, {
-    inviteCode,
-    demo: config.demo,
+    teamForCode: singleTeamCodes(teamId, inviteCode),
+    demoTeamId: config.demo ? teamId : undefined,
     clientKey: (c) => {
       let remote: string | undefined;
       try {

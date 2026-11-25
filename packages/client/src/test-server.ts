@@ -4,6 +4,7 @@ import type { AddressInfo } from "node:net";
 import { serve } from "@hono/node-server";
 import { createApp } from "../../server/src/app.js";
 import { openDb, type Db } from "../../server/src/db.js";
+import { ensureSingleTeam, singleTeamCodes } from "../../server/src/teams.js";
 
 export interface TestServer {
   url: string;
@@ -13,7 +14,7 @@ export interface TestServer {
 
 export async function startServer(inviteCode: string): Promise<TestServer> {
   const db = openDb(":memory:");
-  const app = createApp(db, { inviteCode: () => inviteCode });
+  const app = createApp(db, { teamForCode: singleTeamCodes(ensureSingleTeam(db), () => inviteCode) });
   const server = await new Promise<Server>((resolve) => {
     const s = serve({ fetch: app.fetch, port: 0, hostname: "127.0.0.1" }, () => resolve(s as Server));
   });

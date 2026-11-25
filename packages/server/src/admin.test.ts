@@ -6,7 +6,9 @@ import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import { afterEach, describe, expect, test } from "vitest";
 import { createApp } from "./app.js";
-import { createSession, getInviteCode, hasSession, openDb, registerMachine, setSetting, type Db } from "./db.js";
+import { getInviteCode, openDb, registerMachine, setSetting, type Db } from "./db.js";
+import { createSession, findSession } from "./sessions.js";
+import { ensureSingleTeam, singleTeamCodes } from "./teams.js";
 import { runAdmin } from "./admin.js";
 
 const M1 = "a".repeat(32);
@@ -85,8 +87,8 @@ describe("runAdmin", () => {
   test("rotate-invite prints a new code once and ends sessions", async () => {
     const { db } = setup();
     const old = getInviteCode(db);
-    const session = createSession(db);
-    expect(hasSession(db, session)).toBe(true);
+    const session = createSession(db, ensureSingleTeam(db));
+    expect(findSession(db, session)).not.toBeNull();
     const r = run(db, ["rotate-invite"]);
     expect(r.code).toBe(0);
     const fresh = getInviteCode(db);
@@ -94,9 +96,9 @@ describe("runAdmin", () => {
     expect(r.text).toContain(fresh);
     expect(r.text.split(fresh)).toHaveLength(2);
     expect(r.text).not.toContain(old);
-    expect(hasSession(db, session)).toBe(false);
+    expect(findSession(db, session)).toBeNull();
     // The running app reads the code per request, so rotation takes effect without a restart.
-    const app = createApp(db, { inviteCode: () => getInviteCode(db) });
+    const app = createApp(db, { teamForCode: singleTeamCodes(ensureSingleTeam(db), () => getInviteCode(db)) });
     const res = await app.request("/api/login", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -110,7 +112,7 @@ describe("runAdmin", () => {
     expect(run(db, ["show-invite"]).text).toContain("not generated an invite code yet");
     expect(run(db, ["show-invite"]).code).toBe(1);
     const code = getInviteCode(db);
-    const session = createSession(db);
+    const session = createSession(db, ensureSingleTeam(db));
     const r = run(db, ["show-invite"]);
     expect(r.code).toBe(0);
     expect(r.text).toBe(code);
@@ -152,7 +154,7 @@ describe("runAdmin", () => {
 
   test("rotate-invite refuses when the env pins the code", () => {
     const { db } = setup();
-    const session = createSession(db);
+    const session = createSession(db, ensureSingleTeam(db));
     const before = getInviteCode(db);
     const r = run(db, ["rotate-invite"], { TEAMUSAGE_INVITE_CODE: "pinned-secret-code" });
     expect(r.code).toBe(1);
@@ -160,7 +162,7 @@ describe("runAdmin", () => {
     expect(r.text).toContain("restart");
     expect(r.text).not.toContain("pinned-secret-code");
     expect(getInviteCode(db)).toBe(before);
-    expect(hasSession(db, session)).toBe(true);
+    expect(findSession(db, session)).not.toBeNull();
   });
 });
 

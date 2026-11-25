@@ -1,4 +1,3 @@
-import { createHash, timingSafeEqual } from "node:crypto";
 import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { getCookie, setCookie } from "hono/cookie";
@@ -18,24 +17,17 @@ import {
   parsePlanKey,
   validateBatch,
 } from "@teamusage/shared";
-import { authenticate, createSession, hasSession, MachineOwnedError, registerMachine, upsertUsage, type Db } from "./db.js";
+import type { Db } from "./db.js";
 import { createLimiter } from "./limiter.js";
+import { createSession, findSession } from "./sessions.js";
 import { getStats } from "./stats.js";
-import { forTeam } from "./team-data.js";
-import { ensureSingleTeam } from "./teams.js";
+import { authenticate, forTeam, MachineOwnedError, type MachineIdentity } from "./team-data.js";
 
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
 const MACHINE_ID = /^[a-f0-9]{32}$/;
 const BEARER = /^Bearer (\S+)$/;
 const SESSION_COOKIE = "tu_session";
 const SESSION_MAX_AGE_S = 30 * 24 * 60 * 60;
-
-const digest = (s: string): Buffer => createHash("sha256").update(s).digest();
-
-/** Constant-time: both sides are hashed first, so neither content nor length leaks through timing. */
-function safeEqual(a: string, b: string): boolean {
-  return timingSafeEqual(digest(a), digest(b));
-}
 
 /**
  * Parses repeated `agent`, `model` (`<agent>:<model>`, split on the first colon) and `account` (an account key,
@@ -112,8 +104,10 @@ const MEMBER_ID = /^[1-9][0-9]{0,9}$/;
 export function createApp(
   db: Db,
   opts: {
-    inviteCode: () => string;
-    demo?: boolean;
+    /** The team an invite code opens, or null when it opens none. */
+    teamForCode: (code: unknown) => number | null;
+    /** Demo mode: stats of this team are open to everyone. */
+    demoTeamId?: number;
     now?: () => number;
     /** Identifies the client for failed-attempt limiting. No request header is trusted by default. */
     clientKey?: (c: Context) => string;
@@ -134,11 +128,19 @@ export function createApp(
     return fail(c, 429, "too many attempts");
   };
 
-  /** Checks the invite code; a wrong one counts as a failed attempt. */
-  const inviteOk = (c: Context, given: unknown): boolean => {
-    if (typeof given === "string" && safeEqual(given, opts.inviteCode())) return true;
-    limiter.fail(clientKey(c));
-    return false;
+  /** The team the invite code opens; a code that opens none counts as a failed attempt. */
+  const teamOfInvite = (c: Context, given: unknown): number | null => {
+    const teamId = opts.teamForCode(given);
+    if (teamId === null) limiter.fail(clientKey(c));
+    return teamId;
+  };
+
+  /** The team a stats request reads: the demo team, else a presented token's, else the session's; null when none. */
+  const statsTeam = (token: string | undefined, who: MachineIdentity | null, sessionId: string | undefined): number | null => {
+    if (opts.demoTeamId !== undefined) return opts.demoTeamId;
+    // A presented bearer token must be valid; it wins over a cookie, but a bad one is never rescued by a cookie.
+    if (token !== undefined) return who?.teamId ?? null;
+    return sessionId ? (findSession(db, sessionId)?.teamId ?? null) : null;
   };
 
   app.use(
@@ -162,11 +164,12 @@ export function createApp(
     const body = await readJson(c);
     if (body === undefined) return fail(c, 400, "invalid JSON body");
     if (!isObject(body)) return fail(c, 400, "body must be an object");
-    if (!inviteOk(c, body.inviteCode)) return fail(c, 403, "invalid invite code");
+    const teamId = teamOfInvite(c, body.inviteCode);
+    if (teamId === null) return fail(c, 403, "invalid invite code");
     const input = parseRegister(body);
     if (typeof input === "string") return fail(c, 400, input);
     try {
-      return c.json(registerMachine(db, input));
+      return c.json(forTeam(db, teamId).registerMachine(input));
     } catch (err) {
       if (err instanceof MachineOwnedError) return fail(c, 409, "machine already registered to another member");
       throw err;
@@ -182,7 +185,7 @@ export function createApp(
     if (body === undefined) return fail(c, 400, "invalid JSON body");
     const batch = validateBatch(body);
     if (!batch.ok) return fail(c, 400, batch.error);
-    return c.json(upsertUsage(db, who, batch.records));
+    return c.json(forTeam(db, who.teamId).upsertUsage(who, batch.records));
   });
 
   app.post("/api/login", async (c) => {
@@ -192,9 +195,10 @@ export function createApp(
     const body = await readJson(c);
     if (body === undefined) return fail(c, 400, "invalid JSON body");
     if (!isObject(body)) return fail(c, 400, "body must be an object");
-    if (!inviteOk(c, body.inviteCode)) return fail(c, 403, "invalid invite code");
+    const teamId = teamOfInvite(c, body.inviteCode);
+    if (teamId === null) return fail(c, 403, "invalid invite code");
     const https = new URL(c.req.url).protocol === "https:" || forwardedProto(c) === "https";
-    setCookie(c, SESSION_COOKIE, createSession(db), {
+    setCookie(c, SESSION_COOKIE, createSession(db, teamId), {
       httpOnly: true,
       sameSite: "Lax",
       path: "/",
@@ -208,10 +212,8 @@ export function createApp(
     c.header("Cache-Control", "no-store");
     const token = BEARER.exec(c.req.header("Authorization") ?? "")?.[1];
     const who = token ? authenticate(db, token) : null;
-    const sessionId = getCookie(c, SESSION_COOKIE);
-    // A presented bearer token must be valid; it wins over a cookie, but a bad one is never rescued by a cookie.
-    const allowed = opts.demo === true || (token !== undefined ? who !== null : !!sessionId && hasSession(db, sessionId));
-    if (!allowed) return fail(c, 401, "unauthorized");
+    const teamId = statsTeam(token, who, getCookie(c, SESSION_COOKIE));
+    if (teamId === null) return fail(c, 401, "unauthorized");
 
     const { from, to, member } = c.req.query();
     // Repeated parameters are ambiguous, so they are rejected rather than resolved by position.
@@ -222,11 +224,10 @@ export function createApp(
     const filters = parseFilters(c.req.queries("agent"), c.req.queries("model"), c.req.queries("account"), c.req.queries("plan"));
     if (!filters) return fail(c, 400, "invalid query");
     const range = { from, to, ...filters };
-    const teamId = ensureSingleTeam(db);
     if (member === undefined) return c.json(getStats(db, teamId, range));
     if (member === "me") {
       // `me` is the token's member; a cookie or demo session has no member of its own.
-      if (!who || opts.demo) return fail(c, 400, "invalid member");
+      if (!who || opts.demoTeamId !== undefined) return fail(c, 400, "invalid member");
       return c.json(getStats(db, teamId, { ...range, memberId: who.memberId }));
     }
     if (!MEMBER_ID.test(member)) return fail(c, 400, "invalid query");

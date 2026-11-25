@@ -53,23 +53,6 @@ export function rotateInviteCode(db: Db): string {
   return code;
 }
 
-const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-
-export function createSession(db: Db): string {
-  const id = randomBytes(32).toString("hex");
-  // Expired sessions are useless; dropping them here keeps the table from growing without bound.
-  db.prepare("delete from sessions where created_at < ?").run(new Date(Date.now() - SESSION_TTL_MS).toISOString());
-  db.prepare("insert into sessions (id, team_id, created_at) values (?, ?, ?)").run(sha256(id), ensureSingleTeam(db), now());
-  return id;
-}
-
-export function hasSession(db: Db, id: string, now: Date = new Date()): boolean {
-  const row = db.prepare("select created_at from sessions where id = ?").get(sha256(id)) as
-    | { created_at: string }
-    | undefined;
-  return row !== undefined && now.getTime() - Date.parse(row.created_at) <= SESSION_TTL_MS;
-}
-
 /** The data of the one team of a self-hosted server. */
 const singleTeam = (db: Db): TeamData => forTeam(db, ensureSingleTeam(db));
 
