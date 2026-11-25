@@ -231,6 +231,20 @@ describe("openServerDb", () => {
     ro.close();
   });
 
+  test("a database whose upgrade fails prints the server's line, without the cause's message, and is left as it was", () => {
+    const file = tmpFile();
+    const db = openDb(file);
+    // Step 4 adds teams.code_hash, which this file already has, so the step fails.
+    db.pragma("user_version = 3");
+    db.close();
+    const lines: string[] = [];
+    expect(openServerDb(file, (l) => lines.push(l))).toBeNull();
+    expect(lines).toEqual(["teamusage: upgrade step 4 of the database failed and was rolled back (SQLITE_ERROR)"]);
+    const ro = new Database(file, { readonly: true });
+    expect(ro.pragma("user_version", { simple: true })).toBe(3);
+    ro.close();
+  });
+
   test("a missing file prints where it looked and is not created", () => {
     const file = tmpFile();
     const lines: string[] = [];

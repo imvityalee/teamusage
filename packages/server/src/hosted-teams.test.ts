@@ -6,6 +6,7 @@ import {
   createHostedTeam,
   hostedTeamCodes,
   MAX_TEAMS_PER_USER,
+  opensWithCode,
   roleIn,
   TeamLimitError,
   teamById,
@@ -128,6 +129,11 @@ test("a team keeps its dashboard access", () => {
   const { team } = make({ dashboardAccess: "admins" });
   expect(team.dashboardAccess).toBe("admins");
   expect(teamByPublicId(db, team.publicId)).toEqual(team);
+});
+test("opensWithCode is true only for a team that exists and opens its dashboard with its code", () => {
+  const open = make({ dashboardAccess: "code" }).team;
+  const admins = make({ dashboardAccess: "admins" }).team;
+  expect([opensWithCode(db, open.id), opensWithCode(db, admins.id), opensWithCode(db, admins.id + 1)]).toEqual([true, false, false]);
 });
 test("teamsOf lists the user's teams with each role, by name and then public id", () => {
   const [z, a1, a2] = [make({ name: "Zeta" }), make({ name: "Alpha" }), make({ name: "Alpha" })];

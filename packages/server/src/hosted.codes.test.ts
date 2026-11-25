@@ -173,6 +173,15 @@ describe("stats", () => {
     expect(res.status).toBe(401);
     expect(await res.json()).toEqual({ error: "unauthorized" });
   });
+  test("a team session whose team is gone is 401", async () => {
+    const cookie = await teamSessionOf(a.code);
+    // Without the cascade the session row outlives its team, as it would if a deletion missed it.
+    db.pragma("foreign_keys = OFF");
+    db.prepare("delete from teams where id = ?").run(a.team.id);
+    const res = await stats({ Cookie: cookie });
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "unauthorized" });
+  });
   test("a repeated team is 400 for every caller", async () => {
     const twice = `&team=${a.team.publicId}&team=${a.team.publicId}`;
     const callers: Record<string, string>[] = [

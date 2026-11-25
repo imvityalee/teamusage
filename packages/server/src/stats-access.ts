@@ -1,5 +1,5 @@
 import type { Db } from "./db.js";
-import { roleIn, teamById, teamByPublicId } from "./hosted-teams.js";
+import { opensWithCode, roleIn, teamByPublicId } from "./hosted-teams.js";
 import type { Session } from "./sessions.js";
 import type { MachineIdentity } from "./team-data.js";
 
@@ -14,9 +14,6 @@ const UNAUTHORIZED: StatsAccess = { ok: false, status: 401, error: "unauthorized
 const INVALID_TEAM: StatsAccess = { ok: false, status: 400, error: "invalid query" };
 /** The one answer for a team that does not exist and for a team the caller has no role in. */
 const TEAM_NOT_FOUND: StatsAccess = { ok: false, status: 404, error: "team not found" };
-
-/** True when the team's numbers are open to everyone who holds its code. */
-const openWithCode = (db: Db, teamId: number): boolean => teamById(db, teamId)?.dashboardAccess === "code";
 
 /** The team named by public id in which the GitHub user has a role; any other team is not found. */
 function userAccess(db: Db, githubId: number, teamParam: string | undefined): StatsAccess {
@@ -41,11 +38,11 @@ export function statsAccess(
   // A presented bearer token must be valid; it wins over a cookie, but a bad one is never rescued by a cookie.
   if (a.token !== undefined) {
     if (a.who === null) return UNAUTHORIZED;
-    return { ok: true, teamId: a.who.teamId, member: a.who, teamNumbers: openWithCode(db, a.who.teamId) };
+    return { ok: true, teamId: a.who.teamId, member: a.who, teamNumbers: opensWithCode(db, a.who.teamId) };
   }
   const { session } = a;
   if (session?.kind === "team") {
-    return openWithCode(db, session.teamId) ? { ok: true, teamId: session.teamId, member: null, teamNumbers: true } : UNAUTHORIZED;
+    return opensWithCode(db, session.teamId) ? { ok: true, teamId: session.teamId, member: null, teamNumbers: true } : UNAUTHORIZED;
   }
   if (session?.kind === "user") return userAccess(db, session.githubId, a.teamParam);
   return UNAUTHORIZED;

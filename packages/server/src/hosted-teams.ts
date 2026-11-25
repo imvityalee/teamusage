@@ -80,6 +80,11 @@ export function teamById(db: Db, teamId: number): TeamInfo | null {
   return (db.prepare(`select ${TEAM_COLUMNS} from teams where id = ?`).get(teamId) as TeamInfo | undefined) ?? null;
 }
 
+/** True exactly when the team exists and its dashboard opens with its code; an admins-only or missing team is false. */
+export function opensWithCode(db: Db, teamId: number): boolean {
+  return teamById(db, teamId)?.dashboardAccess === "code";
+}
+
 export function roleIn(db: Db, teamId: number, githubId: number): Role | null {
   const row = db
     .prepare("select r.role from team_roles r join users u on u.id = r.user_id where r.team_id = ? and u.github_id = ?")

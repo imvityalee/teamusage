@@ -22,6 +22,7 @@ export function machineRoutes(app: Hono, ctx: RouteContext): void {
   const { db, teamOfInvite } = ctx;
 
   app.post("/api/register", async (c) => {
+    c.header("Cache-Control", "no-store");
     const entry = await teamOfInvite(c);
     if (entry instanceof Response) return entry;
     const input = parseRegister(entry.body);
@@ -35,6 +36,7 @@ export function machineRoutes(app: Hono, ctx: RouteContext): void {
   });
 
   app.post("/api/usage", async (c) => {
+    c.header("Cache-Control", "no-store");
     const token = bearerToken(c);
     // Identity comes only from the token; nothing in the body can influence it.
     const who = token ? authenticate(db, token) : null;

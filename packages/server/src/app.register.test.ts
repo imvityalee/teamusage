@@ -21,6 +21,12 @@ describe("POST /api/register", () => {
     expect(await res.json()).toEqual({ error: "invalid invite code" });
   });
 
+  test("every answer is no-store, the one with the token included", async () => {
+    const answers = [await post("/api/register", goodReg()), await post("/api/register", goodReg({ inviteCode: "nope" }))];
+    expect(answers.map((r) => r.status)).toEqual([200, 403]);
+    for (const r of answers) expect(r.headers.get("cache-control")).toBe("no-store");
+  });
+
   test("invite code of a different length or non-string -> 403 without throwing", async () => {
     expect((await post("/api/register", goodReg({ inviteCode: "" }))).status).toBe(403);
     expect((await post("/api/register", goodReg({ inviteCode: INVITE + "x" }))).status).toBe(403);

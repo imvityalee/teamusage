@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { getSetting, getStoredInviteCode, openDb, type Db } from "./db.js";
 import { isHostedDatabase } from "./db-mode.js";
 import { isMain } from "./entry.js";
-import { NewerSchemaError } from "./migrate.js";
+import { NewerSchemaError, UpgradeFailedError } from "./migrate.js";
 import { openFailureMessage } from "./open-failure.js";
 import { forTeam } from "./team-data.js";
 import { ensureSingleTeam, rotateInviteCode } from "./teams.js";
@@ -137,7 +137,7 @@ export function openServerDb(file: string, printError: (line: string) => void): 
   try {
     return openDb(file);
   } catch (err) {
-    if (!(err instanceof NewerSchemaError)) throw err;
+    if (!(err instanceof NewerSchemaError || err instanceof UpgradeFailedError)) throw err;
     printError(openFailureMessage(err));
     return null;
   }

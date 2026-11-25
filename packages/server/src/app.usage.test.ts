@@ -60,6 +60,13 @@ describe("POST /api/usage", () => {
     expect(usageCount()).toBe(1);
   });
 
+  test("every answer is no-store", async () => {
+    const { token } = await register();
+    const answers = [await post("/api/usage", { records: [record()] }, bearer(token)), await post("/api/usage", { records: [record()] })];
+    expect(answers.map((r) => r.status)).toEqual([200, 401]);
+    for (const r of answers) expect(r.headers.get("cache-control")).toBe("no-store");
+  });
+
   test("lower total for the same day is kept, not stored", async () => {
     const { token } = await register();
     await post("/api/usage", { records: [record()] }, bearer(token));
