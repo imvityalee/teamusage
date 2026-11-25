@@ -20,7 +20,9 @@ import {
 } from "@teamusage/shared";
 import { authenticate, createSession, hasSession, MachineOwnedError, registerMachine, upsertUsage, type Db } from "./db.js";
 import { createLimiter } from "./limiter.js";
-import { getStats, memberExists } from "./stats.js";
+import { getStats } from "./stats.js";
+import { forTeam } from "./team-data.js";
+import { ensureSingleTeam } from "./teams.js";
 
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
 const MACHINE_ID = /^[a-f0-9]{32}$/;
@@ -220,17 +222,18 @@ export function createApp(
     const filters = parseFilters(c.req.queries("agent"), c.req.queries("model"), c.req.queries("account"), c.req.queries("plan"));
     if (!filters) return fail(c, 400, "invalid query");
     const range = { from, to, ...filters };
-    if (member === undefined) return c.json(getStats(db, range));
+    const teamId = ensureSingleTeam(db);
+    if (member === undefined) return c.json(getStats(db, teamId, range));
     if (member === "me") {
       // `me` is the token's member; a cookie or demo session has no member of its own.
       if (!who || opts.demo) return fail(c, 400, "invalid member");
-      return c.json(getStats(db, { ...range, memberId: who.memberId }));
+      return c.json(getStats(db, teamId, { ...range, memberId: who.memberId }));
     }
     if (!MEMBER_ID.test(member)) return fail(c, 400, "invalid query");
     const memberId = Number(member);
     if (!Number.isSafeInteger(memberId)) return fail(c, 400, "invalid query");
-    if (!memberExists(db, memberId)) return fail(c, 404, "member not found");
-    return c.json(getStats(db, { ...range, memberId }));
+    if (!forTeam(db, teamId).memberExists(memberId)) return fail(c, 404, "member not found");
+    return c.json(getStats(db, teamId, { ...range, memberId }));
   });
 
   return app;

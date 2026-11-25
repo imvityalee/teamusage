@@ -3,6 +3,7 @@ import { validateBatch } from "@teamusage/shared";
 import { openDb } from "./db.js";
 import { seedDemo } from "./demo.js";
 import { getStats } from "./stats.js";
+import { ensureSingleTeam } from "./teams.js";
 
 const TODAY = "2026-11-18";
 const FROM = "2026-08-21";
@@ -13,13 +14,13 @@ describe("seedDemo", () => {
     const b = openDb(":memory:");
     seedDemo(a, TODAY);
     seedDemo(b, TODAY);
-    expect(getStats(a, { from: "2026-05-23", to: TODAY })).toEqual(getStats(b, { from: "2026-05-23", to: TODAY }));
+    expect(getStats(a, ensureSingleTeam(a), { from: "2026-05-23", to: TODAY })).toEqual(getStats(b, ensureSingleTeam(b), { from: "2026-05-23", to: TODAY }));
   });
 
   test("seeds 6 members, 4 agents and a cost over 90 days", () => {
     const db = openDb(":memory:");
     seedDemo(db, TODAY);
-    const s = getStats(db, { from: FROM, to: TODAY });
+    const s = getStats(db, ensureSingleTeam(db), { from: FROM, to: TODAY });
     expect(s.members).toHaveLength(6);
     expect(s.members.every((m) => m.email.endsWith("@example.com"))).toBe(true);
     expect(new Set(s.models.map((m) => m.agent))).toEqual(new Set(["claude", "codex", "gemini", "opencode"]));
@@ -39,7 +40,7 @@ describe("seedDemo", () => {
   test("weekends are quieter than weekdays", () => {
     const db = openDb(":memory:");
     seedDemo(db, TODAY);
-    const s = getStats(db, { from: FROM, to: TODAY });
+    const s = getStats(db, ensureSingleTeam(db), { from: FROM, to: TODAY });
     const avg = (weekend: boolean) => {
       const days = s.daily.filter((d) => [0, 6].includes(new Date(`${d.date}T00:00:00Z`).getUTCDay()) === weekend);
       return days.reduce((n, d) => n + Object.values(d.byAgent).reduce((x, y) => x + y, 0), 0) / days.length;
@@ -82,7 +83,7 @@ describe("seedDemo", () => {
   test("includes Codex accounts and plans", () => {
     const db = openDb(":memory:");
     seedDemo(db, TODAY);
-    const s = getStats(db, { from: FROM, to: TODAY });
+    const s = getStats(db, ensureSingleTeam(db), { from: FROM, to: TODAY });
     expect(s.available.accounts.some((a) => a.key.startsWith("chatgpt:"))).toBe(true);
     expect(s.available.accounts.some((a) => a.key === "other")).toBe(true);
     expect(s.available.plans.some((p) => p.key.startsWith("codex:"))).toBe(true);
