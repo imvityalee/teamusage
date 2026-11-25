@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import Database from "better-sqlite3";
 import { expect, test } from "vitest";
 import { openDb, type Db } from "./db.js";
@@ -18,6 +21,55 @@ test("a 0.1 database without account columns gets them", () => {
   migrate(db);
   const cols = (db.prepare("pragma table_info(usage)").all() as { name: string }[]).map((c) => c.name);
   expect(cols).toEqual(expect.arrayContaining(["account_kind", "account_org", "account_plan"]));
+});
+test("adds columns to an old database", () => {
+  const dir = mkdtempSync(join(tmpdir(), "tu-"));
+  const file = join(dir, "old.db");
+  const old = new Database(file);
+  old.exec(`
+    create table members (id integer primary key autoincrement, email text not null unique, name text not null, created_at text not null);
+    create table machines (id text primary key, member_id integer not null references members(id) on delete cascade, label text not null, token_hash text not null unique, created_at text not null, last_sync_at text);
+    create table usage (member_id integer not null, machine_id text not null, date text not null, agent text not null, model text not null,
+      input integer not null, output integer not null, cache_create integer not null, cache_read integer not null, total integer not null,
+      cost_usd real not null, unpriced integer not null, primary key (machine_id, date, agent, model));
+    insert into members values (1, 'a@example.com', 'A', 't');
+    insert into machines values ('m1', 1, 'mbp', 'h', 't', null);
+    insert into usage values (1, 'm1', '2026-11-17', 'claude', 'x', 1, 0, 0, 0, 1, 0, 0);
+  `);
+  old.close();
+  openDb(file).close();
+  const again = openDb(file);
+  const cols = (again.prepare("pragma table_info(usage)").all() as { name: string }[]).map((c) => c.name);
+  expect(cols).toContain("account_kind");
+  expect(cols).toContain("account_org");
+  expect(again.prepare("select account_kind, account_org from usage").get()).toEqual({
+    account_kind: null,
+    account_org: null,
+  });
+  again.close();
+  rmSync(dir, { recursive: true });
+});
+test("adds account_plan to an old database", () => {
+  const dir = mkdtempSync(join(tmpdir(), "tu-"));
+  const file = join(dir, "old03.db");
+  const old = new Database(file);
+  old.exec(`
+    create table members (id integer primary key autoincrement, email text not null unique, name text not null, created_at text not null);
+    create table machines (id text primary key, member_id integer not null references members(id) on delete cascade, label text not null, token_hash text not null unique, created_at text not null, last_sync_at text);
+    create table usage (member_id integer not null, machine_id text not null, date text not null, agent text not null, model text not null,
+      input integer not null, output integer not null, cache_create integer not null, cache_read integer not null, total integer not null,
+      cost_usd real not null, unpriced integer not null, account_kind text, account_org text, primary key (machine_id, date, agent, model));
+    insert into members values (1, 'a@example.com', 'A', 't');
+    insert into machines values ('m1', 1, 'mbp', 'h', 't', null);
+    insert into usage values (1, 'm1', '2026-11-17', 'claude', 'x', 1, 0, 0, 0, 1, 0, 0, 'team', 'D');
+  `);
+  old.close();
+  const again = openDb(file);
+  const cols = (again.prepare("pragma table_info(usage)").all() as { name: string }[]).map((c) => c.name);
+  expect(cols).toContain("account_plan");
+  expect(again.prepare("select account_plan from usage").get()).toEqual({ account_plan: null });
+  again.close();
+  rmSync(dir, { recursive: true });
 });
 test("migrating twice changes nothing", () => {
   const db = legacy();

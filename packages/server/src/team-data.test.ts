@@ -1,39 +1,13 @@
 import { createHash } from "node:crypto";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import Database from "better-sqlite3";
 import { beforeEach, describe, expect, test } from "vitest";
-import type { UsageRecord } from "@teamusage/shared";
 import { openDb, type Db } from "./db.js";
-import { authenticate, forTeam, MachineOwnedError, type TeamData } from "./team-data.js";
-import { createTeam, ensureSingleTeam } from "./teams.js";
+import { authenticate, forTeam, type TeamData } from "./team-data.js";
+import { rec, reg } from "./team-data.fixture.js";
+import { ensureSingleTeam } from "./teams.js";
 
 let db: Db;
 beforeEach(() => {
   db = openDb(":memory:");
-});
-
-const reg = (machineId: string, over: Partial<Parameters<TeamData["registerMachine"]>[0]> = {}) => ({
-  name: "A",
-  email: "a@example.com",
-  machineId,
-  machineLabel: "mbp",
-  ...over,
-});
-
-const rec = (over: Partial<UsageRecord> = {}): UsageRecord => ({
-  date: "2026-11-01",
-  agent: "claude",
-  model: "opus",
-  input: 10,
-  output: 0,
-  cacheCreate: 0,
-  cacheRead: 0,
-  total: 10,
-  costUsd: 1,
-  unpriced: false,
-  ...over,
 });
 
 /** The team of a self-hosted server, as db.ts reaches it. */
@@ -80,6 +54,12 @@ describe("registration", () => {
     const row = db.prepare("select * from machines").get() as Record<string, unknown>;
     expect(Object.values(row)).not.toContain(token);
     expect(row.token_hash).toBe(createHash("sha256").update(token).digest("hex"));
+  });
+
+  test("memberExists", () => {
+    const { memberId } = team().registerMachine(reg("m1"));
+    expect(team().memberExists(memberId)).toBe(true);
+    expect(team().memberExists(999999)).toBe(false);
   });
 });
 
@@ -203,34 +183,6 @@ describe("account label", () => {
     team().upsertUsage(who, [rec({ ...base, total: 50, account: { kind: "personal" } })]);
     expect(label()).toMatchObject({ account_kind: "team", account_org: "D", total: 100 });
   });
-
-  test("adds columns to an old database", () => {
-    const dir = mkdtempSync(join(tmpdir(), "tu-"));
-    const file = join(dir, "old.db");
-    const old = new Database(file);
-    old.exec(`
-      create table members (id integer primary key autoincrement, email text not null unique, name text not null, created_at text not null);
-      create table machines (id text primary key, member_id integer not null references members(id) on delete cascade, label text not null, token_hash text not null unique, created_at text not null, last_sync_at text);
-      create table usage (member_id integer not null, machine_id text not null, date text not null, agent text not null, model text not null,
-        input integer not null, output integer not null, cache_create integer not null, cache_read integer not null, total integer not null,
-        cost_usd real not null, unpriced integer not null, primary key (machine_id, date, agent, model));
-      insert into members values (1, 'a@example.com', 'A', 't');
-      insert into machines values ('m1', 1, 'mbp', 'h', 't', null);
-      insert into usage values (1, 'm1', '2026-11-17', 'claude', 'x', 1, 0, 0, 0, 1, 0, 0);
-    `);
-    old.close();
-    openDb(file).close();
-    const again = openDb(file);
-    const cols = (again.prepare("pragma table_info(usage)").all() as { name: string }[]).map((c) => c.name);
-    expect(cols).toContain("account_kind");
-    expect(cols).toContain("account_org");
-    expect(again.prepare("select account_kind, account_org from usage").get()).toEqual({
-      account_kind: null,
-      account_org: null,
-    });
-    again.close();
-    rmSync(dir, { recursive: true });
-  });
 });
 
 describe("account plan", () => {
@@ -245,29 +197,6 @@ describe("account plan", () => {
       account_org: string | null;
       account_plan: string | null;
     };
-
-  test("adds account_plan to an old database", () => {
-    const dir = mkdtempSync(join(tmpdir(), "tu-"));
-    const file = join(dir, "old03.db");
-    const old = new Database(file);
-    old.exec(`
-      create table members (id integer primary key autoincrement, email text not null unique, name text not null, created_at text not null);
-      create table machines (id text primary key, member_id integer not null references members(id) on delete cascade, label text not null, token_hash text not null unique, created_at text not null, last_sync_at text);
-      create table usage (member_id integer not null, machine_id text not null, date text not null, agent text not null, model text not null,
-        input integer not null, output integer not null, cache_create integer not null, cache_read integer not null, total integer not null,
-        cost_usd real not null, unpriced integer not null, account_kind text, account_org text, primary key (machine_id, date, agent, model));
-      insert into members values (1, 'a@example.com', 'A', 't');
-      insert into machines values ('m1', 1, 'mbp', 'h', 't', null);
-      insert into usage values (1, 'm1', '2026-11-17', 'claude', 'x', 1, 0, 0, 0, 1, 0, 0, 'team', 'D');
-    `);
-    old.close();
-    const again = openDb(file);
-    const cols = (again.prepare("pragma table_info(usage)").all() as { name: string }[]).map((c) => c.name);
-    expect(cols).toContain("account_plan");
-    expect(again.prepare("select account_plan from usage").get()).toEqual({ account_plan: null });
-    again.close();
-    rmSync(dir, { recursive: true });
-  });
 
   test("stores the plan with a new label", () => {
     team().upsertUsage(setup(), [rec({ ...base, total: 100, account: { kind: "team", org: "A", plan: "team_premium" } })]);
@@ -359,68 +288,5 @@ describe("removal", () => {
     expect(count("usage")).toBe(0);
     expect(team().listMembers()[0]!.machines.map((m) => m.id)).toEqual(["m2"]);
     expect(team().removeMachine("m1")).toBe(false);
-  });
-});
-
-describe("two teams", () => {
-  const MID = "a".repeat(32);
-  const MID2 = "b".repeat(32);
-  const usageRows = (teamId: number) => (db.prepare("select count(*) as n from usage where team_id = ?").get(teamId) as { n: number }).n;
-  let A: number, B: number, a: TeamData, b: TeamData;
-  beforeEach(() => {
-    A = createTeam(db, "A");
-    B = createTeam(db, "B");
-    a = forTeam(db, A);
-    b = forTeam(db, B);
-  });
-
-  test("the same email and machine id in two teams are two members and two machines", () => {
-    const ra = a.registerMachine(reg(MID));
-    const rb = b.registerMachine(reg(MID));
-    expect(ra.memberId).not.toBe(rb.memberId);
-    expect(authenticate(db, ra.token)).toEqual({ teamId: A, memberId: ra.memberId, machineId: MID });
-    expect(authenticate(db, rb.token)).toEqual({ teamId: B, memberId: rb.memberId, machineId: MID });
-  });
-  test("usage is stored in its own team only", () => {
-    const ra = a.registerMachine(reg(MID));
-    b.registerMachine(reg(MID));
-    a.upsertUsage({ memberId: ra.memberId, machineId: MID }, [rec()]);
-    expect([usageRows(A), usageRows(B)]).toEqual([1, 0]);
-  });
-  test("a member of another team cannot be written through this team", () => {
-    a.registerMachine(reg(MID));
-    const rb = b.registerMachine(reg(MID));
-    expect(() => a.upsertUsage({ memberId: rb.memberId, machineId: MID }, [rec()])).toThrow();
-    expect([usageRows(A), usageRows(B)]).toEqual([0, 0]);
-  });
-  test("a machine id taken by another member is refused inside a team, not across teams", () => {
-    a.registerMachine(reg(MID));
-    expect(() => a.registerMachine(reg(MID, { email: "bob@x.com" }))).toThrow(MachineOwnedError);
-    expect(() => b.registerMachine(reg(MID, { email: "bob@x.com" }))).not.toThrow();
-  });
-  test("ids that exist only in another team look unknown", () => {
-    const rb = b.registerMachine(reg(MID2, { email: "bob@x.com" }));
-    expect(a.memberExists(rb.memberId)).toBe(false);
-    expect(a.removeMachine(MID2)).toBe(false);
-    expect(a.removeMember("bob@x.com")).toBe(false);
-    expect(a.listMembers()).toEqual([]);
-    expect(b.listMembers().map((m) => m.email)).toEqual(["bob@x.com"]);
-  });
-  test("removing a member removes only that team's member, machines and usage", () => {
-    const ra = a.registerMachine(reg(MID));
-    const rb = b.registerMachine(reg(MID));
-    a.upsertUsage({ memberId: ra.memberId, machineId: MID }, [rec()]);
-    b.upsertUsage({ memberId: rb.memberId, machineId: MID }, [rec()]);
-    expect(a.removeMember("a@example.com")).toBe(true);
-    expect([usageRows(A), usageRows(B)]).toEqual([0, 1]);
-    expect(authenticate(db, ra.token)).toBeNull();
-    expect(authenticate(db, rb.token)).not.toBeNull();
-  });
-  test("a given clock stamps new rows and the last sync", () => {
-    const fixed = forTeam(db, A, () => "2026-11-24T12:00:00.000Z");
-    const r = fixed.registerMachine(reg(MID));
-    fixed.upsertUsage({ memberId: r.memberId, machineId: MID }, [rec()]);
-    expect(fixed.listMembers()[0]!.machines[0]!.lastSyncAt).toBe("2026-11-24T12:00:00.000Z");
-    expect(db.prepare("select created_at from members where id = ?").get(r.memberId)).toEqual({ created_at: "2026-11-24T12:00:00.000Z" });
   });
 });
