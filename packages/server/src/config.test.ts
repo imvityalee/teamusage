@@ -79,6 +79,8 @@ const publicUrl = (value: string): string => parseServerConfig({ ...HOSTED, TEAM
 describe("hosted settings", () => {
   test("no mode is self-hosted and reads no hosted setting", () => {
     expect(parseServerConfig({ TEAMUSAGE_GITHUB_CLIENT_ID: "x" }, [])).toMatchObject({ mode: "self-hosted", hosted: undefined });
+    const malformed = { TEAMUSAGE_PUBLIC_URL: "not a url", TEAMUSAGE_CODE_KEY: "!!", TEAMUSAGE_MAX_TEAMS: "0" };
+    expect(parseServerConfig(malformed, [])).toMatchObject({ mode: "self-hosted", hosted: undefined });
     expect(parseServerConfig({ TEAMUSAGE_MODE: "" }, []).mode).toBe("self-hosted");
     expect(parseServerConfig({ TEAMUSAGE_MODE: "self-hosted" }, []).mode).toBe("self-hosted");
   });
@@ -109,6 +111,7 @@ describe("hosted settings", () => {
   test.each([
     ["a query", "https://teamusage.example/?a=1"],
     ["a fragment", "https://teamusage.example/#x"],
+    ["a user name", "https://user@teamusage.example"],
     ["a password", "https://:pw@teamusage.example"],
     ["not a url", "teamusage.example"],
   ])("the public url refuses %s", (_name, value) => {
@@ -127,6 +130,12 @@ describe("hosted settings", () => {
     ["TEAMUSAGE_INVITE_CODE", "a".repeat(24), "TEAMUSAGE_INVITE_CODE is not used in hosted mode; each team has its own code"],
   ])("hosted mode refuses a bad %s", (key, value, message) => {
     expect(() => parseServerConfig({ ...HOSTED, [key]: value }, [])).toThrow(message);
+  });
+
+  test("hosted mode refuses an invite code before judging its format", () => {
+    expect(() => parseServerConfig({ ...HOSTED, TEAMUSAGE_INVITE_CODE: "short" }, [])).toThrow(
+      "TEAMUSAGE_INVITE_CODE is not used in hosted mode; each team has its own code",
+    );
   });
 
   test("hosted mode refuses demo mode", () => {
@@ -172,11 +181,9 @@ describe("hosted settings", () => {
   test("no message repeats a value", () => {
     const secret = "s3cr3t-value-that-must-not-leak";
     for (const key of Object.keys(HOSTED)) {
-      try {
-        parseServerConfig({ ...HOSTED, [key]: `${secret} ` }, []);
-      } catch (e) {
-        expect((e as Error).message).not.toContain(secret);
-      }
+      const run = () => parseServerConfig({ ...HOSTED, [key]: `${secret} ` }, []);
+      expect(run, key).toThrow();
+      expect(run, key).not.toThrow(secret);
     }
   });
 });

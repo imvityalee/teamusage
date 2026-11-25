@@ -85,12 +85,12 @@ function parseMode(value: string | undefined): ServerConfig["mode"] {
 export function parseServerConfig(env: Env, argv: string[]): ServerConfig {
   const mode = parseMode(env.TEAMUSAGE_MODE);
   const invite = env.TEAMUSAGE_INVITE_CODE || undefined;
-  if (invite !== undefined && (invite.length < 16 || invite.length > 128 || /[\s\x00-\x1f\x7f]/.test(invite))) {
-    throw new Error("TEAMUSAGE_INVITE_CODE must be 16 to 128 characters with no spaces");
-  }
   const demo = env.TEAMUSAGE_DEMO === "1" || argv.includes("--demo");
   if (mode === "hosted" && invite !== undefined) {
     throw new Error("TEAMUSAGE_INVITE_CODE is not used in hosted mode; each team has its own code");
+  }
+  if (invite !== undefined && (invite.length < 16 || invite.length > 128 || HAS_SPACE_OR_CONTROL.test(invite))) {
+    throw new Error("TEAMUSAGE_INVITE_CODE must be 16 to 128 characters with no spaces");
   }
   if (mode === "hosted" && demo) throw new Error("demo mode is not available in hosted mode");
   return {
