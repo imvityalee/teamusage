@@ -35,7 +35,6 @@ test("timing: 500 members, 180 days", () => {
   const dir = mkdtempSync(join(tmpdir(), "teamusage-bench-"));
   try {
     const db = openDb(join(dir, "bench.db"));
-    db.pragma("journal_mode = WAL");
     const team = createTeam(db, "Large");
     expect(seedLargeTeam(db, team, { members: 500, days: 180, today: "2026-11-24" })).toEqual({
       machines: 600,

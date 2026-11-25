@@ -25,15 +25,23 @@ export function setSetting(db: Db, key: string, value: string): void {
   ).run(key, value);
 }
 
+const INVITE_CODE = "invite_code";
+
 /** The stored invite code, or undefined when the server has not generated one yet. */
 export function getStoredInviteCode(db: Db): string | undefined {
-  return getSetting(db, "invite_code");
+  return getSetting(db, INVITE_CODE);
+}
+
+/** Stores `code` as the invite code, replacing the stored one. */
+export function storeInviteCode(db: Db, code: string): void {
+  setSetting(db, INVITE_CODE, code);
 }
 
 export function getInviteCode(db: Db, fromEnv?: string): string {
   if (fromEnv) return fromEnv;
-  db.prepare("insert into settings (key, value) values ('invite_code', ?) on conflict (key) do nothing").run(
+  db.prepare("insert into settings (key, value) values (?, ?) on conflict (key) do nothing").run(
+    INVITE_CODE,
     randomBytes(12).toString("hex"),
   );
-  return (db.prepare("select value from settings where key = 'invite_code'").get() as { value: string }).value;
+  return getStoredInviteCode(db) as string;
 }

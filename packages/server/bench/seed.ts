@@ -45,15 +45,6 @@ export function seedLargeTeam(db: Db, teamId: number, o: SeedOptions): { machine
   const team = forTeam(db, teamId, () => `${o.today}T00:00:00.000Z`);
   let machines = 0;
   let rows = 0;
-  let batch: { who: { memberId: number; machineId: string }; records: UsageRecord[] }[] = [];
-  let batchRows = 0;
-
-  const flush = () => {
-    for (const { who, records } of batch) rows += team.upsertUsage(who, records).stored;
-    batch = [];
-    batchRows = 0;
-  };
-
   for (let i = 0; i < o.members; i++) {
     const machineCount = i % 5 === 0 ? 2 : 1;
     for (let position = 0; position < machineCount; position++) {
@@ -67,13 +58,9 @@ export function seedLargeTeam(db: Db, teamId: number, o: SeedOptions): { machine
       machines++;
       const records = dates.flatMap((date, d) => dayRecords(date, i, position, d));
       for (let from = 0; from < records.length; from += BATCH_SIZE) {
-        const chunk = records.slice(from, from + BATCH_SIZE);
-        if (batchRows + chunk.length > BATCH_SIZE) flush();
-        batch.push({ who: { memberId, machineId: id }, records: chunk });
-        batchRows += chunk.length;
+        rows += team.upsertUsage({ memberId, machineId: id }, records.slice(from, from + BATCH_SIZE)).stored;
       }
     }
   }
-  flush();
   return { machines, rows };
 }

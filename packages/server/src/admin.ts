@@ -4,6 +4,8 @@ import Database from "better-sqlite3";
 import { join } from "node:path";
 import { getSetting, getStoredInviteCode, openDb, type Db } from "./db.js";
 import { isMain } from "./entry.js";
+import { NewerSchemaError } from "./migrate.js";
+import { openFailureMessage } from "./open-failure.js";
 import { forTeam } from "./team-data.js";
 import { ensureSingleTeam, rotateInviteCode } from "./teams.js";
 
@@ -35,12 +37,12 @@ export function runAdmin(
     return 2;
   };
   const [cmd, arg, ...rest] = argv;
-  const teamId = ensureSingleTeam(db);
-  const team = forTeam(db, teamId);
+  // Resolved inside the commands that use it, after their arguments are checked, so show-invite and bad usage never create a team.
+  const team = () => forTeam(db, ensureSingleTeam(db));
   switch (cmd) {
     case "members": {
       if (arg !== undefined) return usage();
-      const members = team.listMembers();
+      const members = team().listMembers();
       if (members.length === 0) out("no members");
       for (const m of members) {
         out(`${clean(m.name)} <${clean(m.email)}>`);
@@ -50,7 +52,7 @@ export function runAdmin(
     }
     case "remove-member": {
       if (arg === undefined || rest.length > 0 || !arg.includes("@")) return usage();
-      if (!team.removeMember(arg)) {
+      if (!team().removeMember(arg)) {
         out("no such member");
         return 1;
       }
@@ -59,7 +61,7 @@ export function runAdmin(
     }
     case "remove-machine": {
       if (arg === undefined || rest.length > 0 || !MACHINE_ID.test(arg)) return usage();
-      if (!team.removeMachine(arg)) {
+      if (!team().removeMachine(arg)) {
         out("no such machine");
         return 1;
       }
@@ -86,7 +88,7 @@ export function runAdmin(
         out("The invite code is pinned by the TEAMUSAGE_INVITE_CODE environment variable. Change it there and restart the server; nothing was rotated.");
         return 1;
       }
-      out(`new invite code: ${rotateInviteCode(db, teamId)}`);
+      out(`new invite code: ${rotateInviteCode(db, ensureSingleTeam(db))}`);
       out("all dashboard sessions have ended");
       return 0;
     }
@@ -115,13 +117,24 @@ export function isTeamusageDb(file: string): boolean {
   }
 }
 
-if (isMain(import.meta.url)) {
-  const file = join(process.env.TEAMUSAGE_DATA_DIR || "/data", "teamusage.sqlite");
+/** The server's database at `file`, or null after printing why it cannot be used. */
+export function openServerDb(file: string, printError: (line: string) => void): Db | null {
   if (!isTeamusageDb(file)) {
-    console.error(`teamusage-admin: no teamusage database at ${file}; is TEAMUSAGE_DATA_DIR the server's data directory?`);
-    process.exit(1);
+    printError(`teamusage-admin: no teamusage database at ${file}; is TEAMUSAGE_DATA_DIR the server's data directory?`);
+    return null;
   }
-  const db = openDb(file);
+  try {
+    return openDb(file);
+  } catch (err) {
+    if (!(err instanceof NewerSchemaError)) throw err;
+    printError(openFailureMessage(err));
+    return null;
+  }
+}
+
+if (isMain(import.meta.url)) {
+  const db = openServerDb(join(process.env.TEAMUSAGE_DATA_DIR || "/data", "teamusage.sqlite"), (l) => console.error(l));
+  if (db === null) process.exit(1);
   const code = runAdmin(db, process.argv.slice(2), (l) => console.log(l));
   db.close();
   process.exit(code);

@@ -58,7 +58,8 @@ const baseline: Step = (db) => {
   }
 };
 
-// The new tables are built under `_new` names and refer to the final names, which they take once the old tables are dropped.
+// `teams` is new and takes its final name at once; the other tables are built under `_new` names and refer to the final
+// names, which they take once the old tables are dropped.
 const TEAM_KEYED_TABLES = `
 create table teams (
   id integer primary key autoincrement,

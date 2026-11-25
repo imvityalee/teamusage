@@ -3,8 +3,7 @@ import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { getSetting } from "./db.js";
-import { NewerSchemaError } from "./migrate.js";
-import { DEFAULT_WEB_ROOT, buildServer, openFailureMessage, parseServerConfig, startupLines, type ServerConfig } from "./main.js";
+import { DEFAULT_WEB_ROOT, buildServer, parseServerConfig, startupLines, type ServerConfig } from "./main.js";
 
 const dirs: string[] = [];
 const tmp = (): string => {
@@ -295,9 +294,4 @@ test("a restart keeps the one team", () => {
   const second = buildServer(c);
   expect(second.db.prepare("select count(*) as n from teams").get()).toEqual({ n: 1 });
   second.close();
-});
-
-test("a newer database gets its own start message", () => {
-  expect(openFailureMessage(new NewerSchemaError())).toBe("teamusage: this database was written by a newer teamusage; upgrade the server");
-  expect(openFailureMessage(Object.assign(new Error("x"), { code: "EACCES" }))).toBe("teamusage: could not open the data directory or database (EACCES)");
 });

@@ -24,7 +24,8 @@ instead, make the directory writable by uid 10001.
 ### Upgrading
 
 **To the multi-team release.** The server upgrades its database in place the first time it starts. The upgrade
-is one-way: an older server cannot open the upgraded file. Back up `/data` first (see "Back up and move").
+is one-way: an older server started on the upgraded file fails on every registration, sign-in and upload, and going
+back means restoring the backup. Back up `/data` first (see "Back up and move").
 Existing members, machines, usage, invite code and signed-in browsers carry over; nobody has to set up again.
 
 **From 0.3.0 to 0.3.1.** The server does not change; a 0.3.0 server is fine. 0.3.1 names the Codex hooks

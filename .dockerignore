@@ -17,6 +17,7 @@ docs
 coverage
 **/*.tsbuildinfo
 README.md
+SELF-HOSTING.md
 LICENSE
 packages/server/Dockerfile
 .dockerignore

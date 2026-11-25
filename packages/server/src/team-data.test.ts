@@ -10,7 +10,7 @@ beforeEach(() => {
   db = openDb(":memory:");
 });
 
-/** The team of a self-hosted server, as db.ts reaches it. */
+/** The data of the server's single team, created on first use. */
 const team = (): TeamData => forTeam(db, ensureSingleTeam(db));
 
 const count = (table: string): number =>

@@ -10,7 +10,7 @@ import { getInviteCode, openDb, setSetting, type Db } from "./db.js";
 import { createSession, findSession } from "./sessions.js";
 import { forTeam } from "./team-data.js";
 import { ensureSingleTeam, singleTeamCodes } from "./teams.js";
-import { runAdmin } from "./admin.js";
+import { openServerDb, runAdmin } from "./admin.js";
 
 const M1 = "a".repeat(32);
 const M2 = "b".repeat(32);
@@ -165,6 +165,46 @@ describe("runAdmin", () => {
     expect(r.text).not.toContain("pinned-secret-code");
     expect(getInviteCode(db)).toBe(before);
     expect(findSession(db, session)).not.toBeNull();
+  });
+
+  test("show-invite and bad usage on a database without a team create none", () => {
+    const db = openDb(":memory:");
+    expect(run(db, ["show-invite"]).code).toBe(1);
+    expect(run(db, ["members", "extra"]).code).toBe(2);
+    expect(db.prepare("select count(*) as n from teams").get()).toEqual({ n: 0 });
+  });
+});
+
+describe("openServerDb", () => {
+  const dirs: string[] = [];
+  afterEach(() => {
+    for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+  });
+  const tmpFile = (): string => {
+    const d = mkdtempSync(join(tmpdir(), "tu-admin-"));
+    dirs.push(d);
+    return join(d, "teamusage.sqlite");
+  };
+
+  test("a database written by a newer release prints the server's sentence and is not upgraded", () => {
+    const file = tmpFile();
+    const newer = openDb(file);
+    newer.pragma("user_version = 99");
+    newer.close();
+    const lines: string[] = [];
+    expect(openServerDb(file, (l) => lines.push(l))).toBeNull();
+    expect(lines).toEqual(["teamusage: this database was written by a newer teamusage; upgrade the server"]);
+    const ro = new Database(file, { readonly: true });
+    expect(ro.pragma("user_version", { simple: true })).toBe(99);
+    ro.close();
+  });
+
+  test("a missing file prints where it looked and is not created", () => {
+    const file = tmpFile();
+    const lines: string[] = [];
+    expect(openServerDb(file, (l) => lines.push(l))).toBeNull();
+    expect(lines).toEqual([`teamusage-admin: no teamusage database at ${file}; is TEAMUSAGE_DATA_DIR the server's data directory?`]);
+    expect(existsSync(file)).toBe(false);
   });
 });
 

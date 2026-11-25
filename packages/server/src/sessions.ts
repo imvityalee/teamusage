@@ -13,11 +13,11 @@ export function createSession(db: Db, teamId: number): string {
 }
 
 /** The team of the session `id`, in whichever team it was opened; null when it is unknown or expired. */
-export function findSession(db: Db, id: string, now: Date = new Date()): { teamId: number } | null {
+export function findSession(db: Db, id: string, at: Date = new Date()): { teamId: number } | null {
   const row = db.prepare("select team_id, created_at from sessions where id = ?").get(sha256(id)) as
     | { team_id: number; created_at: string }
     | undefined;
-  return row !== undefined && now.getTime() - Date.parse(row.created_at) <= SESSION_TTL_MS ? { teamId: row.team_id } : null;
+  return row !== undefined && at.getTime() - Date.parse(row.created_at) <= SESSION_TTL_MS ? { teamId: row.team_id } : null;
 }
 
 /** Ends every session of team `teamId`. */
