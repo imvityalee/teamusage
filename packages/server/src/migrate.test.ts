@@ -5,7 +5,7 @@ import Database from "better-sqlite3";
 import { expect, test } from "vitest";
 import { openDb, type Db } from "./db.js";
 import { legacy } from "./migrations/legacy.fixture.js";
-import { migrate, NewerSchemaError, runSteps, SCHEMA_VERSION, STEPS, type Step } from "./migrate.js";
+import { migrate, NewerSchemaError, runSteps, SCHEMA_VERSION, STEPS, UpgradeFailedError, type Step } from "./migrate.js";
 
 const version = (db: Db) => db.pragma("user_version", { simple: true });
 const insertOrphanMachine = (db: Db) =>
@@ -82,6 +82,11 @@ test("a database from a newer release is refused and left untouched", () => {
   expect(() => migrate(db)).toThrow(NewerSchemaError);
   expect(version(db)).toBe(99);
 });
+test("a database from a newer release is still refused as such", () => {
+  const db = legacy();
+  db.pragma("user_version = 99");
+  expect(() => migrate(db)).toThrow(NewerSchemaError);
+});
 test("a failing step leaves the version and the tables as they were", () => {
   const db = legacy();
   const boom: Step = (d) => { d.exec("create table half_done (x)"); throw new Error("boom"); };
@@ -89,6 +94,16 @@ test("a failing step leaves the version and the tables as they were", () => {
   expect(version(db)).toBe(1);
   expect(db.prepare("select 1 from sqlite_master where name = 'half_done'").get()).toBeUndefined();
   expect(db.pragma("foreign_keys", { simple: true })).toBe(1);
+});
+test("a failing step is reported with its number and its cause", () => {
+  const db = legacy();
+  const boom: Step = () => { throw Object.assign(new Error("boom /private/path"), { code: "SQLITE_FULL" }); };
+  let caught: unknown;
+  try { runSteps(db, [STEPS[0]!, boom]); } catch (e) { caught = e; }
+  expect(caught).toBeInstanceOf(UpgradeFailedError);
+  expect((caught as UpgradeFailedError).step).toBe(2);
+  expect(((caught as UpgradeFailedError).cause as Error).message).toBe("boom /private/path");
+  expect(version(db)).toBe(1);
 });
 test("a later step that leaves a dangling reference is rolled back", () => {
   const db = legacy();

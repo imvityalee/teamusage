@@ -14,6 +14,14 @@ export class NewerSchemaError extends Error {
   }
 }
 
+/** An upgrade step failed and was rolled back; `cause` is what it threw. */
+export class UpgradeFailedError extends Error {
+  constructor(readonly step: number, cause: unknown) {
+    super(`upgrade step ${step} failed: ${cause instanceof Error ? cause.message : String(cause)}`, { cause });
+    this.name = "UpgradeFailedError";
+  }
+}
+
 const BASELINE = 1;
 
 export const STEPS: readonly Step[] = [baseline, teamKeys, orderedUsageIndexes];
@@ -44,7 +52,13 @@ export function runSteps(db: Db, steps: readonly Step[]): void {
   // SQLite ignores this pragma inside a transaction, so it is switched around the steps' transactions.
   db.pragma("foreign_keys = OFF");
   try {
-    steps.forEach((step, index) => applyStep(db, step, index + 1));
+    steps.forEach((step, index) => {
+      try {
+        applyStep(db, step, index + 1);
+      } catch (err) {
+        throw new UpgradeFailedError(index + 1, err);
+      }
+    });
   } finally {
     db.pragma("foreign_keys = ON");
   }
