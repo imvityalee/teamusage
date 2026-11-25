@@ -8,6 +8,7 @@
     "test": "vitest run --root ../.. packages/server",
     "typecheck": "tsc -p tsconfig.json && tsc -p web/tsconfig.json",
     "build": "tsup && pnpm run build:web",
+    "bench": "vitest run --root ../.. --config packages/server/bench/vitest.config.ts",
     "build:web": "vite build --config web/vite.config.ts",
     "dev:web": "vite --config web/vite.config.ts"
   },
