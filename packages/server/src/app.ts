@@ -2,9 +2,9 @@ import { Hono, type Context } from "hono";
 import { getCookie } from "hono/cookie";
 import { bodyLimit } from "hono/body-limit";
 import { APP_NAME } from "@teamusage/shared";
-import type { AppOptions, RouteContext } from "./app-context.js";
+import type { AppOptions, InviteEntry, RouteContext } from "./app-context.js";
 import type { Db } from "./db.js";
-import { errorTrace, fail, MAX_BODY_BYTES, SESSION_COOKIE } from "./http.js";
+import { errorTrace, fail, isObject, MAX_BODY_BYTES, readJson, SESSION_COOKIE } from "./http.js";
 import { createLimiter } from "./limiter.js";
 import { authRoutes } from "./routes-auth.js";
 import { dashboardRoutes } from "./routes-dashboard.js";
@@ -26,11 +26,25 @@ export function createApp(db: Db, opts: AppOptions): Hono {
     return fail(c, 429, "too many attempts");
   };
 
-  /** The team the invite code opens; a code that opens none counts as a failed attempt. */
-  const teamOfInvite = (c: Context, given: unknown): number | null => {
-    const teamId = opts.teamForCode(given);
-    if (teamId === null) limiter.fail(clientKey(c));
-    return teamId;
+  /**
+   * The team the body's invite code opens, with the body; otherwise the response that refuses the request.
+   * Over its limit, a client gets in only with a correct code, and on a self-hosted server not even then: there
+   * it is refused before its body is read. A well-formed body with a wrong code counts as a failed attempt.
+   */
+  const teamOfInvite = async (c: Context): Promise<InviteEntry | Response> => {
+    const early = opts.hosted ? null : throttled(c);
+    if (early) return early;
+    const body = await readJson(c);
+    if (isObject(body)) {
+      const teamId = opts.teamForCode(body.inviteCode);
+      if (teamId !== null) return { teamId, body };
+    }
+    const limited = throttled(c);
+    if (limited) return limited;
+    if (body === undefined) return fail(c, 400, "invalid JSON body");
+    if (!isObject(body)) return fail(c, 400, "body must be an object");
+    limiter.fail(clientKey(c));
+    return fail(c, 403, "invalid invite code");
   };
 
   /** The session the request's cookie opens, or null. */
@@ -54,7 +68,7 @@ export function createApp(db: Db, opts: AppOptions): Hono {
 
   app.get("/api/health", (c) => c.json({ ok: true, name: APP_NAME }));
 
-  const ctx: RouteContext = { db, opts, throttled, teamOfInvite, session: sessionOf };
+  const ctx: RouteContext = { db, opts, teamOfInvite, session: sessionOf };
   machineRoutes(app, ctx);
   dashboardRoutes(app, ctx);
   authRoutes(app, ctx);

@@ -1,7 +1,7 @@
 import type { Hono } from "hono";
 import { isDisplayName, isEmail, validateBatch } from "@teamusage/shared";
 import type { RouteContext } from "./app-context.js";
-import { bearerToken, fail, isObject, readJson } from "./http.js";
+import { bearerToken, fail, readJson } from "./http.js";
 import { authenticate, forTeam, MachineOwnedError } from "./team-data.js";
 
 const MACHINE_ID = /^[a-f0-9]{32}$/;
@@ -19,20 +19,15 @@ function parseRegister(b: Record<string, unknown>): RegisterInput | string {
 
 /** The routes a machine uses: registering with an invite code and sending usage with its token. */
 export function machineRoutes(app: Hono, ctx: RouteContext): void {
-  const { db, throttled, teamOfInvite } = ctx;
+  const { db, teamOfInvite } = ctx;
 
   app.post("/api/register", async (c) => {
-    const limited = throttled(c);
-    if (limited) return limited;
-    const body = await readJson(c);
-    if (body === undefined) return fail(c, 400, "invalid JSON body");
-    if (!isObject(body)) return fail(c, 400, "body must be an object");
-    const teamId = teamOfInvite(c, body.inviteCode);
-    if (teamId === null) return fail(c, 403, "invalid invite code");
-    const input = parseRegister(body);
+    const entry = await teamOfInvite(c);
+    if (entry instanceof Response) return entry;
+    const input = parseRegister(entry.body);
     if (typeof input === "string") return fail(c, 400, input);
     try {
-      return c.json(forTeam(db, teamId).registerMachine(input));
+      return c.json(forTeam(db, entry.teamId).registerMachine(input));
     } catch (err) {
       if (err instanceof MachineOwnedError) return fail(c, 409, "machine already registered to another member");
       throw err;

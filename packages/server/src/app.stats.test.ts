@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import { createApp } from "./app.js";
 import { INVITE, MID, MID2, record } from "./app.fixture.js";
 import { bearer, db, getStatsReq, login, post, RANGE, register, sessionCookie, useFreshApp } from "./app.harness.js";
+import { teamById } from "./hosted-teams.js";
 import { createUserSession } from "./sessions.js";
 import { ensureSingleTeam, singleTeamCodes } from "./teams.js";
 
@@ -26,11 +27,15 @@ describe("GET /api/stats", () => {
     expect((await getStatsReq(RANGE, { Cookie: cookie })).status).toBe(401);
   });
 
-  test("a user's session reads no team's stats", async () => {
+  test("a user's session reads no team's stats: it must name a team, and it has a role in none", async () => {
     const cookie = `tu_session=${createUserSession(db, { githubId: 7, login: "ann" })}`;
-    const res = await getStatsReq(RANGE, { Cookie: cookie });
-    expect(res.status).toBe(401);
-    expect(await res.json()).toEqual({ error: "unauthorized" });
+    const unnamed = await getStatsReq(RANGE, { Cookie: cookie });
+    expect(unnamed.status).toBe(400);
+    expect(await unnamed.json()).toEqual({ error: "invalid query" });
+    const team = teamById(db, ensureSingleTeam(db))!;
+    const named = await getStatsReq(`${RANGE}&team=${team.publicId}`, { Cookie: cookie });
+    expect(named.status).toBe(404);
+    expect(await named.json()).toEqual({ error: "team not found" });
   });
 
   test("a bearer token is accepted and wins over a cookie; a bad token is 401 even with a valid cookie", async () => {

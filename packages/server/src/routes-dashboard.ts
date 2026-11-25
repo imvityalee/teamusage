@@ -12,10 +12,12 @@ import {
   parsePlanKey,
 } from "@teamusage/shared";
 import type { RouteContext } from "./app-context.js";
-import { bearerToken, fail, isObject, readJson, setSessionCookie } from "./http.js";
+import { teamById } from "./hosted-teams.js";
+import { bearerToken, fail, setSessionCookie } from "./http.js";
 import { createTeamSession } from "./sessions.js";
+import { DASHBOARD_LIMITED, statsAccess } from "./stats-access.js";
 import { getStats } from "./stats.js";
-import { authenticate, forTeam, type MachineIdentity } from "./team-data.js";
+import { authenticate, forTeam } from "./team-data.js";
 
 const MEMBER_ID = /^[1-9][0-9]{0,9}$/;
 
@@ -51,55 +53,58 @@ function parseFilters(
   };
 }
 
-/** The routes the dashboard uses: signing in with an invite code and reading the team's stats. */
-export function dashboardRoutes(app: Hono, ctx: RouteContext): void {
-  const { db, opts, throttled, teamOfInvite, session: sessionOf } = ctx;
+type StatsRange = Parameters<typeof getStats>[2];
 
-  /** The team a stats request reads: the demo team, else a presented token's, else a team session's; null when none. */
-  const statsTeam = (c: Context, token: string | undefined, who: MachineIdentity | null): number | null => {
-    if (opts.demoTeamId !== undefined) return opts.demoTeamId;
-    // A presented bearer token must be valid; it wins over a cookie, but a bad one is never rescued by a cookie.
-    if (token !== undefined) return who?.teamId ?? null;
-    // A user's session is not a team's: here it counts as no session.
-    const session = sessionOf(c);
-    return session?.kind === "team" ? session.teamId : null;
-  };
+/**
+ * The date range and filters of a stats request; a string is the 400's error. Repeated parameters are ambiguous,
+ * so they are rejected rather than resolved by position; only `agent`, `model`, `account` and `plan` may repeat.
+ */
+function parseRange(c: Context): StatsRange | string {
+  if (["from", "to", "member", "team"].some((k) => (c.req.queries(k)?.length ?? 0) > 1)) return "invalid query";
+  const { from, to } = c.req.query();
+  if (from === undefined || to === undefined || checkRange(from, to) !== "ok") return "invalid date range";
+  const filters = parseFilters(c.req.queries("agent"), c.req.queries("model"), c.req.queries("account"), c.req.queries("plan"));
+  return filters ? { from, to, ...filters } : "invalid query";
+}
+
+/** The routes the dashboard uses: signing in with an invite code and reading a team's stats. */
+export function dashboardRoutes(app: Hono, ctx: RouteContext): void {
+  const { db, opts, teamOfInvite, session: sessionOf } = ctx;
 
   app.post("/api/login", async (c) => {
     c.header("Cache-Control", "no-store");
-    const limited = throttled(c);
-    if (limited) return limited;
-    const body = await readJson(c);
-    if (body === undefined) return fail(c, 400, "invalid JSON body");
-    if (!isObject(body)) return fail(c, 400, "body must be an object");
-    const teamId = teamOfInvite(c, body.inviteCode);
-    if (teamId === null) return fail(c, 403, "invalid invite code");
-    setSessionCookie(c, createTeamSession(db, teamId));
+    const entry = await teamOfInvite(c);
+    if (entry instanceof Response) return entry;
+    if (teamById(db, entry.teamId)?.dashboardAccess === "admins") return fail(c, 403, DASHBOARD_LIMITED);
+    setSessionCookie(c, createTeamSession(db, entry.teamId));
     return c.body(null, 204);
   });
 
   app.get("/api/stats", (c) => {
     c.header("Cache-Control", "no-store");
     const token = bearerToken(c);
-    const who = token ? authenticate(db, token) : null;
-    const teamId = statsTeam(c, token, who);
-    if (teamId === null) return fail(c, 401, "unauthorized");
+    const teams = c.req.queries("team") ?? [];
+    const access = statsAccess(db, {
+      demoTeamId: opts.demoTeamId,
+      token,
+      who: token ? authenticate(db, token) : null,
+      session: sessionOf(c),
+      // A repeated `team` is ambiguous, so it names no team rather than the first one given.
+      teamParam: teams.length === 1 ? teams[0] : undefined,
+    });
+    if (!access.ok) return fail(c, access.status, access.error);
+    const range = parseRange(c);
+    if (typeof range === "string") return fail(c, 400, range);
 
-    const { from, to, member } = c.req.query();
-    // Repeated parameters are ambiguous, so they are rejected rather than resolved by position.
-    // Only `agent`, `model`, `account` and `plan` are lists and may repeat.
-    const repeated = ["from", "to", "member"].some((k) => (c.req.queries(k)?.length ?? 0) > 1);
-    if (repeated) return fail(c, 400, "invalid query");
-    if (from === undefined || to === undefined || checkRange(from, to) !== "ok") return fail(c, 400, "invalid date range");
-    const filters = parseFilters(c.req.queries("agent"), c.req.queries("model"), c.req.queries("account"), c.req.queries("plan"));
-    if (!filters) return fail(c, 400, "invalid query");
-    const range = { from, to, ...filters };
-    if (member === undefined) return c.json(getStats(db, teamId, range));
+    const { teamId, member: self, teamNumbers } = access;
+    const { member } = c.req.query();
     if (member === "me") {
-      // `me` is the token's member; a cookie or demo session has no member of its own.
-      if (!who || opts.demoTeamId !== undefined) return fail(c, 400, "invalid member");
-      return c.json(getStats(db, teamId, { ...range, memberId: who.memberId }));
+      // `me` is the token's member; a session or the demo has no member of its own.
+      if (self === null) return fail(c, 400, "invalid member");
+      return c.json(getStats(db, teamId, { ...range, memberId: self.memberId }));
     }
+    if (!teamNumbers) return fail(c, 403, DASHBOARD_LIMITED);
+    if (member === undefined) return c.json(getStats(db, teamId, range));
     if (!MEMBER_ID.test(member)) return fail(c, 400, "invalid query");
     const memberId = Number(member);
     if (!Number.isSafeInteger(memberId)) return fail(c, 400, "invalid query");

@@ -17,14 +17,18 @@ export type AppOptions = {
   hosted?: { github: GithubClient; publicUrl: string; codeKey: Buffer; maxTeams: number };
 };
 
+/** A request whose invite code opens a team: the team and the request's body. */
+export type InviteEntry = { teamId: number; body: Record<string, unknown> };
+
 /** What every route group receives from createApp. */
 export type RouteContext = {
   db: Db;
   opts: AppOptions;
-  /** 429 when the client has used up its failed attempts, else null. */
-  throttled(c: Context): Response | null;
-  /** The team the invite code opens; a code that opens none counts as a failed attempt. */
-  teamOfInvite(c: Context, code: unknown): number | null;
+  /**
+   * Reads the request's body and the team its invite code opens; otherwise the 400, 403 or 429 that refuses it.
+   * Over its limit, a client gets in only with a correct code, and only on a hosted server.
+   */
+  teamOfInvite(c: Context): Promise<InviteEntry | Response>;
   /** The session the request's cookie opens; null when it has none, an unknown one or an expired one. */
   session(c: Context): Session | null;
 };

@@ -13,6 +13,7 @@ export const KEY = Buffer.alloc(32, 7);
 const USERS: Record<string, GithubUser> = {
   "code-ann": { id: 1, login: "ann" },
   "code-bob": { id: 2, login: "bob" },
+  "code-eve": { id: 3, login: "eve" },
 };
 
 export type FakeGithub = GithubClient & { calls: { code: string; verifier: string }[] };
