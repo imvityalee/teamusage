@@ -5,6 +5,7 @@ import { afterEach, describe, expect, test } from "vitest";
 import { goodReg } from "./app.fixture.js";
 import type { ServerConfig } from "./config.js";
 import { getSetting, openDb } from "./db.js";
+import { createHostedTeam } from "./hosted-teams.js";
 import { cookieOf, fakeGithub, KEY, signIn } from "./hosted.fixture.js";
 import { buildServer, startupLines } from "./main.js";
 import { HostedDatabaseError } from "./open-failure.js";
@@ -37,7 +38,8 @@ const hosted = (dir: string): ServerConfig => ({
   hosted: { publicUrl: PUBLIC_URL, githubClientId: "github-client-id", githubClientSecret: SECRET, codeKey: KEY, maxTeams: 200 },
 });
 const github = () => fakeGithub({ "code-ann": { id: 1, login: "ann" } });
-const conn = { incoming: { socket: { remoteAddress: "1.2.3.4" } } };
+const from = (address: string) => ({ incoming: { socket: { remoteAddress: address } } });
+const conn = from("1.2.3.4");
 const SECURITY_HEADERS = {
   "x-content-type-options": "nosniff",
   "referrer-policy": "no-referrer",
@@ -150,6 +152,43 @@ describe("a hosted buildServer", () => {
       const lines = startupLines(config, s, 8787);
       expect(lines).toEqual(["teamusage listening on http://127.0.0.1:8787", `hosted mode: people sign in at ${PUBLIC_URL}/auth/github/start`]);
       for (const secret of [SECRET, KEY.toString("base64"), KEY.toString("hex")]) expect(lines.join("\n")).not.toContain(secret);
+    } finally {
+      s.close();
+    }
+  });
+});
+
+describe("a hosted buildServer counts wrong codes per address", () => {
+  const WRONG = "0".repeat(24);
+  /** A hosted server with one team; `register(code, address, headers)` sends a registration from that address. */
+  function serverWithTeam(over: Partial<ServerConfig> = {}) {
+    const s = buildServer({ ...hosted(dataDir()), ...over }, { github: github() });
+    const { code } = createHostedTeam(s.db, { name: "Acme", dashboardAccess: "code", owner: { githubId: 1, login: "ann" }, codeKey: KEY, maxTeams: 200 });
+    const register = (inviteCode: string, address: string, headers: Record<string, string> = {}) =>
+      s.app.request("/api/register", { method: "POST", body: JSON.stringify(goodReg({ inviteCode })), headers }, from(address));
+    return { s, code, register };
+  }
+
+  test("by the socket address", async () => {
+    const { s, code, register } = serverWithTeam();
+    try {
+      for (let i = 0; i < 10; i++) expect((await register(WRONG, "1.2.3.4")).status).toBe(403);
+      expect((await register(WRONG, "1.2.3.4")).status).toBe(429);
+      expect((await register(WRONG, "5.6.7.8")).status).toBe(403);
+      expect((await register(code, "1.2.3.4")).status).toBe(200);
+    } finally {
+      s.close();
+    }
+  });
+
+  test("by X-Forwarded-For behind trusted proxies", async () => {
+    const { s, code, register } = serverWithTeam({ trustedProxies: 1 });
+    try {
+      const forwarded = (inviteCode: string, xff: string) => register(inviteCode, "10.0.0.1", { "x-forwarded-for": xff });
+      for (let i = 0; i < 10; i++) expect((await forwarded(WRONG, `spoof${i}, 5.5.5.5`)).status).toBe(403);
+      expect((await forwarded(WRONG, "another, 5.5.5.5")).status).toBe(429);
+      expect((await forwarded(WRONG, "x, 6.6.6.6")).status).toBe(403);
+      expect((await forwarded(code, "x, 5.5.5.5")).status).toBe(200);
     } finally {
       s.close();
     }

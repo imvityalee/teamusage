@@ -6,7 +6,7 @@ import Database from "better-sqlite3";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { openDb, type Db } from "./db.js";
 import { LEGACY_SCHEMA } from "./migrations/legacy.fixture.js";
-import { createTeamSession, createUserSession, endSession, endTeamSessions, findSession } from "./sessions.js";
+import { createTeamSession, createUserSession, endSession, endTeamSessions, findSession, MAX_TEAM_SESSIONS } from "./sessions.js";
 import { authenticate } from "./team-data.js";
 import { createTeam } from "./teams.js";
 
@@ -102,6 +102,10 @@ test("a team holding more than its maximum keeps its newest sessions, oldest dro
   expect(a.map((sid) => findSession(db, sid) !== null)).toEqual([false, false, true, true, true]);
   expect(findSession(db, b)).toEqual({ kind: "team", teamId: B });
   expect(findSession(db, user)).toEqual({ kind: "user", ...ANN });
+});
+
+test("the cap on a team's sessions is 2,000", () => {
+  expect(MAX_TEAM_SESSIONS).toBe(2000);
 });
 
 test("the oldest are chosen by creation time before insertion order", () => {

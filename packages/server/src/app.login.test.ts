@@ -75,6 +75,18 @@ describe("failed-attempt limiting", () => {
     });
   }
 
+  test("a body that is not a JSON object is 400 and is not a failed attempt", async () => {
+    const a = limited({ t: 1 });
+    const send = (path: string, body: string) => a.request(path, { method: "POST", body, headers: { "Content-Type": "application/json" } });
+    for (const path of ["/api/register", "/api/login"]) {
+      for (let i = 0; i < 10; i++) {
+        expect(await (await send(path, "{")).json()).toEqual({ error: "invalid JSON body" });
+        expect(await (await send(path, "[]")).json()).toEqual({ error: "body must be an object" });
+      }
+    }
+    expect((await attempt(a, "/api/login", "wrong")).status).toBe(403);
+  });
+
   test("successes do not count", async () => {
     const a = limited({ t: 1 });
     for (let i = 0; i < 15; i++) expect((await attempt(a, "/api/login", INVITE)).status).toBe(204);
