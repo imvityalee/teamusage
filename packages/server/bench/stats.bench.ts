@@ -11,12 +11,14 @@ import { seedLargeTeam } from "./seed.js";
 const RUNS = 20;
 
 function timeRuns(run: () => unknown): { median: number; slowest: number } {
+  run(); // untimed: the first call pays for a cold page cache and statement planning
   const ms = Array.from({ length: RUNS }, () => {
     const start = performance.now();
     run();
     return performance.now() - start;
   }).sort((a, b) => a - b);
-  return { median: ms[RUNS / 2]!, slowest: ms[RUNS - 1]! };
+  const middle = RUNS / 2;
+  return { median: (ms[middle - 1]! + ms[middle]!) / 2, slowest: ms[RUNS - 1]! };
 }
 
 const line = (label: string, t: { median: number; slowest: number }) =>
@@ -48,6 +50,7 @@ test("timing: 500 members, 180 days", () => {
 
     console.log(line("team view", teamView));
     console.log(line("member view", memberView));
+    expect(getStats(db, team, { ...range, memberId }).totals.tokens).toBeGreaterThan(0);
     expect(memberCount).toBe(500);
     db.close();
   } finally {

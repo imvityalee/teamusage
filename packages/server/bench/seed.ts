@@ -39,7 +39,7 @@ function dayRecords(date: string, memberIndex: number, machineIndex: number, day
 const machineId = (memberIndex: number, position: number) =>
   `${memberIndex.toString(16).padStart(16, "0")}${position.toString(16).padStart(16, "0")}`;
 
-/** Fills team `teamId` with the same data on every run: no randomness, and the clock follows `today`. */
+/** Fills team `teamId` with the same usage data on every run: it is derived from the member and day indexes and from `today`, never from the real clock. */
 export function seedLargeTeam(db: Db, teamId: number, o: SeedOptions): { machines: number; rows: number } {
   const dates = datesEndingAt(o.today, o.days);
   const team = forTeam(db, teamId, () => `${o.today}T00:00:00.000Z`);
@@ -49,7 +49,7 @@ export function seedLargeTeam(db: Db, teamId: number, o: SeedOptions): { machine
   let batchRows = 0;
 
   const flush = () => {
-    for (const { who, records } of batch) team.upsertUsage(who, records);
+    for (const { who, records } of batch) rows += team.upsertUsage(who, records).stored;
     batch = [];
     batchRows = 0;
   };
@@ -71,7 +71,6 @@ export function seedLargeTeam(db: Db, teamId: number, o: SeedOptions): { machine
         if (batchRows + chunk.length > BATCH_SIZE) flush();
         batch.push({ who: { memberId, machineId: id }, records: chunk });
         batchRows += chunk.length;
-        rows += chunk.length;
       }
     }
   }
