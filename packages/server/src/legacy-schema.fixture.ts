@@ -1,4 +1,4 @@
-/** A copy of the schema as 0.3.x created it, for tests that need a database from before versioned upgrades. */
+/** The schema text from before versioned upgrades (the 0.1/0.2 shape; 0.3.x databases additionally have the three account columns on usage). */
 export const LEGACY_SCHEMA = `
 create table if not exists members (
   id integer primary key autoincrement,

@@ -41,7 +41,7 @@ test("a failing step leaves the version and the tables as they were", () => {
 });
 test("a later step that leaves a dangling reference is rolled back", () => {
   const db = legacy();
-  expect(() => runSteps(db, [STEPS[0]!, insertOrphanMachine])).toThrow();
+  expect(() => runSteps(db, [STEPS[0]!, insertOrphanMachine])).toThrow("refers to a missing row");
   expect(version(db)).toBe(1);
   expect(db.prepare("select count(*) as n from machines").get()).toEqual({ n: 0 });
 });
@@ -51,4 +51,18 @@ test("a legacy database with a dangling row still upgrades", () => {
   insertOrphanMachine(db);
   migrate(db);
   expect(version(db)).toBe(SCHEMA_VERSION);
+});
+test("a step that was already applied is not run again and the version does not move backwards", () => {
+  const ran: number[] = [];
+  const steps: Step[] = [() => { ran.push(1); }, () => { ran.push(2); }];
+  const atTwo = new Database(":memory:");
+  atTwo.pragma("user_version = 2");
+  runSteps(atTwo, steps);
+  expect(ran).toEqual([]);
+  expect(version(atTwo)).toBe(2);
+  const atOne = new Database(":memory:");
+  atOne.pragma("user_version = 1");
+  runSteps(atOne, steps);
+  expect(ran).toEqual([2]);
+  expect(version(atOne)).toBe(2);
 });

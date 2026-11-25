@@ -69,24 +69,23 @@ function assertNoDanglingReferences(db: Db): void {
   if ((db.pragma("foreign_key_check") as unknown[]).length > 0) throw new Error("the upgrade left a row that refers to a missing row");
 }
 
+/** Runs the step unless the database is already at its number; the version is read in the transaction that acts on it. */
 function applyStep(db: Db, step: Step, number: number): void {
   db.transaction(() => {
+    if (readVersion(db) >= number) return;
     step(db);
     // A database from before versioned upgrades may hold rows whose owner is gone; the baseline takes it as it is.
     if (number !== BASELINE) assertNoDanglingReferences(db);
     db.pragma(`user_version = ${number}`);
-  })();
+  }).immediate();
 }
 
 export function runSteps(db: Db, steps: readonly Step[]): void {
-  const current = readVersion(db);
-  if (current > steps.length) throw new NewerSchemaError();
+  if (readVersion(db) > steps.length) throw new NewerSchemaError();
   // SQLite ignores this pragma inside a transaction, so it is switched around the steps' transactions.
   db.pragma("foreign_keys = OFF");
   try {
-    steps.forEach((step, index) => {
-      if (index + 1 > current) applyStep(db, step, index + 1);
-    });
+    steps.forEach((step, index) => applyStep(db, step, index + 1));
   } finally {
     db.pragma("foreign_keys = ON");
   }
