@@ -5,7 +5,7 @@ import { join } from "node:path";
 import Database from "better-sqlite3";
 import { beforeEach, expect, test } from "vitest";
 import { openDb, type Db } from "./db.js";
-import { LEGACY_SCHEMA } from "./legacy-schema.fixture.js";
+import { LEGACY_SCHEMA } from "./migrations/legacy.fixture.js";
 import { createSession, endTeamSessions, findSession } from "./sessions.js";
 import { authenticate } from "./team-data.js";
 import { createTeam } from "./teams.js";
