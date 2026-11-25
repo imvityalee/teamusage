@@ -1,10 +1,8 @@
 import type { Hono } from "hono";
-import { getCookie } from "hono/cookie";
 import { isDisplayName, MAX_TEAM_NAME_CHARS } from "@teamusage/shared";
 import type { RouteContext } from "./app-context.js";
 import { createHostedTeam, MAX_TEAMS_PER_USER, TeamLimitError, type DashboardAccess } from "./hosted-teams.js";
-import { crossSite, fail, isObject, readJson, SESSION_COOKIE } from "./http.js";
-import { findSession } from "./sessions.js";
+import { crossSite, fail, isObject, readJson } from "./http.js";
 
 const isDashboardAccess = (v: unknown): v is DashboardAccess => v === "code" || v === "admins";
 
@@ -13,7 +11,7 @@ const isTeamName = (v: unknown): v is string => isDisplayName(v) && v.trim().len
 
 /** Creating a team as the signed-in GitHub user. Mounted only on a hosted server. */
 export function teamRoutes(app: Hono, ctx: RouteContext): void {
-  const { db, opts } = ctx;
+  const { db, opts, session: sessionOf } = ctx;
   const hosted = opts.hosted;
   if (hosted === undefined) return;
 
@@ -21,8 +19,7 @@ export function teamRoutes(app: Hono, ctx: RouteContext): void {
     c.header("Cache-Control", "no-store");
     const refused = crossSite(c, hosted.publicUrl);
     if (refused) return refused;
-    const id = getCookie(c, SESSION_COOKIE);
-    const session = id ? findSession(db, id) : null;
+    const session = sessionOf(c);
     if (session?.kind !== "user") return fail(c, 401, "unauthorized");
 
     const body = await readJson(c);

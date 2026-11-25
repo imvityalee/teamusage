@@ -1,4 +1,5 @@
 import type { Context } from "hono";
+import type { Session } from "./sessions.js";
 import type { Db } from "./db.js";
 import type { GithubClient } from "./github.js";
 
@@ -24,4 +25,6 @@ export type RouteContext = {
   throttled(c: Context): Response | null;
   /** The team the invite code opens; a code that opens none counts as a failed attempt. */
   teamOfInvite(c: Context, code: unknown): number | null;
+  /** The session the request's cookie opens; null when it has none, an unknown one or an expired one. */
+  session(c: Context): Session | null;
 };

@@ -5,7 +5,7 @@ import type { RouteContext } from "./app-context.js";
 import { safeEqual, type Db } from "./db.js";
 import { teamById, teamsOf } from "./hosted-teams.js";
 import { clearPrivateCookie, clearSessionCookie, crossSite, fail, SESSION_COOKIE, setPrivateCookie, setSessionCookie } from "./http.js";
-import { createUserSession, endSession, findSession, type Session } from "./sessions.js";
+import { createUserSession, endSession, type Session } from "./sessions.js";
 
 /** Holds `<state>.<verifier>` of a sign-in in progress, for the browser that started it. */
 const OAUTH_COOKIE = "tu_oauth";
@@ -43,7 +43,7 @@ function meOf(db: Db, session: Session) {
 
 /** Signing in with GitHub, signing out, and who the session is. Mounted only on a hosted server. */
 export function authRoutes(app: Hono, ctx: RouteContext): void {
-  const { db, opts } = ctx;
+  const { db, opts, session: sessionOf } = ctx;
   const hosted = opts.hosted;
   if (hosted === undefined) return;
 
@@ -80,8 +80,7 @@ export function authRoutes(app: Hono, ctx: RouteContext): void {
 
   app.get("/api/me", (c) => {
     c.header("Cache-Control", "no-store");
-    const id = getCookie(c, SESSION_COOKIE);
-    const session = id ? findSession(db, id) : null;
+    const session = sessionOf(c);
     const me = session ? meOf(db, session) : null;
     return me ? c.json(me) : fail(c, 401, "unauthorized");
   });

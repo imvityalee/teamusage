@@ -39,12 +39,13 @@ export function fakeGithub(users: Record<string, GithubUser>): FakeGithub {
 }
 
 /** A hosted app on a fresh in-memory database, with the fake GitHub it signs users in with. */
-export function hostedApp(o: { clientKey?: AppOptions["clientKey"]; maxTeams?: number } = {}) {
+export function hostedApp(o: { clientKey?: AppOptions["clientKey"]; maxTeams?: number; logError?: AppOptions["logError"] } = {}) {
   const db = openDb(":memory:");
   const github = fakeGithub(USERS);
   const app = createApp(db, {
     teamForCode: hostedTeamCodes(db),
     clientKey: o.clientKey,
+    logError: o.logError,
     hosted: { github, publicUrl: PUBLIC, codeKey: KEY, maxTeams: o.maxTeams ?? 200 },
   });
   return { db, app, github };

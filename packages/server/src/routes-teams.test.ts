@@ -1,5 +1,6 @@
 import { beforeEach, expect, test } from "vitest";
-import type { Db } from "./db.js";
+import { createApp } from "./app.js";
+import { openDb, type Db } from "./db.js";
 import { createHostedTeam } from "./hosted-teams.js";
 import { hostedApp, KEY, PUBLIC, signIn } from "./hosted.fixture.js";
 
@@ -112,10 +113,20 @@ test("a sixth team is refused with 409, a full server with 503", async () => {
   expect(full.headers.get("cache-control")).toBe("no-store");
   expect(await full.json()).toEqual({ error: "sign-ups are paused" });
 });
+test("an error that is not a limit passes on as a 500 and creates nothing", async () => {
+  const logged: string[] = [];
+  const broken = hostedApp({ logError: (line) => logged.push(line) });
+  broken.db.exec("create trigger boom before insert on teams begin select raise(abort, 'x'); end;");
+  const res = await create(await signIn(broken.app, "code-ann"), good, PUBLIC, broken.app);
+  expect(res.status).toBe(500);
+  expect(res.headers.get("cache-control")).toBe("no-store");
+  expect(await res.json()).toEqual({ error: "internal error" });
+  expect(broken.db.prepare("select count(*) as n from teams").get()).toEqual({ n: 0 });
+  expect(logged).toHaveLength(1);
+});
 test("self-hosted, the route does not exist", async () => {
-  const { createApp } = await import("./app.js");
-  const { openDb } = await import("./db.js");
   const plain = createApp(openDb(":memory:"), { teamForCode: () => null });
   const res = await plain.request("/api/teams", { method: "POST", body: "{}", headers: { Origin: PUBLIC } });
   expect(res.status).toBe(404);
+  expect(await res.json()).toEqual({ error: "not found" });
 });

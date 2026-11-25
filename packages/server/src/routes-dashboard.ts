@@ -1,5 +1,4 @@
-import type { Hono } from "hono";
-import { getCookie } from "hono/cookie";
+import type { Context, Hono } from "hono";
 import {
   checkRange,
   isName,
@@ -13,8 +12,8 @@ import {
   parsePlanKey,
 } from "@teamusage/shared";
 import type { RouteContext } from "./app-context.js";
-import { bearerToken, fail, isObject, readJson, SESSION_COOKIE, setSessionCookie } from "./http.js";
-import { createTeamSession, findSession } from "./sessions.js";
+import { bearerToken, fail, isObject, readJson, setSessionCookie } from "./http.js";
+import { createTeamSession } from "./sessions.js";
 import { getStats } from "./stats.js";
 import { authenticate, forTeam, type MachineIdentity } from "./team-data.js";
 
@@ -54,15 +53,15 @@ function parseFilters(
 
 /** The routes the dashboard uses: signing in with an invite code and reading the team's stats. */
 export function dashboardRoutes(app: Hono, ctx: RouteContext): void {
-  const { db, opts, throttled, teamOfInvite } = ctx;
+  const { db, opts, throttled, teamOfInvite, session: sessionOf } = ctx;
 
   /** The team a stats request reads: the demo team, else a presented token's, else a team session's; null when none. */
-  const statsTeam = (token: string | undefined, who: MachineIdentity | null, sessionId: string | undefined): number | null => {
+  const statsTeam = (c: Context, token: string | undefined, who: MachineIdentity | null): number | null => {
     if (opts.demoTeamId !== undefined) return opts.demoTeamId;
     // A presented bearer token must be valid; it wins over a cookie, but a bad one is never rescued by a cookie.
     if (token !== undefined) return who?.teamId ?? null;
     // A user's session is not a team's: here it counts as no session.
-    const session = sessionId ? findSession(db, sessionId) : null;
+    const session = sessionOf(c);
     return session?.kind === "team" ? session.teamId : null;
   };
 
@@ -83,7 +82,7 @@ export function dashboardRoutes(app: Hono, ctx: RouteContext): void {
     c.header("Cache-Control", "no-store");
     const token = bearerToken(c);
     const who = token ? authenticate(db, token) : null;
-    const teamId = statsTeam(token, who, getCookie(c, SESSION_COOKIE));
+    const teamId = statsTeam(c, token, who);
     if (teamId === null) return fail(c, 401, "unauthorized");
 
     const { from, to, member } = c.req.query();

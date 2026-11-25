@@ -1,14 +1,16 @@
 import { Hono, type Context } from "hono";
+import { getCookie } from "hono/cookie";
 import { bodyLimit } from "hono/body-limit";
 import { APP_NAME } from "@teamusage/shared";
 import type { AppOptions, RouteContext } from "./app-context.js";
 import type { Db } from "./db.js";
-import { errorTrace, fail, MAX_BODY_BYTES } from "./http.js";
+import { errorTrace, fail, MAX_BODY_BYTES, SESSION_COOKIE } from "./http.js";
 import { createLimiter } from "./limiter.js";
 import { authRoutes } from "./routes-auth.js";
 import { dashboardRoutes } from "./routes-dashboard.js";
 import { machineRoutes } from "./routes-machines.js";
 import { teamRoutes } from "./routes-teams.js";
+import { findSession } from "./sessions.js";
 
 export function createApp(db: Db, opts: AppOptions): Hono {
   const app = new Hono();
@@ -31,6 +33,12 @@ export function createApp(db: Db, opts: AppOptions): Hono {
     return teamId;
   };
 
+  /** The session the request's cookie opens, or null. */
+  const sessionOf = (c: Context) => {
+    const id = getCookie(c, SESSION_COOKIE);
+    return id ? findSession(db, id) : null;
+  };
+
   app.use(
     bodyLimit({ maxSize: MAX_BODY_BYTES, onError: (c) => fail(c, 413, "payload too large") }),
   );
@@ -46,7 +54,7 @@ export function createApp(db: Db, opts: AppOptions): Hono {
 
   app.get("/api/health", (c) => c.json({ ok: true, name: APP_NAME }));
 
-  const ctx: RouteContext = { db, opts, throttled, teamOfInvite };
+  const ctx: RouteContext = { db, opts, throttled, teamOfInvite, session: sessionOf };
   machineRoutes(app, ctx);
   dashboardRoutes(app, ctx);
   authRoutes(app, ctx);
