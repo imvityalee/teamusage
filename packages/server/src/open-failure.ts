@@ -1,12 +1,5 @@
+import { HostedDatabaseError, SelfHostedDatabaseError } from "./db-mode.js";
 import { NewerSchemaError, UpgradeFailedError } from "./migrate.js";
-
-/** A self-hosted start found a database that a hosted server has created a team in. */
-export class HostedDatabaseError extends Error {
-  constructor() {
-    super("this database belongs to a hosted server");
-    this.name = "HostedDatabaseError";
-  }
-}
 
 /** " (EADDRINUSE)" for an error with a string code; never the message, which can hold paths. */
 export function codeOf(err: unknown): string {
@@ -18,6 +11,9 @@ export function codeOf(err: unknown): string {
 export function openFailureMessage(err: unknown): string {
   if (err instanceof NewerSchemaError) return "teamusage: this database was written by a newer teamusage; upgrade the server";
   if (err instanceof HostedDatabaseError) return "teamusage: this database belongs to a hosted server; set TEAMUSAGE_MODE=hosted";
+  if (err instanceof SelfHostedDatabaseError) {
+    return "teamusage: this database belongs to a self-hosted server; unset TEAMUSAGE_MODE or use another data directory";
+  }
   if (err instanceof UpgradeFailedError) return `teamusage: upgrade step ${err.step} of the database failed and was rolled back${codeOf(err.cause)}`;
   return `teamusage: could not open the data directory or database${codeOf(err)}`;
 }

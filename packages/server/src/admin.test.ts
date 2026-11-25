@@ -7,6 +7,7 @@ import Database from "better-sqlite3";
 import { afterEach, describe, expect, test } from "vitest";
 import { createApp } from "./app.js";
 import { getInviteCode, openDb, setSetting, type Db } from "./db.js";
+import { markHostedDatabase } from "./db-mode.js";
 import { createHostedTeam } from "./hosted-teams.js";
 import { KEY } from "./hosted.fixture.js";
 import { createTeamSession, findSession } from "./sessions.js";
@@ -27,12 +28,17 @@ function setup(): { db: Db; token: string } {
 
 const HOSTED_REFUSAL = "this database belongs to a hosted server; teamusage-admin does not manage it yet";
 
-/** Adds a hosted team with a member, a machine and a dashboard session. */
-function addHostedTeam(db: Db): void {
+/** Marks `db` as a hosted server does; with `withTeam`, adds a hosted team with a member, a machine and a dashboard session. */
+function makeHosted(db: Db, withTeam: boolean): void {
+  markHostedDatabase(db);
+  if (!withTeam) return;
   const { team } = createHostedTeam(db, { name: "Acme", dashboardAccess: "code", owner: { githubId: 1, login: "ann" }, codeKey: KEY, maxTeams: 200 });
   forTeam(db, team.id).registerMachine({ name: "Ann", email: "ann@x.com", machineId: M1, machineLabel: "mbp" });
   createTeamSession(db, team.id);
 }
+
+/** Every row an admin command could change. */
+const stateOf = (db: Db) => ["teams", "members", "machines", "sessions", "settings"].map((t) => db.prepare(`select * from ${t} order by rowid`).all());
 
 function run(db: Db, argv: string[], env: Record<string, string | undefined> = {}) {
   const lines: string[] = [];
@@ -178,18 +184,20 @@ describe("runAdmin", () => {
     expect(findSession(db, session)).not.toBeNull();
   });
 
-  test("every command on a database that holds a hosted team is refused and changes nothing", () => {
-    const db = openDb(":memory:");
-    addHostedTeam(db);
-    const state = () => ["teams", "members", "machines", "sessions", "settings"].map((t) => db.prepare(`select * from ${t} order by rowid`).all());
-    const before = state();
-    for (const argv of [["members"], ["remove-member", "ann@x.com"], ["remove-machine", M1], ["show-invite"], ["rotate-invite"]]) {
-      const r = run(db, argv);
-      expect(r.code, argv.join(" ")).toBe(1);
-      expect(r.lines, argv.join(" ")).toEqual([HOSTED_REFUSAL]);
-    }
-    expect(state()).toEqual(before);
-  });
+  test.each([["with a team", true], ["with no team yet", false]])(
+    "every command on a hosted server's database %s is refused and changes nothing",
+    (_, withTeam) => {
+      const db = openDb(":memory:");
+      makeHosted(db, withTeam);
+      const before = stateOf(db);
+      for (const argv of [["members"], ["remove-member", "ann@x.com"], ["remove-machine", M1], ["show-invite"], ["rotate-invite"]]) {
+        const r = run(db, argv);
+        expect(r.code, argv.join(" ")).toBe(1);
+        expect(r.lines, argv.join(" ")).toEqual([HOSTED_REFUSAL]);
+      }
+      expect(stateOf(db)).toEqual(before);
+    },
+  );
 
   test("show-invite and bad usage on a database without a team create none", () => {
     const db = openDb(":memory:");
@@ -265,17 +273,23 @@ describe.skipIf(!built)(built ? "built binaries" : "built binaries (skipped: run
     expect(r.stdout).toContain("no members");
   });
 
-  test("admin refuses a hosted server's database", () => {
+  test.each([["with a team", true], ["with no team yet", false]])("admin refuses a hosted server's database %s", (_, withTeam) => {
     const d = tmp();
-    const db = openDb(join(d, "teamusage.sqlite"));
-    addHostedTeam(db);
+    const file = join(d, "teamusage.sqlite");
+    const stateOfFile = () => {
+      const db = openDb(file);
+      const rows = stateOf(db);
+      db.close();
+      return rows;
+    };
+    const db = openDb(file);
+    makeHosted(db, withTeam);
     db.close();
+    const before = stateOfFile();
     const r = runBin(`${dist}admin.js`, d, ["rotate-invite"]);
     expect(r.status).toBe(1);
     expect(r.stdout).toBe(`${HOSTED_REFUSAL}\n`);
-    const after = openDb(join(d, "teamusage.sqlite"));
-    expect(after.prepare("select count(*) as n from settings").get()).toEqual({ n: 0 });
-    after.close();
+    expect(stateOfFile()).toEqual(before);
   });
 
   test("admin refuses a missing, zero-byte or foreign file and leaves it untouched", () => {

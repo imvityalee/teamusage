@@ -1,6 +1,7 @@
 import { expect, test } from "vitest";
+import { HostedDatabaseError, SelfHostedDatabaseError } from "./db-mode.js";
 import { NewerSchemaError, UpgradeFailedError } from "./migrate.js";
-import { HostedDatabaseError, openFailureMessage } from "./open-failure.js";
+import { openFailureMessage } from "./open-failure.js";
 
 test("a newer database gets its own start message", () => {
   expect(openFailureMessage(new NewerSchemaError())).toBe("teamusage: this database was written by a newer teamusage; upgrade the server");
@@ -13,4 +14,9 @@ test("a failed upgrade step gets its own line, without the cause's message", () 
 });
 test("a hosted server's database refused by a self-hosted start gets its own line", () => {
   expect(openFailureMessage(new HostedDatabaseError())).toBe("teamusage: this database belongs to a hosted server; set TEAMUSAGE_MODE=hosted");
+});
+test("a self-hosted server's database refused by a hosted start gets its own line", () => {
+  expect(openFailureMessage(new SelfHostedDatabaseError())).toBe(
+    "teamusage: this database belongs to a self-hosted server; unset TEAMUSAGE_MODE or use another data directory",
+  );
 });

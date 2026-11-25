@@ -10,12 +10,13 @@ import { Hono, type Context } from "hono";
 import { createApp } from "./app.js";
 import { parseServerConfig, type HostedConfig, type ServerConfig } from "./config.js";
 import { getInviteCode, getStoredInviteCode, openDb, setSetting, type Db } from "./db.js";
+import { claimDatabase } from "./db-mode.js";
 import { seedDemo } from "./demo.js";
 import { isMain } from "./entry.js";
 import { githubClient, type GithubClient } from "./github.js";
-import { holdsHostedTeam, hostedTeamCodes } from "./hosted-teams.js";
+import { hostedTeamCodes } from "./hosted-teams.js";
 import { clientKeyFrom } from "./limiter.js";
-import { codeOf, HostedDatabaseError, openFailureMessage } from "./open-failure.js";
+import { codeOf, openFailureMessage } from "./open-failure.js";
 import { ensureSingleTeam, singleTeamCodes } from "./teams.js";
 
 const CSP =
@@ -162,10 +163,12 @@ function serverApp(api: Hono, apiPaths: string[], webRoot: string): Hono {
 /** Opens storage and wires the app. Starts no listener. `opts.github` replaces the GitHub client in hosted mode. */
 export function buildServer(config: ServerConfig, opts: { webRoot?: string; github?: GithubClient } = {}): BuiltServer {
   const db = openStorage(config);
-  // Before anything is written: a hosted server's database never becomes one self-hosted team's.
-  if (config.hosted === undefined && holdsHostedTeam(db)) {
+  // Before anything is written: a database stays with the mode of the server that first used it.
+  try {
+    claimDatabase(db, config.mode);
+  } catch (err) {
     db.close();
-    throw new HostedDatabaseError();
+    throw err;
   }
   const clientKey = clientKeyOf(config.trustedProxies);
   const { api, inviteCode, inviteGenerated } = config.hosted

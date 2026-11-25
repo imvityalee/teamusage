@@ -4,11 +4,11 @@ import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { goodReg } from "./app.fixture.js";
 import type { ServerConfig } from "./config.js";
-import { getSetting, openDb } from "./db.js";
+import { openDb } from "./db.js";
+import { HostedDatabaseError, SelfHostedDatabaseError } from "./db-mode.js";
 import { createHostedTeam } from "./hosted-teams.js";
 import { cookieOf, fakeGithub, KEY, signIn } from "./hosted.fixture.js";
 import { buildServer, startupLines } from "./main.js";
-import { HostedDatabaseError } from "./open-failure.js";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -76,8 +76,21 @@ async function hostedServerWithTeam(dir: string): Promise<string> {
   }
 }
 
+/** Starts a self-hosted server on `dir`, registers a machine and signs a browser in with the invite code. */
+async function selfHostedServerInUse(dir: string): Promise<void> {
+  const s = buildServer(selfHosted(dir));
+  try {
+    const send = (path: string, body: unknown) => s.app.request(path, { method: "POST", body: JSON.stringify(body) }, conn);
+    const inviteCode = s.inviteCode!();
+    expect((await send("/api/register", goodReg({ inviteCode }))).status).toBe(200);
+    expect((await send("/api/login", { inviteCode })).status).toBe(204);
+  } finally {
+    s.close();
+  }
+}
+
 describe("a hosted buildServer", () => {
-  test("creates no team and no invite code, and has no invite code to give", () => {
+  test("marks the database as a hosted server's, creates no team and no invite code, and has no invite code to give", () => {
     const config = hosted(dataDir());
     const s = buildServer(config, { github: github() });
     try {
@@ -85,7 +98,7 @@ describe("a hosted buildServer", () => {
       expect(s.inviteCode).toBeUndefined();
       expect(s.inviteGenerated).toBe(false);
       expect(count(s.db, "teams")).toEqual({ n: 0 });
-      expect(getSetting(s.db, "invite_code")).toBeUndefined();
+      expect(s.db.prepare("select key, value from settings").all()).toEqual([{ key: "mode", value: "hosted" }]);
     } finally {
       s.close();
     }
@@ -143,6 +156,15 @@ describe("a hosted buildServer", () => {
     } finally {
       second.close();
     }
+  });
+
+  test("refuses a self-hosted server's database, and changes nothing in it", async () => {
+    const dir = dataDir();
+    await selfHostedServerInUse(dir);
+    const before = snapshot(dir);
+    expect([before.teams, before.members, before.sessions].map((rows) => rows.length)).toEqual([1, 1, 1]);
+    expect(() => buildServer(hosted(dir), { github: github() })).toThrow(SelfHostedDatabaseError);
+    expect(snapshot(dir)).toEqual(before);
   });
 
   test("logs exactly the listening line and where people sign in, with no secret and no code", () => {
@@ -207,7 +229,7 @@ describe("a self-hosted buildServer", () => {
     }
   });
 
-  test("refuses a database that holds a hosted team, and changes nothing in it", async () => {
+  test("refuses a hosted server's database that holds a team, and changes nothing in it", async () => {
     const dir = dataDir();
     await hostedServerWithTeam(dir);
     const before = snapshot(dir);
@@ -217,15 +239,12 @@ describe("a self-hosted buildServer", () => {
     expect(snapshot(dir)).toEqual(before);
   });
 
-  test("still starts on a hosted database that holds no team yet (the refusal looks for a hosted team)", () => {
+  test("refuses a hosted server's database that holds no team yet, and changes nothing in it", () => {
     const dir = dataDir();
     buildServer(hosted(dir), { github: github() }).close();
-    const s = buildServer(selfHosted(dir));
-    try {
-      expect(s.inviteCode?.()).toMatch(/^[a-f0-9]{24}$/);
-      expect(count(s.db, "teams")).toEqual({ n: 1 });
-    } finally {
-      s.close();
-    }
+    const before = snapshot(dir);
+    expect(before.teams).toEqual([]);
+    expect(() => buildServer(selfHosted(dir))).toThrow(HostedDatabaseError);
+    expect(snapshot(dir)).toEqual(before);
   });
 });

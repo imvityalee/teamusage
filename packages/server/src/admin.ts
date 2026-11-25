@@ -3,8 +3,8 @@ import { closeSync, openSync, readSync, statSync } from "node:fs";
 import Database from "better-sqlite3";
 import { join } from "node:path";
 import { getSetting, getStoredInviteCode, openDb, type Db } from "./db.js";
+import { isHostedDatabase } from "./db-mode.js";
 import { isMain } from "./entry.js";
-import { holdsHostedTeam } from "./hosted-teams.js";
 import { NewerSchemaError } from "./migrate.js";
 import { openFailureMessage } from "./open-failure.js";
 import { forTeam } from "./team-data.js";
@@ -39,7 +39,7 @@ export function runAdmin(
   env: Record<string, string | undefined> = process.env,
 ): number {
   // Before any command, so that none of them can create the single team or an invite code in a hosted database.
-  if (holdsHostedTeam(db)) {
+  if (isHostedDatabase(db)) {
     out(HOSTED);
     return 1;
   }
