@@ -1,43 +1,9 @@
 import { createHash, randomBytes } from "node:crypto";
 import Database from "better-sqlite3";
 import type { UsageRecord } from "@teamusage/shared";
+import { migrate } from "./migrate.js";
 
 export type Db = import("better-sqlite3").Database;
-
-const SCHEMA = `
-create table if not exists members (
-  id integer primary key autoincrement,
-  email text not null unique,
-  name text not null,
-  created_at text not null
-);
-create table if not exists machines (
-  id text primary key,
-  member_id integer not null references members(id) on delete cascade,
-  label text not null,
-  token_hash text not null unique,
-  created_at text not null,
-  last_sync_at text
-);
-create table if not exists usage (
-  member_id integer not null references members(id) on delete cascade,
-  machine_id text not null references machines(id) on delete cascade,
-  date text not null,
-  agent text not null,
-  model text not null,
-  input integer not null,
-  output integer not null,
-  cache_create integer not null,
-  cache_read integer not null,
-  total integer not null,
-  cost_usd real not null,
-  unpriced integer not null,
-  primary key (machine_id, date, agent, model)
-);
-create index if not exists usage_member_date on usage (member_id, date);
-create table if not exists settings (key text primary key, value text not null);
-create table if not exists sessions (id text primary key, created_at text not null);
-`;
 
 /** The machine id is already registered to a different member. */
 export class MachineOwnedError extends Error {
@@ -53,13 +19,8 @@ const sha256 = (s: string): string => createHash("sha256").update(s).digest("hex
 export function openDb(path: string): Db {
   const db = new Database(path);
   db.pragma("journal_mode = WAL");
+  migrate(db);
   db.pragma("foreign_keys = ON");
-  db.exec(SCHEMA);
-  // Databases created by 0.1/0.2 lack the account label columns; add them in place.
-  const have = new Set((db.prepare("pragma table_info(usage)").all() as { name: string }[]).map((c) => c.name));
-  for (const col of ["account_kind", "account_org", "account_plan"]) {
-    if (!have.has(col)) db.exec(`alter table usage add column ${col} text`);
-  }
   return db;
 }
 
