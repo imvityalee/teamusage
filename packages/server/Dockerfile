@@ -26,6 +26,7 @@ WORKDIR /app/packages/server
 COPY --from=build /out/node_modules ./node_modules
 # "type": "module", so Node loads dist/*.js as ES modules by declaration, not by syntax detection.
 COPY --from=build /repo/packages/server/package.json ./package.json
+COPY packages/server/LICENSE.md ./LICENSE.md
 COPY --from=build /repo/packages/server/dist ./dist
 COPY --from=build /repo/packages/server/web/dist ./web/dist
 RUN useradd --system --uid 10001 --user-group --no-create-home --shell /usr/sbin/nologin teamusage \

@@ -12,7 +12,7 @@ const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const temps = [];
 after(() => temps.forEach((d) => rmSync(d, { recursive: true, force: true })));
 
-/** A fresh copy of both marketplaces, both plugins, the client package.json and the README; `edit` breaks it. */
+/** A fresh copy of the marketplaces, plugins, client package.json and root docs; `edit` breaks it. */
 function copy(edit = () => {}) {
   const root = mkdtempSync(path.join(os.tmpdir(), "check-plugin-"));
   temps.push(root);
@@ -21,7 +21,7 @@ function copy(edit = () => {}) {
   }
   mkdirSync(path.join(root, "packages/client"), { recursive: true });
   cpSync(path.join(repo, "packages/client/package.json"), path.join(root, "packages/client/package.json"));
-  cpSync(path.join(repo, "README.md"), path.join(root, "README.md"));
+  for (const doc of ["README.md", "SELF-HOSTING.md"]) cpSync(path.join(repo, doc), path.join(root, doc));
   const file = (rel) => path.join(root, rel);
   const json = (rel, fn) => {
     const data = JSON.parse(readFileSync(file(rel), "utf8"));
@@ -212,6 +212,12 @@ test("the README pins another client version", () =>
   expectFailure(
     copy(({ text }) => text("README.md", (s) => `${s}\nRun \`npx -y teamusage@0.0.9 sync\`.\n`)),
     /README\.md: teamusage@0\.0\.9 does not match the client version/,
+  ));
+
+test("SELF-HOSTING.md pins another client version", () =>
+  expectFailure(
+    copy(({ text }) => text("SELF-HOSTING.md", (s) => `${s}\nRun \`npx -y teamusage@0.0.9 sync\`.\n`)),
+    /SELF-HOSTING\.md: teamusage@0\.0\.9 does not match the client version/,
   ));
 
 test("the README pins a version range", () =>

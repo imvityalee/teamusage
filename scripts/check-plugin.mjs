@@ -349,17 +349,19 @@ export function checkPlugin(root) {
     }
   }
 
-  // The root README: every pinned client version (teamusage@1.2.3, or a range such as teamusage@^1.2.3) must be
+  // The root docs: every pinned client version (teamusage@1.2.3, or a range such as teamusage@^1.2.3) must be
   // the client version. teamusage@teamusage names the plugin, not a version, and is not checked.
-  let readme;
-  try {
-    readme = readFileSync(path.join(root, "README.md"), "utf8");
-  } catch {
-    fail("README.md: missing");
-  }
-  if (readme !== undefined && version !== undefined) {
-    for (const pin of readme.matchAll(/teamusage@([~^<>=]*\d[^\s"'`,\])}]*)/g)) {
-      if (pin[1] !== version) fail(`README.md: teamusage@${pin[1]} does not match the client version ${version}`);
+  for (const doc of ["README.md", "SELF-HOSTING.md"]) {
+    let text;
+    try {
+      text = readFileSync(path.join(root, doc), "utf8");
+    } catch {
+      fail(`${doc}: missing`);
+    }
+    if (text !== undefined && version !== undefined) {
+      for (const pin of text.matchAll(/teamusage@([~^<>=]*\d[^\s"'`,\])}]*)/g)) {
+        if (pin[1] !== version) fail(`${doc}: teamusage@${pin[1]} does not match the client version ${version}`);
+      }
     }
   }
 
