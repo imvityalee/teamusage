@@ -57,7 +57,8 @@ test("the callback proves the cookie's verifier to GitHub, sets today's session 
   const sc = res.headers.get("set-cookie")!;
   expect(sc).toMatch(/tu_session=[a-f0-9]{64}; Max-Age=2592000; Path=\/; HttpOnly; SameSite=Lax(,|$)/);
   expect(clearsOauth(res)).toBe(true);
-  const secure = await app.request(`https://teamusage.example${url}`, { headers: { Cookie: oauth } });
+  const again = await started();
+  const secure = await app.request(`https://teamusage.example${again.url}`, { headers: { Cookie: again.oauth } });
   expect(cookieOf(secure, "tu_session")).not.toBe("");
   expect(secure.headers.get("set-cookie")).toMatch(/tu_session=[a-f0-9]{64};[^,]*Secure/);
 });
@@ -88,9 +89,11 @@ test.each([
   expect(sessionCount()).toEqual({ n: 0 });
 });
 test.each([
-  ["state", (s: string) => `code=code-ann&state=${s}&state=${s}`],
-  ["code", (s: string) => `code=code-ann&code=code-ann&state=${s}`],
-])("a callback with a repeated %s opens no session", async (_name, query) => {
+  ["a repeated state", (s: string) => `code=code-ann&state=${s}&state=${s}`],
+  ["a repeated code", (s: string) => `code=code-ann&code=code-ann&state=${s}`],
+  ["an empty state", () => "code=code-ann&state="],
+  ["an empty code", (s: string) => `code=&state=${s}`],
+])("a callback with %s opens no session", async (_name, query) => {
   const { state, oauth } = await started();
   const res = await app.request(`/auth/github/callback?${query(state)}`, { headers: { Cookie: oauth } });
   expect(res.status).toBe(400);
@@ -107,6 +110,24 @@ test("a state cannot be used twice", async () => {
   expect(second.status).toBe(400);
   expect(cookieOf(second, "tu_session")).toBe("");
   expect(sessionCount()).toEqual({ n: 1 });
+});
+test("a callback replayed with the same cookie and code opens no second session", async () => {
+  const { oauth, url } = await started();
+  expect((await app.request(url, { headers: { Cookie: oauth } })).status).toBe(302);
+  // The server keeps no list of used states; a replay from the same browser is refused by GitHub's single-use code.
+  const replay = await app.request(url, { headers: { Cookie: oauth } });
+  expect(replay.status).toBe(502);
+  expect(await replay.json()).toEqual({ error: "sign-in failed" });
+  expect(cookieOf(replay, "tu_session")).toBe("");
+  expect(sessionCount()).toEqual({ n: 1 });
+});
+test("a callback with a state of another length opens no session", async () => {
+  const { oauth } = await started();
+  const res = await app.request("/auth/github/callback?code=code-ann&state=abc", { headers: { Cookie: oauth } });
+  expect(res.status).toBe(400);
+  expect(await res.json()).toEqual({ error: "sign-in failed" });
+  expect(github.calls).toEqual([]);
+  expect(sessionCount()).toEqual({ n: 0 });
 });
 test("when GitHub gives no user, sign-in fails and no session is opened", async () => {
   const { oauth, url } = await started("unknown");

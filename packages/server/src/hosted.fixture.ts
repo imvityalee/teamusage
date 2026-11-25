@@ -14,15 +14,23 @@ const USERS: Record<string, GithubUser> = { "code-ann": { id: 1, login: "ann" } 
 
 export type FakeGithub = GithubClient & { calls: { code: string; verifier: string }[] };
 
-/** A GitHub that knows `users` by callback code and records every `fetchUser` call. */
+/**
+ * A GitHub that knows `users` by callback code and records every `fetchUser` call. Like GitHub, it takes a code
+ * once: GitHub issues a fresh code for each sign-in, so here a code is taken once per sign-in's verifier.
+ */
 export function fakeGithub(users: Record<string, GithubUser>): FakeGithub {
   const calls: FakeGithub["calls"] = [];
+  const exchanged = new Set<string>();
   return {
     calls,
     authorizeUrl: ({ state, challenge }) => `https://github.test/authorize?state=${state}&challenge=${challenge}`,
     fetchUser: async (a) => {
       calls.push(a);
-      return users[a.code] ?? null;
+      const key = `${a.code} ${a.verifier}`;
+      const user = users[a.code];
+      if (user === undefined || exchanged.has(key)) return null;
+      exchanged.add(key);
+      return user;
     },
   };
 }

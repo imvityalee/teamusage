@@ -20,6 +20,7 @@ test("logout needs the server's own origin and ends the session", async () => {
   const cookie = await signIn(app, "code-ann");
   expect((await app.request("/api/logout", { method: "POST", headers: { Cookie: cookie } })).status).toBe(403);
   expect((await app.request("/api/logout", { method: "POST", headers: { Cookie: cookie, Origin: "https://evil.example" } })).status).toBe(403);
+  expect((await app.request("/api/logout", { method: "POST", headers: { Cookie: cookie, Origin: "null" } })).status).toBe(403);
   expect((await app.request("/api/logout", { method: "POST", headers: { Cookie: cookie, Origin: PUBLIC } })).status).toBe(204);
   expect((await app.request("/api/me", { headers: { Cookie: cookie } })).status).toBe(401);
 });
