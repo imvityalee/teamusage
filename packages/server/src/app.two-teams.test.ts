@@ -46,6 +46,34 @@ describe("two teams", () => {
     const body = (await (await stats({ Cookie: await cookie(CODE_B) })).json()) as { members: { email: string }[] };
     expect(body.members.map((m) => m.email)).toEqual(["bob@example.com"]);
   });
+  test("a token of one team with a cookie of the other reads the token's team; a bad token is 401", async () => {
+    const ta = await join(CODE_A, "ann@example.com");
+    await join(CODE_B, "bob@example.com");
+    const c = await cookie(CODE_B);
+    const res = await stats({ Authorization: `Bearer ${ta}`, Cookie: c });
+    expect(((await res.json()) as { members: { email: string }[] }).members.map((m) => m.email)).toEqual(["ann@example.com"]);
+    expect((await stats({ Authorization: "Bearer bad", Cookie: c })).status).toBe(401);
+  });
+  test("an upload with one team's token leaves the other team's numbers unchanged", async () => {
+    const ta = await join(CODE_A, "ann@example.com");
+    const tb = await join(CODE_B, "ann@example.com");
+    await call("/api/usage", json({ records: [record()] }, { Authorization: `Bearer ${ta}` }));
+    const tokensOf = async (token: string) =>
+      ((await (await stats({ Authorization: `Bearer ${token}` })).json()) as { totals: { tokens: number } }).totals.tokens;
+    expect((await call("/api/usage", json({ records: [record({ input: 21, total: 30 })] }, { Authorization: `Bearer ${tb}` }))).status).toBe(200);
+    expect([await tokensOf(ta), await tokensOf(tb)]).toEqual([10, 30]);
+  });
+  test("a member's own id with their team's credential is 200 with that team's numbers", async () => {
+    await join(CODE_A, "ann@example.com");
+    const tb = await join(CODE_B, "bob@example.com");
+    await call("/api/usage", json({ records: [record({ input: 21, total: 30 })] }, { Authorization: `Bearer ${tb}` }));
+    const bobId = forTeam(db, B).listMembers()[0]!.id;
+    const res = await stats({ Authorization: `Bearer ${tb}` }, `&member=${bobId}`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { totals: { tokens: number }; members: { email: string }[] };
+    expect(body.totals.tokens).toBe(30);
+    expect(body.members.map((m) => m.email)).toEqual(["bob@example.com"]);
+  });
   test("a member id from another team is 404, like an unknown id", async () => {
     await join(CODE_A, "ann@example.com");
     const annId = forTeam(db, A).listMembers()[0]!.id;

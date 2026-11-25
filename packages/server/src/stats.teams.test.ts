@@ -20,7 +20,12 @@ test("a team's stats hold only its own members and usage", () => {
   expect(s.members.map((m) => m.email)).toEqual(["ann@x.com"]);
   expect(s.available.agents).toEqual(["claude"]);
   expect(s.models.map((m) => m.model)).toEqual(["m1"]);
-  expect(getStats(db, A, { ...Q, memberId: rb.memberId }).members).toEqual([]);
+  const other = getStats(db, A, { ...Q, memberId: rb.memberId });
+  expect(other.members).toEqual([]);
+  expect(other.machines).toEqual([]);
+  expect(other.models).toEqual([]);
+  expect(other.available).toEqual({ agents: [], models: [], accounts: [], plans: [] });
+  expect(other.daily.every((d) => Object.keys(d.byAgent).length === 0)).toBe(true);
 });
 
 /** Every statement getStats runs that reads `usage`, with the index SQLite chose for it. */
