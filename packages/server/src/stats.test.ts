@@ -170,8 +170,8 @@ describe("getStats storage-layer overflow guard", () => {
     const db = openDb(":memory:");
     const m = registerMachine(db, { name: "Ann", email: "ann@x.com", machineId: M1, machineLabel: "mbp" });
     const ins = db.prepare(
-      `insert into usage (member_id, machine_id, date, agent, model, input, output, cache_create, cache_read, total, cost_usd, unpriced)
-       values (?, ?, '2026-11-02', 'claude', ?, ?, ?, ?, ?, ?, 1, 0)`,
+      `insert into usage (team_id, member_id, machine_id, date, agent, model, input, output, cache_create, cache_read, total, cost_usd, unpriced)
+       values (1, ?, ?, '2026-11-02', 'claude', ?, ?, ?, ?, ?, ?, 1, 0)`,
     );
     const big = 2 ** 62;
     for (let i = 0; i < 4; i++) ins.run(m.memberId, M1, `m${i}`, big, big, big, big, big);

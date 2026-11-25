@@ -19,6 +19,10 @@ import {
   upsertUsage,
   type Db,
 } from "./db.js";
+import { LEGACY_SCHEMA } from "./legacy-schema.fixture.js";
+
+const MID = "a".repeat(32);
+const sha = (s: string): string => createHash("sha256").update(s).digest("hex");
 
 let db: Db;
 beforeEach(() => {
@@ -62,7 +66,7 @@ describe("registration", () => {
     const first = registerMachine(db, reg("m1"));
     const second = registerMachine(db, reg("m1"));
     expect(authenticate(db, first.token)).toBeNull();
-    expect(authenticate(db, second.token)).toEqual({ memberId: second.memberId, machineId: "m1" });
+    expect(authenticate(db, second.token)).toEqual({ teamId: 1, memberId: second.memberId, machineId: "m1" });
     expect(listMembers(db)[0]!.machines).toHaveLength(1);
   });
 
@@ -222,6 +226,8 @@ describe("account label", () => {
       create table usage (member_id integer not null, machine_id text not null, date text not null, agent text not null, model text not null,
         input integer not null, output integer not null, cache_create integer not null, cache_read integer not null, total integer not null,
         cost_usd real not null, unpriced integer not null, primary key (machine_id, date, agent, model));
+      insert into members values (1, 'a@example.com', 'A', 't');
+      insert into machines values ('m1', 1, 'mbp', 'h', 't', null);
       insert into usage values (1, 'm1', '2026-11-17', 'claude', 'x', 1, 0, 0, 0, 1, 0, 0);
     `);
     old.close();
@@ -262,6 +268,8 @@ describe("account plan", () => {
       create table usage (member_id integer not null, machine_id text not null, date text not null, agent text not null, model text not null,
         input integer not null, output integer not null, cache_create integer not null, cache_read integer not null, total integer not null,
         cost_usd real not null, unpriced integer not null, account_kind text, account_org text, primary key (machine_id, date, agent, model));
+      insert into members values (1, 'a@example.com', 'A', 't');
+      insert into machines values ('m1', 1, 'mbp', 'h', 't', null);
       insert into usage values (1, 'm1', '2026-11-17', 'claude', 'x', 1, 0, 0, 0, 1, 0, 0, 'team', 'D');
     `);
     old.close();
@@ -414,6 +422,24 @@ describe("invite code and sessions", () => {
     createSession(db);
     expect((db.prepare("select count(*) as n from sessions").get() as { n: number }).n).toBe(2);
     expect(hasSession(db, fresh)).toBe(true);
+  });
+
+  test("a token and a session from before the upgrade still work", () => {
+    const dir = mkdtempSync(join(tmpdir(), "teamusage-"));
+    const file = join(dir, "t.sqlite");
+    const token = "t".repeat(64);
+    const session = "c".repeat(64);
+    const old = new Database(file);
+    old.exec(LEGACY_SCHEMA);
+    old.exec(`insert into members (id, email, name, created_at) values (1, 'ann@x.com', 'Ann', 't');
+      insert into machines (id, member_id, label, token_hash, created_at) values ('${MID}', 1, 'mbp', '${sha(token)}', 't');
+      insert into sessions (id, created_at) values ('${sha(session)}', '${new Date().toISOString()}');`);
+    old.close();
+    const db = openDb(file);
+    expect(authenticate(db, token)).toEqual({ teamId: 1, memberId: 1, machineId: MID });
+    expect(hasSession(db, session)).toBe(true);
+    db.close();
+    rmSync(dir, { recursive: true });
   });
 });
 

@@ -652,8 +652,8 @@ describe("upload bounds", () => {
     expect((await post("/api/usage", { records: [record()] }, bearer(token))).status).toBe(200);
     const { member_id: memberId, id } = db.prepare("select member_id, id from machines").get() as { member_id: number; id: string };
     const ins = db.prepare(
-      `insert into usage (member_id, machine_id, date, agent, model, input, output, cache_create, cache_read, total, cost_usd, unpriced)
-       values (?, ?, '2026-11-01', 'claude', ?, ?, ?, ?, ?, ?, 1, 0)`,
+      `insert into usage (team_id, member_id, machine_id, date, agent, model, input, output, cache_create, cache_read, total, cost_usd, unpriced)
+       values (1, ?, ?, '2026-11-01', 'claude', ?, ?, ?, ?, ?, ?, 1, 0)`,
     );
     const big = 2 ** 62;
     for (let i = 0; i < 4; i++) ins.run(memberId, id, `big${i}`, big, big, big, big, big);

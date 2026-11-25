@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import Database from "better-sqlite3";
 import type { UsageRecord } from "@teamusage/shared";
 import { migrate } from "./migrate.js";
+import { ensureSingleTeam } from "./teams.js";
 
 export type Db = import("better-sqlite3").Database;
 
@@ -13,8 +14,8 @@ export class MachineOwnedError extends Error {
   }
 }
 
-const now = (): string => new Date().toISOString();
-const sha256 = (s: string): string => createHash("sha256").update(s).digest("hex");
+export const now = (): string => new Date().toISOString();
+const sha256 =(s: string): string => createHash("sha256").update(s).digest("hex");
 
 export function openDb(path: string): Db {
   const db = new Database(path);
@@ -49,9 +50,10 @@ export function getInviteCode(db: Db, fromEnv?: string): string {
 
 export function rotateInviteCode(db: Db): string {
   const code = randomBytes(12).toString("hex");
+  const teamId = ensureSingleTeam(db);
   db.transaction(() => {
     setSetting(db, "invite_code", code);
-    db.prepare("delete from sessions").run();
+    db.prepare("delete from sessions where team_id = ?").run(teamId);
   })();
   return code;
 }
@@ -63,38 +65,42 @@ export function registerMachine(
   const email = a.email.trim().toLowerCase();
   const token = randomBytes(32).toString("hex");
   const tokenHash = sha256(token);
+  const teamId = ensureSingleTeam(db);
   return db.transaction(() => {
     const at = now();
     db.prepare(
-      "insert into members (email, name, created_at) values (?, ?, ?) on conflict (email) do update set name = excluded.name",
-    ).run(email, a.name, at);
-    const { id: memberId } = db.prepare("select id from members where email = ?").get(email) as { id: number };
-    const existing = db.prepare("select member_id from machines where id = ?").get(a.machineId) as
+      "insert into members (team_id, email, name, created_at) values (?, ?, ?, ?) on conflict (team_id, email) do update set name = excluded.name",
+    ).run(teamId, email, a.name, at);
+    const { id: memberId } = db.prepare("select id from members where team_id = ? and email = ?").get(teamId, email) as {
+      id: number;
+    };
+    const existing = db.prepare("select member_id from machines where team_id = ? and id = ?").get(teamId, a.machineId) as
       | { member_id: number }
       | undefined;
     if (existing && existing.member_id !== memberId) {
       throw new MachineOwnedError();
     }
     if (existing) {
-      db.prepare("update machines set label = ?, token_hash = ? where id = ?").run(
+      db.prepare("update machines set label = ?, token_hash = ? where team_id = ? and id = ?").run(
         a.machineLabel,
         tokenHash,
+        teamId,
         a.machineId,
       );
     } else {
       db.prepare(
-        "insert into machines (id, member_id, label, token_hash, created_at) values (?, ?, ?, ?, ?)",
-      ).run(a.machineId, memberId, a.machineLabel, tokenHash, at);
+        "insert into machines (team_id, id, member_id, label, token_hash, created_at) values (?, ?, ?, ?, ?, ?)",
+      ).run(teamId, a.machineId, memberId, a.machineLabel, tokenHash, at);
     }
     return { token, memberId };
   })();
 }
 
-export function authenticate(db: Db, token: string): { memberId: number; machineId: string } | null {
-  const row = db.prepare("select member_id, id from machines where token_hash = ?").get(sha256(token)) as
-    | { member_id: number; id: string }
+export function authenticate(db: Db, token: string): { teamId: number; memberId: number; machineId: string } | null {
+  const row = db.prepare("select team_id, member_id, id from machines where token_hash = ?").get(sha256(token)) as
+    | { team_id: number; member_id: number; id: string }
     | undefined;
-  return row ? { memberId: row.member_id, machineId: row.id } : null;
+  return row ? { teamId: row.team_id, memberId: row.member_id, machineId: row.id } : null;
 }
 
 export function upsertUsage(
@@ -122,19 +128,21 @@ export function upsertUsage(
   const FILLS = `excluded.account_kind is not null and (usage.account_kind is null
         or (${SAME_ACCOUNT} and usage.account_plan is null and excluded.account_plan is not null))`;
   const stmt = db.prepare(`
-    insert into usage (member_id, machine_id, date, agent, model, input, output, cache_create, cache_read, total, cost_usd, unpriced, account_kind, account_org, account_plan)
-    values (@memberId, @machineId, @date, @agent, @model, @input, @output, @cacheCreate, @cacheRead, @total, @costUsd, @unpriced, @accountKind, @accountOrg, @accountPlan)
-    on conflict (machine_id, date, agent, model) do update set
+    insert into usage (team_id, member_id, machine_id, date, agent, model, input, output, cache_create, cache_read, total, cost_usd, unpriced, account_kind, account_org, account_plan)
+    values (@teamId, @memberId, @machineId, @date, @agent, @model, @input, @output, @cacheCreate, @cacheRead, @total, @costUsd, @unpriced, @accountKind, @accountOrg, @accountPlan)
+    on conflict (team_id, machine_id, date, agent, model) do update set
       ${["member_id", "input", "output", "cache_create", "cache_read", "total", "cost_usd", "unpriced"].map(keepOr).join(",\n      ")},
       account_org = case when ${TAKE_LABEL} then excluded.account_org else usage.account_org end,
       account_kind = case when ${TAKE_LABEL} then excluded.account_kind else usage.account_kind end,
       account_plan = ${PLAN}
     where ${GROWS} or (${FILLS})`);
+  const teamId = ensureSingleTeam(db);
   return db.transaction(() => {
     let stored = 0;
     let kept = 0;
     for (const r of records) {
       const res = stmt.run({
+        teamId,
         memberId: who.memberId,
         machineId: who.machineId,
         date: r.date,
@@ -154,7 +162,7 @@ export function upsertUsage(
       if (res.changes > 0) stored++;
       else kept++;
     }
-    db.prepare("update machines set last_sync_at = ? where id = ?").run(now(), who.machineId);
+    db.prepare("update machines set last_sync_at = ? where team_id = ? and id = ?").run(now(), teamId, who.machineId);
     return { stored, kept };
   })();
 }
@@ -165,7 +173,7 @@ export function createSession(db: Db): string {
   const id = randomBytes(32).toString("hex");
   // Expired sessions are useless; dropping them here keeps the table from growing without bound.
   db.prepare("delete from sessions where created_at < ?").run(new Date(Date.now() - SESSION_TTL_MS).toISOString());
-  db.prepare("insert into sessions (id, created_at) values (?, ?)").run(sha256(id), now());
+  db.prepare("insert into sessions (id, team_id, created_at) values (?, ?, ?)").run(sha256(id), ensureSingleTeam(db), now());
   return id;
 }
 
@@ -182,14 +190,15 @@ export function listMembers(db: Db): {
   email: string;
   machines: { id: string; label: string; lastSyncAt: string | null }[];
 }[] {
-  const members = db.prepare("select id, name, email from members order by id").all() as {
+  const teamId = ensureSingleTeam(db);
+  const members = db.prepare("select id, name, email from members where team_id = ? order by id").all(teamId) as {
     id: number;
     name: string;
     email: string;
   }[];
   const machines = db
-    .prepare("select id, member_id, label, last_sync_at from machines order by created_at, id")
-    .all() as { id: string; member_id: number; label: string; last_sync_at: string | null }[];
+    .prepare("select id, member_id, label, last_sync_at from machines where team_id = ? order by created_at, id")
+    .all(teamId) as { id: string; member_id: number; label: string; last_sync_at: string | null }[];
   return members.map((m) => ({
     ...m,
     machines: machines
@@ -199,21 +208,23 @@ export function listMembers(db: Db): {
 }
 
 export function removeMember(db: Db, email: string): boolean {
+  const teamId = ensureSingleTeam(db);
   return db.transaction(() => {
-    const row = db.prepare("select id from members where email = ?").get(email.trim().toLowerCase()) as
-      | { id: number }
-      | undefined;
+    const row = db
+      .prepare("select id from members where team_id = ? and email = ?")
+      .get(teamId, email.trim().toLowerCase()) as { id: number } | undefined;
     if (!row) return false;
-    db.prepare("delete from usage where member_id = ?").run(row.id);
-    db.prepare("delete from machines where member_id = ?").run(row.id);
-    db.prepare("delete from members where id = ?").run(row.id);
+    db.prepare("delete from usage where team_id = ? and member_id = ?").run(teamId, row.id);
+    db.prepare("delete from machines where team_id = ? and member_id = ?").run(teamId, row.id);
+    db.prepare("delete from members where team_id = ? and id = ?").run(teamId, row.id);
     return true;
   })();
 }
 
 export function removeMachine(db: Db, machineId: string): boolean {
+  const teamId = ensureSingleTeam(db);
   return db.transaction(() => {
-    db.prepare("delete from usage where machine_id = ?").run(machineId);
-    return db.prepare("delete from machines where id = ?").run(machineId).changes > 0;
+    db.prepare("delete from usage where team_id = ? and machine_id = ?").run(teamId, machineId);
+    return db.prepare("delete from machines where team_id = ? and id = ?").run(teamId, machineId).changes > 0;
   })();
 }
