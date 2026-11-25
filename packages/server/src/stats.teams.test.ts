@@ -29,24 +29,29 @@ test("a team's stats hold only its own members and usage", () => {
 });
 
 /** Every statement getStats runs that reads `usage`, with the index SQLite chose for it. */
-function usagePlans(memberId?: number): string[] {
+function usagePlans(memberId?: number, filters: { agents?: string[] } = {}): string[] {
   const seen: string[] = [];
   const db = new Database(":memory:", { verbose: (sql) => seen.push(String(sql)) });
   migrate(db);
   const team = createTeam(db, "A");
   seen.length = 0;
-  getStats(db, team, { ...Q, ...(memberId === undefined ? {} : { memberId }) });
+  getStats(db, team, { ...Q, ...filters, ...(memberId === undefined ? {} : { memberId }) });
   return seen
     .filter((sql) => /from usage u/.test(sql))
     .map((sql) => (db.prepare(`explain query plan ${sql}`).all() as { detail: string }[]).map((r) => r.detail).join(" | "));
 }
-test("the team view reads usage through the team and date index", () => {
+test("the team view reads usage in two ordered passes over covering indexes, without sorting", () => {
   const plans = usagePlans();
-  expect(plans.length).toBeGreaterThanOrEqual(6);
-  for (const p of plans) expect(p).toContain("usage_team_date");
+  expect(plans).toHaveLength(2);
+  expect(plans.some((p) => p.includes("COVERING INDEX usage_by_member"))).toBe(true);
+  expect(plans.some((p) => p.includes("COVERING INDEX usage_by_day"))).toBe(true);
+  for (const p of plans) expect(p).not.toContain("TEMP B-TREE");
 });
-test("a member's view reads usage through the team, member and date index", () => {
+test("a member's view reads usage through the member index", () => {
   const plans = usagePlans(1);
-  expect(plans.length).toBeGreaterThanOrEqual(6);
-  for (const p of plans) expect(p).toContain("usage_team_member_date");
+  expect(plans).toHaveLength(2);
+  for (const p of plans) expect(p).toContain("usage_by_member (team_id=? AND member_id=?)");
+});
+test("a filtered team view adds one unfiltered pass for the available lists", () => {
+  expect(usagePlans(undefined, { agents: ["claude"] })).toHaveLength(3);
 });

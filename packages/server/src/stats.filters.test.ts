@@ -187,6 +187,7 @@ describe("agent and model filters", () => {
       forTeam(db, team).upsertUsage({ memberId: r.memberId, machineId: id }, [rec("2026-11-02", `agent${i}`, `model${i}`, 3)]);
     }
     expect(asks.map(queriesFor)).toEqual(before);
-    expect(queriesFor({ ...Q, accounts: Array.from({ length: 50 }, (_, i) => `team:o${i}`) })).toBe(before[0]);
+    const accounts = (n: number) => ({ ...Q, accounts: Array.from({ length: n }, (_, i) => `team:o${i}`) });
+    expect(queriesFor(accounts(50))).toBe(queriesFor(accounts(1)));
   });
 });

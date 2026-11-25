@@ -149,7 +149,7 @@ function legacyWithData(): Db {
 
 test("a 0.3 database moves into team 1 and keeps its ids, tokens, usage and sessions", () => {
   const db = legacyWithData();
-  migrate(db);
+  runSteps(db, STEPS.slice(0, 2));
   expect(version(db)).toBe(2);
   expect(db.prepare("select id, name, dashboard_access from teams").all()).toEqual([{ id: 1, name: "Team", dashboard_access: "code" }]);
   expect(db.prepare("select id, team_id, email from members").all()).toEqual([{ id: 7, team_id: 1, email: "ann@x.com" }]);
@@ -159,6 +159,17 @@ test("a 0.3 database moves into team 1 and keeps its ids, tokens, usage and sess
   expect(db.prepare("select sum(total) as total, count(*) as n from usage where team_id = 1").get()).toEqual({ total: 12, n: 2 });
   expect(db.prepare("select team_id from sessions where id = ?").get(S)).toEqual({ team_id: 1 });
   expect(db.pragma("foreign_key_check")).toEqual([]);
+});
+test("a version 2 database swaps the usage indexes for the ordered ones and keeps its rows", () => {
+  const db = legacyWithData();
+  runSteps(db, STEPS.slice(0, 2));
+  const rows = () => db.prepare("select * from usage order by date, agent, model").all();
+  const before = rows();
+  runSteps(db, STEPS.slice(0, 3));
+  expect(version(db)).toBe(3);
+  const names = (db.prepare("select name from sqlite_master where type = 'index' and tbl_name = 'usage' and name not like 'sqlite_%' order by name").all() as { name: string }[]).map((r) => r.name);
+  expect(names).toEqual(["usage_by_day", "usage_by_member"]);
+  expect(rows()).toEqual(before);
 });
 test("an empty database gets the tables and no team", () => {
   const db = openDb(":memory:");
@@ -239,8 +250,8 @@ test("the team schema has its indexes and every foreign key cascades on delete",
   expect(indexes.map((r) => (r as { name: string }).name)).toEqual([
     "machines_team_member",
     "sessions_team",
-    "usage_team_date",
-    "usage_team_member_date",
+    "usage_by_day",
+    "usage_by_member",
   ]);
   /** One "<parent table> <on delete>" entry per foreign key; a key over two columns is listed once. */
   const foreignKeys = (table: string): string[] => {

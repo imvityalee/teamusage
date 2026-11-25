@@ -1,6 +1,7 @@
 import { accountKey, datesBetween, planKey, type AccountKind, type Stats } from "@teamusage/shared";
 import type { Db } from "./db.js";
 import { usageFilter } from "./stats-filter.js";
+import { dayRows, memberList, memberMachines, memberRows, type DayRow, type MemberInfo, type MemberRow, type Scope } from "./stats-rows.js";
 
 /** SQLite `total()` returns a float and cannot overflow; anything non-finite is clamped, never emitted as null. */
 const finite = (n: number): number => (Number.isFinite(n) ? n : n > 0 ? Number.MAX_VALUE : n < 0 ? -Number.MAX_VALUE : 0);
@@ -30,112 +31,25 @@ function getOrCreate<K, V>(map: Map<K, V>, key: K, make: () => V): V {
   return v;
 }
 
-/** The team, the date range and, when one is asked for, the member. */
-type Scope = { teamId: number; from: string; to: string; memberId: number | null };
-type Filter = ReturnType<typeof usageFilter>;
-
-/**
- * Condition on `usage u` for the rows inside the scope, with its bound values; every query on `usage` uses it, and
- * its leading columns are those of `usage_team_date` (team view) or `usage_team_member_date` (a member's view).
- */
-function inScope(scope: Scope): { sql: string; params: Record<string, number | string> } {
-  const { teamId, from, to, memberId } = scope;
-  return memberId === null
-    ? { sql: "u.team_id = @teamId and u.date between @from and @to", params: { teamId, from, to } }
-    : { sql: "u.team_id = @teamId and u.member_id = @memberId and u.date between @from and @to", params: { teamId, memberId, from, to } };
-}
-
-const select = <T>(db: Db, sql: string, params: object): T[] => db.prepare(sql).all(params) as T[];
-
-type MemberTotal = { id: number; name: string; email: string; tokens: number; cost: number; machines: number; lastSyncAt: string | null };
-
-/** Every member in scope with their filtered tokens and cost, machine count and last sync; tokens desc, then name. */
-function memberTotals(db: Db, scope: Scope, filter: Filter): MemberTotal[] {
-  const scoped = inScope(scope);
-  return select<MemberTotal>(
-    db,
-    `select m.id as id, m.name as name, m.email as email, coalesce(t.tokens, 0) as tokens, coalesce(t.cost, 0) as cost,
-       (select count(*) from machines x where x.team_id = m.team_id and x.member_id = m.id) as machines,
-       (select max(x.last_sync_at) from machines x where x.team_id = m.team_id and x.member_id = m.id) as lastSyncAt
-     from members m
-     left join (
-       select u.member_id as memberId, total(u.total) as tokens, sum(u.cost_usd) as cost from usage u
-       where ${scoped.sql} and ${filter.sql}
-       group by u.member_id
-     ) t on t.memberId = m.id
-     where m.team_id = @teamId and (@memberId is null or m.id = @memberId)
-     order by tokens desc, m.name, m.id`,
-    { memberId: null, ...scoped.params, ...filter.params },
-  );
-}
-
-/** Filtered totals per agent and model, largest first. */
-function modelTotals(db: Db, scope: Scope, filter: Filter): Stats["models"] {
-  const scoped = inScope(scope);
-  const rows = select<{ agent: string; model: string; input: number; output: number; cacheCreate: number; cacheRead: number; total: number; cost: number; unpriced: number }>(
-    db,
-    `select u.agent as agent, u.model as model, total(u.input) as input, total(u.output) as output,
-       total(u.cache_create) as cacheCreate, total(u.cache_read) as cacheRead, total(u.total) as total,
-       sum(u.cost_usd) as cost, max(u.unpriced) as unpriced
-     from usage u
-     where ${scoped.sql} and ${filter.sql}
-     group by u.agent, u.model
-     order by total desc, u.agent, u.model`,
-    { ...scoped.params, ...filter.params },
-  );
-  return rows.map((m) => ({
-    agent: m.agent,
-    model: m.model,
-    input: finite(m.input),
-    output: finite(m.output),
-    cacheCreate: finite(m.cacheCreate),
-    cacheRead: finite(m.cacheRead),
-    total: finite(m.total),
-    costUsd: round6(m.cost),
-    unpriced: m.unpriced > 0,
-  }));
-}
-
-/** Filtered tokens per day and agent, with every day of the range present (zeros included). */
-function dailyByAgent(db: Db, scope: Scope, filter: Filter): Stats["daily"] {
-  const scoped = inScope(scope);
-  const rows = select<{ date: string; agent: string; total: number }>(
-    db,
-    `select u.date as date, u.agent as agent, total(u.total) as total from usage u
-     where ${scoped.sql} and ${filter.sql}
-     group by u.date, u.agent`,
-    { ...scoped.params, ...filter.params },
-  );
-  const byDate = new Map<string, Map<string, number>>(datesBetween(scope.from, scope.to).map((d) => [d, new Map()]));
-  for (const r of rows) byDate.get(r.date)?.set(r.agent, finite(r.total));
-  // Agent ids are data: a Map plus fromEntries makes `__proto__` an ordinary own property.
-  return [...byDate].map(([date, agents]) => ({ date, byAgent: Object.fromEntries(agents) as Record<string, number> }));
-}
+const NO_FILTER = usageFilter([], [], [], []);
 
 type Member = Stats["members"][number];
 type Breakdown = Pick<Member, "byAgent" | "byAccount" | "byAccountPlan">;
 type AccountPlan = Member["byAccountPlan"][number];
+type MemberUsage = Breakdown & { tokens: number; cost: number };
 
 /**
- * Each member's filtered tokens by agent, by account, and by account and plan (tokens desc, then account, then plan),
- * from one grouped query. Members without usage in scope are absent.
+ * Each member's filtered tokens and cost, and their tokens by agent, by account, and by account and plan (tokens desc,
+ * then account, then plan). Members without usage in scope are absent.
  */
-function memberBreakdowns(db: Db, scope: Scope, filter: Filter): Map<number, Breakdown> {
-  const scoped = inScope(scope);
-  const rows = select<{ memberId: number; agent: string; kind: AccountKind | null; org: string | null; plan: string | null; total: number }>(
-    db,
-    `select u.member_id as memberId, u.agent as agent, u.account_kind as kind, u.account_org as org,
-       u.account_plan as plan, total(u.total) as total
-     from usage u
-     where ${scoped.sql} and ${filter.sql}
-     group by u.member_id, u.agent, u.account_kind, u.account_org, u.account_plan`,
-    { ...scoped.params, ...filter.params },
-  );
-  type Sums = { byAgent: Map<string, number>; byAccount: Map<string, number>; byAccountPlan: Map<string, AccountPlan> };
+function memberUsage(rows: MemberRow[]): Map<number, MemberUsage> {
+  type Sums = { tokens: number; cost: number; byAgent: Map<string, number>; byAccount: Map<string, number>; byAccountPlan: Map<string, AccountPlan> };
   const sums = new Map<number, Sums>();
   for (const r of rows) {
-    const s = getOrCreate(sums, r.memberId, (): Sums => ({ byAgent: new Map(), byAccount: new Map(), byAccountPlan: new Map() }));
-    const tokens = finite(r.total);
+    const s = getOrCreate(sums, r.memberId, (): Sums => ({ tokens: 0, cost: 0, byAgent: new Map(), byAccount: new Map(), byAccountPlan: new Map() }));
+    const tokens = finite(r.tokens);
+    s.tokens += r.tokens;
+    s.cost += r.cost;
     // A null and an empty org are the same key, so rows are merged by key.
     const account = labelKey(r.agent, r.kind, r.org);
     const plan = planKey(r.agent, r.plan);
@@ -151,6 +65,8 @@ function memberBreakdowns(db: Db, scope: Scope, filter: Filter): Map<number, Bre
     [...sums].map(([id, s]) => [
       id,
       {
+        tokens: s.tokens,
+        cost: s.cost,
         byAgent: Object.fromEntries(s.byAgent) as Record<string, number>,
         byAccount: Object.fromEntries(s.byAccount) as Record<string, number>,
         byAccountPlan: [...s.byAccountPlan.values()].sort(byTokensThenNames),
@@ -160,58 +76,84 @@ function memberBreakdowns(db: Db, scope: Scope, filter: Filter): Map<number, Bre
 }
 
 /** A member without usage in scope. A new object each time, so no answer shares one with another. */
-const noBreakdown = (): Breakdown => ({ byAgent: {}, byAccount: {}, byAccountPlan: [] });
+const noUsage = (): MemberUsage => ({ tokens: 0, cost: 0, byAgent: {}, byAccount: {}, byAccountPlan: [] });
 
-/** Everything present in scope, ignoring the agent, model, account and plan filters: it feeds the filter controls. */
-function availableFilters(db: Db, scope: Scope): Stats["available"] {
-  const scoped = inScope(scope);
-  const models = select<{ agent: string; model: string; total: number }>(
-    db,
-    `select u.agent as agent, u.model as model, total(u.total) as total from usage u
-     where ${scoped.sql}
-     group by u.agent, u.model`,
-    scoped.params,
-  );
-  const labels = select<{ agent: string; kind: AccountKind | null; org: string | null; plan: string | null; total: number }>(
-    db,
-    `select u.agent as agent, u.account_kind as kind, u.account_org as org, u.account_plan as plan, total(u.total) as total
-     from usage u
-     where ${scoped.sql}
-     group by u.agent, u.account_kind, u.account_org, u.account_plan`,
-    scoped.params,
-  );
+/** Every member in scope with their usage; tokens desc, then name and id as the list gives them. */
+function rankedMembers(list: MemberInfo[], rows: MemberRow[]): (MemberInfo & MemberUsage)[] {
+  const usage = memberUsage(rows);
+  // The sort is stable, so equal tokens keep the list's order by name then id.
+  return list.map((m) => ({ ...m, ...(usage.get(m.id) ?? noUsage()) })).sort((a, b) => b.tokens - a.tokens);
+}
+
+/** Filtered tokens per day and agent, with every day of the range present (zeros included). */
+function dailyByAgent(rows: DayRow[], scope: Scope): Stats["daily"] {
+  const byDate = new Map<string, Map<string, number>>(datesBetween(scope.from, scope.to).map((d) => [d, new Map()]));
+  for (const r of rows) {
+    const agents = byDate.get(r.date);
+    if (agents) add(agents, r.agent, finite(r.total));
+  }
+  // Agent ids are data: a Map plus fromEntries makes `__proto__` an ordinary own property.
+  return [...byDate].map(([date, agents]) => ({ date, byAgent: Object.fromEntries(agents) as Record<string, number> }));
+}
+
+/** Filtered totals per agent and model, largest first. */
+function modelTotals(rows: DayRow[]): Stats["models"] {
+  type Sums = Pick<DayRow, "agent" | "model" | "input" | "output" | "cacheCreate" | "cacheRead" | "total" | "cost" | "unpriced">;
+  const sums = new Map<string, Sums>();
+  for (const r of rows) {
+    const s = getOrCreate(sums, JSON.stringify([r.agent, r.model]), (): Sums => ({
+      agent: r.agent, model: r.model, input: 0, output: 0, cacheCreate: 0, cacheRead: 0, total: 0, cost: 0, unpriced: 0,
+    }));
+    s.input += r.input;
+    s.output += r.output;
+    s.cacheCreate += r.cacheCreate;
+    s.cacheRead += r.cacheRead;
+    s.total += r.total;
+    s.cost += r.cost;
+    s.unpriced = Math.max(s.unpriced, r.unpriced);
+  }
+  return [...sums.values()]
+    .sort((a, b) => b.total - a.total || cmp(a.agent, b.agent) || cmp(a.model, b.model))
+    .map((m) => ({
+      agent: m.agent,
+      model: m.model,
+      input: finite(m.input),
+      output: finite(m.output),
+      cacheCreate: finite(m.cacheCreate),
+      cacheRead: finite(m.cacheRead),
+      total: finite(m.total),
+      costUsd: round6(m.cost),
+      unpriced: m.unpriced > 0,
+    }));
+}
+
+/** Everything present in scope, from the rows read without the agent, model, account and plan filters: it feeds the filter controls. */
+function availableFilters(rows: DayRow[]): Stats["available"] {
   const agents = new Map<string, number>();
-  for (const r of models) add(agents, r.agent, finite(r.total));
+  const models = new Map<string, { agent: string; model: string; tokens: number }>();
   const accounts = new Map<string, number>();
   const plans = new Map<string, number>();
-  for (const r of labels) {
+  for (const r of rows) {
     const tokens = finite(r.total);
+    add(agents, r.agent, tokens);
+    const m = getOrCreate(models, JSON.stringify([r.agent, r.model]), () => ({ agent: r.agent, model: r.model, tokens: 0 }));
+    m.tokens = finite(m.tokens + tokens);
     add(accounts, labelKey(r.agent, r.kind, r.org), tokens);
     add(plans, planKey(r.agent, r.plan), tokens);
   }
   const ranked = (m: Map<string, number>) => [...m].sort(byTokensDesc).map(([key, tokens]) => ({ key, tokens }));
   return {
     agents: [...agents].sort(byTokensDesc).map(([agent]) => agent),
-    models: models
-      .map((r) => ({ agent: r.agent, model: r.model, tokens: finite(r.total) }))
-      .sort((a, b) => b.tokens - a.tokens || cmp(a.agent, b.agent) || cmp(a.model, b.model)),
+    models: [...models.values()].sort((a, b) => b.tokens - a.tokens || cmp(a.agent, b.agent) || cmp(a.model, b.model)),
     accounts: ranked(accounts),
     plans: ranked(plans),
   };
 }
 
-/** One member's machines by label and last sync, never by id. Never-synced last; ties by label then id. */
-function memberMachines(db: Db, teamId: number, memberId: number): NonNullable<Stats["machines"]> {
-  return select<{ label: string; lastSyncAt: string | null }>(
-    db,
-    `select label, last_sync_at as lastSyncAt from machines
-     where team_id = @teamId and member_id = @memberId
-     order by (last_sync_at is null), last_sync_at desc, label, id`,
-    { teamId, memberId },
-  );
-}
-
-/** Aggregates the usage of team `teamId` for the range. Does not validate; every value reaches SQL as a bound parameter. */
+/**
+ * Aggregates the usage of team `teamId` for the range. Does not validate; every value reaches SQL as a bound parameter.
+ * Reads `usage` in two grouped passes, by member and by day, plus an unfiltered by-day pass when a filter is active.
+ */
 export function getStats(
   db: Db,
   teamId: number,
@@ -227,8 +169,9 @@ export function getStats(
 ): Stats {
   const scope: Scope = { teamId, from: q.from, to: q.to, memberId: q.memberId ?? null };
   const filter = usageFilter(q.agents ?? [], q.models ?? [], q.accounts ?? [], q.plans ?? []);
-  const members = memberTotals(db, scope, filter);
-  const breakdowns = memberBreakdowns(db, scope, filter);
+  const days = dayRows(db, scope, filter);
+  const unfilteredDays = filter.sql === NO_FILTER.sql ? days : dayRows(db, scope, NO_FILTER);
+  const members = rankedMembers(memberList(db, scope), memberRows(db, scope, filter));
 
   return {
     from: q.from,
@@ -239,7 +182,7 @@ export function getStats(
       activeMembers: members.filter((m) => m.tokens > 0).length,
       memberCount: members.length,
     },
-    daily: dailyByAgent(db, scope, filter),
+    daily: dailyByAgent(days, scope),
     members: members.map((m) => ({
       id: m.id,
       name: m.name,
@@ -248,10 +191,12 @@ export function getStats(
       costUsd: round6(m.cost),
       machines: m.machines,
       lastSyncAt: m.lastSyncAt,
-      ...(breakdowns.get(m.id) ?? noBreakdown()),
+      byAgent: m.byAgent,
+      byAccount: m.byAccount,
+      byAccountPlan: m.byAccountPlan,
     })),
     ...(scope.memberId === null ? {} : { machines: memberMachines(db, teamId, scope.memberId) }),
-    available: availableFilters(db, scope),
-    models: modelTotals(db, scope, filter),
+    available: availableFilters(unfilteredDays),
+    models: modelTotals(days),
   };
 }
