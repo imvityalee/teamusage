@@ -39,6 +39,11 @@ describe("POST /api/login", () => {
     expect(res.headers.get("Cache-Control")).toBe("no-store");
   });
 
+  test("needs no Origin: a missing, foreign or null one still signs in", async () => {
+    const origins: Record<string, string>[] = [{}, { Origin: "https://evil.example" }, { Origin: "null" }];
+    for (const headers of origins) expect((await login(headers)).status).toBe(204);
+  });
+
   test("bad bodies are 400", async () => {
     expect((await post("/api/login", "{")).status).toBe(400);
     expect((await post("/api/login", [])).status).toBe(400);

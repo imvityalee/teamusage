@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, test } from "vitest";
 import { goodReg, record } from "./app.fixture.js";
 import type { Db } from "./db.js";
 import { createHostedTeam, type TeamInfo } from "./hosted-teams.js";
-import { cookieOf, hostedApp, KEY, signIn } from "./hosted.fixture.js";
+import { codeLogin, cookieOf, hostedApp, KEY, postFromPage, PUBLIC, signIn } from "./hosted.fixture.js";
 import { DASHBOARD_LIMITED } from "./stats-access.js";
 import { authenticate, forTeam } from "./team-data.js";
 
@@ -20,10 +20,9 @@ beforeEach(() => {
 });
 
 const WRONG = "0".repeat(24);
-const post = (path: string, body: unknown, headers: Record<string, string> = {}) =>
-  app.request(path, { method: "POST", body: typeof body === "string" ? body : JSON.stringify(body), headers: { "Content-Type": "application/json", ...headers } });
+const post = (path: string, body: unknown, headers: Record<string, string> = {}) => postFromPage(app, path, body, headers);
 const register = (over: Record<string, unknown>) => post("/api/register", goodReg(over));
-const login = (code: string) => post("/api/login", { inviteCode: code });
+const login = (code: string) => codeLogin(app, code);
 /** Registers a machine of `email` with `code`; returns its token. */
 const join = async (code: string, email: string) => ((await (await register({ inviteCode: code, email })).json()) as { token: string }).token;
 const stats = (headers: Record<string, string>, extra = "") => app.request(`/api/stats?from=2026-11-01&to=2026-11-10${extra}`, { headers });
@@ -90,6 +89,22 @@ describe("codes", () => {
     }
     await failUntilLimited();
     expect((await login(WRONG)).status).toBe(429);
+  });
+  test("a sign-in that is not from the server's own origin is refused before its code is read, and is not a failed attempt", async () => {
+    const send = (code: string, origin?: string) =>
+      app.request("/api/login", { method: "POST", body: JSON.stringify({ inviteCode: code }), headers: origin === undefined ? {} : { Origin: origin } });
+    for (const origin of [undefined, "https://evil.example", "null", `${PUBLIC}/`]) {
+      for (const code of [a.code, WRONG, WRONG, WRONG]) {
+        const res = await send(code, origin);
+        expect(res.status).toBe(403);
+        expect(await res.json()).toEqual({ error: "cross-site request refused" });
+        expect(res.headers.get("cache-control")).toBe("no-store");
+        expect(res.headers.get("set-cookie")).toBeNull();
+      }
+    }
+    expect(db.prepare("select count(*) as n from sessions").get()).toEqual({ n: 0 });
+    expect((await login(WRONG)).status).toBe(403);     // twelve wrong codes were sent, none was counted
+    expect((await send(a.code, PUBLIC)).status).toBe(204);
   });
   test("over the limit, a correct code with a bad registration gets that registration's 400", async () => {
     await failUntilLimited();

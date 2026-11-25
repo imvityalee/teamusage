@@ -2,7 +2,7 @@ import { beforeEach, expect, test } from "vitest";
 import { createApp } from "./app.js";
 import { openDb, type Db } from "./db.js";
 import { createHostedTeam } from "./hosted-teams.js";
-import { hostedApp, KEY, PUBLIC, signIn } from "./hosted.fixture.js";
+import { codeLogin, hostedApp, KEY, PUBLIC, signIn } from "./hosted.fixture.js";
 
 let db: Db;
 let app: ReturnType<typeof hostedApp>["app"];
@@ -36,7 +36,7 @@ test("the response carries the public id, never the internal one, and the code o
   const row = db.prepare("select id, public_id as publicId from teams").get() as { id: number; publicId: string };
   expect(team.id).toBe(row.publicId);
   expect(Object.keys(team).sort()).toEqual(["dashboardAccess", "id", "name", "role"]);
-  const login = await app.request("/api/login", { method: "POST", body: JSON.stringify({ inviteCode: code }), headers: { "Content-Type": "application/json" } });
+  const login = await codeLogin(app, code);
   expect(login.status).toBe(204);
 });
 test("a name of 60 characters once trimmed is accepted", async () => {
@@ -86,7 +86,7 @@ test("an expired user session is 401", async () => {
 });
 test("a team session is 401", async () => {
   const { code } = createHostedTeam(db, { name: "Old", dashboardAccess: "code", owner: { githubId: 9, login: "zed" }, codeKey: KEY, maxTeams: 200 });
-  const login = await app.request("/api/login", { method: "POST", body: JSON.stringify({ inviteCode: code }), headers: { "Content-Type": "application/json" } });
+  const login = await codeLogin(app, code);
   const res = await create(login.headers.get("set-cookie")!.split(";")[0]!, good);
   expect(res.status).toBe(401);
   expect(await res.json()).toEqual({ error: "unauthorized" });

@@ -13,7 +13,7 @@ import {
 } from "@teamusage/shared";
 import type { RouteContext } from "./app-context.js";
 import { teamById } from "./hosted-teams.js";
-import { bearerToken, fail, setSessionCookie } from "./http.js";
+import { bearerToken, crossSite, fail, setSessionCookie } from "./http.js";
 import { createTeamSession } from "./sessions.js";
 import { DASHBOARD_LIMITED, statsAccess } from "./stats-access.js";
 import { getStats } from "./stats.js";
@@ -73,6 +73,9 @@ export function dashboardRoutes(app: Hono, ctx: RouteContext): void {
 
   app.post("/api/login", async (c) => {
     c.header("Cache-Control", "no-store");
+    // A hosted server signs a browser in only from its own pages; a self-hosted one has no public URL to compare.
+    const refused = opts.hosted ? crossSite(c, opts.hosted.publicUrl) : null;
+    if (refused) return refused;
     const entry = await teamOfInvite(c);
     if (entry instanceof Response) return entry;
     if (teamById(db, entry.teamId)?.dashboardAccess === "admins") return fail(c, 403, DASHBOARD_LIMITED);

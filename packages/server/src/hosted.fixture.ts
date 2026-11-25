@@ -52,6 +52,17 @@ export function hostedApp(o: { clientKey?: AppOptions["clientKey"]; maxTeams?: n
   return { db, app, github };
 }
 
+/** A JSON POST from the server's own pages, which send its origin; a string body is sent as it is. */
+export const postFromPage = async (app: Hono, path: string, body: unknown, headers: Record<string, string> = {}): Promise<Response> =>
+  app.request(path, {
+    method: "POST",
+    body: typeof body === "string" ? body : JSON.stringify(body),
+    headers: { "Content-Type": "application/json", Origin: PUBLIC, ...headers },
+  });
+
+/** Signs in with a team's code from the server's own pages, as the dashboard does. */
+export const codeLogin = (app: Hono, code: string): Promise<Response> => postFromPage(app, "/api/login", { inviteCode: code });
+
 /** The `name=value` pair of the cookie `name` that the response sets; "" when it sets none. */
 export const cookieOf = (res: Response, name: string): string =>
   new RegExp(`${name}=[^;]*`).exec(res.headers.get("set-cookie") ?? "")?.[0] ?? "";
