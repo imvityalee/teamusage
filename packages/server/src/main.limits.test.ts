@@ -7,6 +7,9 @@ import type { DiskSpace } from "./storage-guard.js";
 import { forTeam } from "./team-data.js";
 
 const full = () => ({ free: 10e9, total: 100e9 });
+/** The clock of every server here: rows dated in 2026 are inside the 730 days a hosted team keeps. */
+const NOW = Date.parse("2026-11-26T12:00:00.000Z");
+const clock = () => NOW;
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -22,10 +25,13 @@ const upload = (s: BuiltServer, token: string, records: unknown[]) => send(s, "/
 const createTeamAs = (s: BuiltServer, cookie: string, body: unknown) => send(s, "/api/teams", body, { Origin: PUBLIC_URL, Cookie: cookie });
 const tokenOf = async (res: Response) => ((await res.json()) as { token: string }).token;
 
-/** A hosted server with one team that ann created, her session cookie, the team's code and one registered machine's token. */
-async function hostedMachine(opts: { measureDisk?: (dir: string) => DiskSpace }) {
+/**
+ * A hosted server at NOW unless `opts` gives another clock, with one team that ann created, her session cookie, the
+ * team's code and one registered machine's token.
+ */
+async function hostedMachine(opts: { measureDisk?: (dir: string) => DiskSpace; now?: () => number }) {
   const config = hosted(tempDataDir());
-  const s = buildServer(config, { github: github(), ...opts });
+  const s = buildServer(config, { github: github(), now: clock, ...opts });
   const ann = await signIn(s.app, "code-ann");
   const created = await createTeamAs(s, ann, { name: "Acme", dashboardAccess: "code" });
   const { code } = (await created.json()) as { code: string };
@@ -112,9 +118,35 @@ test("a hosted server on a nearly full volume accepts rows again once a machine'
   }
 });
 
+test("a hosted server keeps 730 days by the clock it is given", async () => {
+  const answerAt = async (now: number) => {
+    const { s, token } = await hostedMachine({ measureDisk: roomy, now: () => now });
+    try {
+      return await (await upload(s, token, [record({ date: "2026-11-01" })])).json();
+    } finally {
+      s.close();
+    }
+  };
+  expect(await answerAt(NOW)).toEqual({ stored: 1, kept: 0 });
+  expect(await answerAt(Date.parse("2028-11-26T12:00:00.000Z"))).toEqual({ stored: 0, kept: 1 });
+});
+
+test("a self-hosted server drops nothing, however old", async () => {
+  const s = buildServer(serverConfig(), { now: clock });
+  try {
+    const token = await tokenOf(await register(s, goodReg({ inviteCode: s.inviteCode!() })));
+    expect(await (await upload(s, token, [record({ date: "2024-01-02" })])).json()).toEqual({ stored: 1, kept: 0 });
+    expect(await (await upload(s, token, [record({ date: "2026-11-25" })])).json()).toEqual({ stored: 1, kept: 0 });
+    expect(s.db.prepare("select date from usage order by date").pluck().all()).toEqual(["2024-01-02", "2026-11-25"]);
+  } finally {
+    s.close();
+  }
+});
+
 test("a self-hosted server limits none of this and never measures the disk", async () => {
   let measured = 0;
   const s = buildServer(serverConfig(), {
+    now: clock,
     measureDisk: () => {
       measured++;
       return full();
@@ -133,7 +165,7 @@ test("a self-hosted server limits none of this and never measures the disk", asy
 
 test("a hosted server without a test's measurement measures the real volume, and a registration never fails with 500", async () => {
   const errors = captureErrors();
-  const s = buildServer(hosted(tempDataDir()), { github: github() });
+  const s = buildServer(hosted(tempDataDir()), { github: github(), now: clock });
   try {
     const { code } = hostedTeam(s.db, { githubId: 1, login: "ann" }, "code");
     // The real volume may or may not be nearly full; either answer is right, a failure is not.

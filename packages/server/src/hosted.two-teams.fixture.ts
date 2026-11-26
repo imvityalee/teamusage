@@ -2,7 +2,7 @@ import type { Hono } from "hono";
 import { goodReg, MID, record } from "./app.fixture.js";
 import type { Db } from "./db.js";
 import { teamByPublicId } from "./hosted-teams.js";
-import { cookieOf, hostedApp, PUBLIC, signIn } from "./hosted.fixture.js";
+import { cookieOf, hostedApp, PUBLIC, signIn, type HostedAppOptions } from "./hosted.fixture.js";
 
 /** Names the caller of a request; the two teams' app limits failed attempts per caller, as if each had its own address. */
 const CALLER_HEADER = "x-test-caller";
@@ -76,10 +76,10 @@ async function setUpTeam(world: Pick<World, "db" | "app">, ownerCookie: string, 
 /**
  * Two hosted teams on one server, each with a member of the same email and machine id and one upload, and the
  * callers of the isolation suite: no credential, each team's machine token, a session opened with A's code, the
- * GitHub sessions of both owners, and a GitHub session with no team.
+ * GitHub sessions of both owners, and a GitHub session with no team. `o` gives the app its limits and clocks.
  */
-export async function twoTeams(): Promise<World> {
-  const { db, app } = hostedApp({ clientKey: (c) => c.req.header(CALLER_HEADER) ?? "" });
+export async function twoTeams(o: Omit<HostedAppOptions, "clientKey"> = {}): Promise<World> {
+  const { db, app } = hostedApp({ ...o, clientKey: (c) => c.req.header(CALLER_HEADER) ?? "" });
   const [ann, bob, eve] = [await signIn(app, "code-ann"), await signIn(app, "code-bob"), await signIn(app, "code-eve")];
   const a = await setUpTeam({ db, app }, ann, "A");
   const b = await setUpTeam({ db, app }, bob, "B");

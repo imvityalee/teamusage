@@ -8,6 +8,7 @@ import { serve } from "@hono/node-server";
 import { getConnInfo } from "@hono/node-server/conninfo";
 import { Hono, type Context } from "hono";
 import { createApp } from "./app.js";
+import type { AppOptions } from "./app-context.js";
 import { parseServerConfig, type HostedConfig, type ServerConfig } from "./config.js";
 import { getInviteCode, getStoredInviteCode, openDb, setSetting, type Db } from "./db.js";
 import { claimDatabase } from "./db-mode.js";
@@ -115,8 +116,11 @@ function clientKeyOf(trustedProxies: number): ClientKey {
 
 type Api = { api: Hono; inviteCode: BuiltServer["inviteCode"]; inviteGenerated: boolean };
 
+/** What the app of either kind of server is given: how it tells clients apart, and a test's clock when it has one. */
+type Wiring = Pick<AppOptions, "clientKey" | "now">;
+
 /** The API of a self-hosted server: one team, opened with the invite code. */
-function selfHostedApi(db: Db, config: ServerConfig, clientKey: ClientKey): Api {
+function selfHostedApi(db: Db, config: ServerConfig, wiring: Wiring): Api {
   const fromEnv = config.demo ? undefined : config.inviteCodeFromEnv;
   const inviteGenerated = !config.demo && !fromEnv && getStoredInviteCode(db) === undefined;
   const inviteCode = () => getInviteCode(db, fromEnv);
@@ -129,22 +133,22 @@ function selfHostedApi(db: Db, config: ServerConfig, clientKey: ClientKey): Api 
   const api = createApp(db, {
     teamForCode: singleTeamCodes(teamId, inviteCode),
     demoTeamId: config.demo ? teamId : undefined,
-    clientKey,
+    ...wiring,
   });
   return { api, inviteCode, inviteGenerated };
 }
 
-/** Replaces parts of a server for a test: the web directory, the GitHub client and the disk measurement. */
-type BuildOptions = { webRoot?: string; github?: GithubClient; measureDisk?: (dir: string) => DiskSpace };
+/** Replaces parts of a server for a test: the web directory, the GitHub client, the disk measurement and the clock. */
+type BuildOptions = { webRoot?: string; github?: GithubClient; measureDisk?: (dir: string) => DiskSpace; now?: () => number };
 
 /** The API of a hosted server: people sign in with GitHub and create teams, each with its own code, within its limits. */
-function hostedApi(db: Db, hosted: HostedConfig, clientKey: ClientKey, github: GithubClient | undefined, limits: HostedLimits): Api {
+function hostedApi(db: Db, hosted: HostedConfig, wiring: Wiring, github: GithubClient | undefined, limits: HostedLimits): Api {
   const { publicUrl, githubClientId: clientId, githubClientSecret: clientSecret, codeKey, maxTeams } = hosted;
   const api = createApp(db, {
     teamForCode: hostedTeamCodes(db),
     hosted: { github: github ?? githubClient({ clientId, clientSecret, publicUrl }), publicUrl, codeKey, maxTeams },
     limits,
-    clientKey,
+    ...wiring,
   });
   return { api, inviteCode: undefined, inviteGenerated: false };
 }
@@ -168,7 +172,8 @@ function serverApp(api: Hono, apiPaths: string[], webRoot: string): Hono {
 
 /**
  * Opens storage and wires the app. Starts no listener. In hosted mode `opts.github` replaces the GitHub client and
- * `opts.measureDisk` the measurement of the data volume; a self-hosted server never measures it.
+ * `opts.measureDisk` the measurement of the data volume; a self-hosted server never measures it. In both modes
+ * `opts.now` replaces the app's clock.
  */
 export function buildServer(config: ServerConfig, opts: BuildOptions = {}): BuiltServer {
   const db = openStorage(config);
@@ -179,10 +184,10 @@ export function buildServer(config: ServerConfig, opts: BuildOptions = {}): Buil
     db.close();
     throw err;
   }
-  const clientKey = clientKeyOf(config.trustedProxies);
+  const wiring: Wiring = { clientKey: clientKeyOf(config.trustedProxies), now: opts.now };
   const { api, inviteCode, inviteGenerated } = config.hosted
-    ? hostedApi(db, config.hosted, clientKey, opts.github, hostedLimits({ dataDir: config.dataDir, db, measure: opts.measureDisk }))
-    : selfHostedApi(db, config, clientKey);
+    ? hostedApi(db, config.hosted, wiring, opts.github, hostedLimits({ dataDir: config.dataDir, db, measure: opts.measureDisk }))
+    : selfHostedApi(db, config, wiring);
   // A hosted server also signs people in under /auth.
   const apiPaths = config.hosted ? ["/api/*", "/auth/*"] : ["/api/*"];
   const app = serverApp(api, apiPaths, opts.webRoot ?? DEFAULT_WEB_ROOT);

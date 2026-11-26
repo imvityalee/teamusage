@@ -54,17 +54,21 @@ export function grantRole(db: Db, teamId: number, user: Person, role: Role): voi
   db.prepare("insert into team_roles (team_id, user_id, role, created_at) values (?, ?, ?, ?)").run(teamId, ensureUser(db, user).id, role, now());
 }
 
+/** What a test may give a hosted app; `limits` may be made from the database the app opens. */
+export type HostedAppOptions = Pick<AppOptions, "clientKey" | "logError" | "now" | "stopwatch"> & {
+  limits?: AppOptions["limits"] | ((db: Db) => AppOptions["limits"]);
+  maxTeams?: number;
+};
+
 /** A hosted app on a fresh in-memory database, with the fake GitHub it signs users in with. */
-export function hostedApp(
-  o: Pick<AppOptions, "clientKey" | "logError" | "limits" | "now" | "stopwatch"> & { maxTeams?: number } = {},
-) {
+export function hostedApp(o: HostedAppOptions = {}) {
   const db = openDb(":memory:");
   const github = fakeGithub(USERS);
   const app = createApp(db, {
     teamForCode: hostedTeamCodes(db),
     clientKey: o.clientKey,
     logError: o.logError,
-    limits: o.limits,
+    limits: typeof o.limits === "function" ? o.limits(db) : o.limits,
     now: o.now,
     stopwatch: o.stopwatch,
     hosted: { github, publicUrl: PUBLIC, codeKey: KEY, maxTeams: o.maxTeams ?? 200 },
@@ -98,6 +102,11 @@ export async function signIn(app: Hono, code: string): Promise<string> {
   if (!session) throw new Error(`signing in with ${code} failed`);
   return session;
 }
+
+/** Caps for a test's team, each a value of its own, with room on the volume unless `over` says otherwise. */
+export const testCaps = (over: Partial<TeamLimits> = {}): TeamLimits => ({
+  membersPerTeam: 5, machinesPerMember: 6, rowsPerMachine: 1000, rowsPerTeam: 1001, rowsAddedPerDay: 1002, storageLow: () => false, ...over,
+});
 
 /**
  * A hosted app's limits for a test: `team` as given, three uploads a minute per machine, and each team budget and the

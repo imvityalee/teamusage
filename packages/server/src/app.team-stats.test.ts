@@ -4,9 +4,8 @@ import { goodReg, INVITE } from "./app.fixture.js";
 import { createApp } from "./app.js";
 import type { AppOptions } from "./app-context.js";
 import { openDb, type Db } from "./db.js";
-import { codeLogin, cookieOf, hostedApp, hostedTeam, machineClient, mid, signIn, testLimits } from "./hosted.fixture.js";
+import { codeLogin, cookieOf, hostedApp, hostedTeam, machineClient, mid, signIn, testCaps, testLimits } from "./hosted.fixture.js";
 import { storeTooManyModels } from "./stats.fixture.js";
-import type { TeamLimits } from "./team-limits.js";
 import { ensureSingleTeam, singleTeamCodes } from "./teams.js";
 
 // A team's statistics may use 100 ms of the thread a minute; the stopwatch moves `cost.ms` at each reading, so each
@@ -33,9 +32,6 @@ let sessionA: Headers;
 let tokenA: Headers;
 let sessionB: Headers;
 
-const caps = (): TeamLimits => ({
-  membersPerTeam: 5, machinesPerMember: 6, rowsPerMachine: 1000, rowsPerTeam: 1001, rowsAddedPerDay: 1002, storageLow: () => false,
-});
 const stats = (headers: Headers, query = RANGE) => app.request(`/api/stats?${query}`, { headers });
 const answer = async (res: Response) => [res.status, await res.json()];
 
@@ -49,7 +45,7 @@ async function setUpTeam(owner: Owner, machine: number) {
 }
 
 async function server(o: Pick<AppOptions, "stopwatch"> = { stopwatch }): Promise<void> {
-  ({ db, app } = hostedApp({ limits: testLimits(caps(), { teamStatsMsPerMinute: 100 }), now: () => clock.t, stopwatch: o.stopwatch }));
+  ({ db, app } = hostedApp({ limits: testLimits(testCaps(), { teamStatsMsPerMinute: 100 }), now: () => clock.t, stopwatch: o.stopwatch }));
   const teamA = await setUpTeam({ githubId: 1, login: "ann" }, 1);
   const teamB = await setUpTeam({ githubId: 2, login: "bob" }, 2);
   ({ team: a, token: tokenA, session: sessionA } = teamA);

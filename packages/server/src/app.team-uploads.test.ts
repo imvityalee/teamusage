@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, test } from "vitest";
 import type { Hono } from "hono";
 import * as selfHosted from "./app.harness.js";
 import type { Db } from "./db.js";
-import { hostedApp, hostedTeam, machineClient, mid, recordsOf, testLimits } from "./hosted.fixture.js";
+import { hostedApp, hostedTeam, machineClient, mid, recordsOf, testCaps, testLimits } from "./hosted.fixture.js";
 import { TEAM_UPLOAD_RECORDS_PER_MINUTE, type TeamLimits } from "./team-limits.js";
 
 // A team's machines share a budget of upload records a minute; here it is ten records, and each machine may upload twenty times.
@@ -14,15 +14,12 @@ let code: string;
 let one: string;
 let two: string;
 
-const caps = (over: Partial<TeamLimits> = {}): TeamLimits => ({
-  membersPerTeam: 5, machinesPerMember: 6, rowsPerMachine: 1000, rowsPerTeam: 1001, rowsAddedPerDay: 1002, storageLow: () => false, ...over,
-});
 const { join, uploadRaw, upload } = machineClient(() => app, () => code);
 const storedRows = () => db.prepare("select count(*) as n from usage").get();
 const REFUSED = { error: "this team is sending too much at once; try again in a minute", limit: "team-uploads" };
 
 async function server(team: Partial<TeamLimits> = {}, uploadsPerMinute = 20): Promise<void> {
-  ({ db, app } = hostedApp({ limits: testLimits(caps(team), { uploadsPerMinute, teamUploadRecordsPerMinute: 10 }), now: () => clock.t }));
+  ({ db, app } = hostedApp({ limits: testLimits(testCaps(team), { uploadsPerMinute, teamUploadRecordsPerMinute: 10 }), now: () => clock.t }));
   code = hostedTeam(db, { githubId: 1, login: "ann" }, "code").code;
   one = await join({ machineId: mid(1) });
   two = await join({ machineId: mid(2) });

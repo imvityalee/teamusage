@@ -1,18 +1,22 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AccountLabel, Stats, UsageRecord } from "@teamusage/shared";
+import { addDays, type AccountLabel, type Stats, type UsageRecord } from "@teamusage/shared";
 import { expect, test } from "vitest";
 import { openDb, type Db } from "../src/db.js";
 import { STATS_BOUNDS } from "../src/stats-bounds.js";
 import { getStats } from "../src/stats.js";
 import { forTeam } from "../src/team-data.js";
 import { HOSTED_CAPS } from "../src/team-limits.js";
+import { EXPIRED_ROWS_PER_UPLOAD, USAGE_DAYS_KEPT } from "../src/team-retention.js";
 import { createTeam } from "../src/teams.js";
+import { usageCounts } from "../src/usage-counts.js";
 import { seedLargeTeam } from "./seed.js";
-import { line, timeRuns } from "./timing.js";
+import { line, timeEach, timeRuns } from "./timing.js";
 
 const TODAY = "2026-11-24";
+const SEED_DAYS = 180;
+const ROOMY_CAPS = { ...HOSTED_CAPS, storageLow: () => false };
 const DAY_MS = 24 * 60 * 60 * 1000;
 const BATCH_SIZE = 1000;
 const MODEL_CHARS = 128;
@@ -35,11 +39,16 @@ function machineOf(db: Db, team: number, n: number): { memberId: number; machine
   return { memberId: member.id, machineId: member.machines[0]!.id };
 }
 
-/** Times uploads to the 500-member, 180-day team under the hosted caps; returns the two lines. */
-function timeUploads(db: Db): string[] {
+/** The 500-member team with 180 days of two rows a machine: 600 machines, 1,200 rows a day. */
+function seedLarge(db: Db): number {
   const team = createTeam(db, "Large");
-  seedLargeTeam(db, team, { members: 500, days: 180, today: TODAY });
-  const data = forTeam(db, team, { clock: () => "2026-11-25T12:00:00.000Z", limits: { ...HOSTED_CAPS, storageLow: () => false } });
+  seedLargeTeam(db, team, { members: 500, days: SEED_DAYS, today: TODAY });
+  return team;
+}
+
+/** Times uploads to the large team under the hosted caps; returns the two lines. */
+function timeUploads(db: Db, team: number): string[] {
+  const data = forTeam(db, team, { clock: () => "2026-11-25T12:00:00.000Z", limits: ROOMY_CAPS });
 
   const resender = machineOf(db, team, 1);
   const known = lastDays(24).flatMap((date) => [usage(date, "claude", "claude-model"), usage(date, "codex", "codex-model")]);
@@ -57,6 +66,28 @@ function timeUploads(db: Db): string[] {
     expect(data.upsertUsage(firstSync, records)).toEqual({ stored: 500, kept: 0 });
   });
   return [line("upload of 50 records (48 known, 2 new)", mixed), line("upload of 500 new records", bulk)];
+}
+
+/**
+ * Times four uploads of 1,000 updates to the large team, keeping 730 days, at a clock that has expired its two oldest
+ * days (2,400 rows): each upload drops 500 of them first. Returns the line.
+ */
+function timeExpiredDrops(db: Db, team: number): string {
+  const at = `${addDays(lastDays(SEED_DAYS)[SEED_DAYS - 3]!, USAGE_DAYS_KEPT)}T12:00:00.000Z`;
+  const day = at.slice(0, 10);
+  const updater = machineOf(db, team, 3);
+  const raised = (total: number) =>
+    Array.from({ length: 1000 }, (_, i) => ({ ...usage(TODAY, "claude", `update-${i}`), input: total, output: 0, total }));
+  forTeam(db, team, { clock: () => at, limits: ROOMY_CAPS }).upsertUsage(updater, raised(1_000_000));
+  const keeping = forTeam(db, team, { clock: () => at, limits: ROOMY_CAPS, daysKept: USAGE_DAYS_KEPT });
+  const rowsBefore = usageCounts(db, team, day).rows;
+  let run = 0;
+  const timing = timeEach(4, () => {
+    run++;
+    expect(keeping.upsertUsage(updater, raised(1_000_000 + run))).toEqual({ stored: 1000, kept: 0 });
+  });
+  expect(rowsBefore - usageCounts(db, team, day).rows).toBe(4 * EXPIRED_ROWS_PER_UPLOAD);
+  return line(`upload of 1,000 updates while ${EXPIRED_ROWS_PER_UPLOAD} expired rows are dropped`, timing);
 }
 
 /** A team account whose organisation follows from model `i`, so the labels add no day group of their own. */
@@ -107,11 +138,12 @@ function timeWidestViews(db: Db): string[] {
   ];
 }
 
-test("timing: uploads under the hosted caps, and the widest team views the bounds allow", () => {
+test("timing: uploads under the hosted caps, uploads that drop expired rows, and the widest team views the bounds allow", () => {
   const dir = mkdtempSync(join(tmpdir(), "teamusage-bench-"));
   try {
     const db = openDb(join(dir, "bench.db"));
-    for (const printed of [...timeUploads(db), ...timeWidestViews(db)]) console.log(printed);
+    const large = seedLarge(db);
+    for (const printed of [...timeUploads(db, large), timeExpiredDrops(db, large), ...timeWidestViews(db)]) console.log(printed);
     db.close();
   } finally {
     rmSync(dir, { recursive: true, force: true });
