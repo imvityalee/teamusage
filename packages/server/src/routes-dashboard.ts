@@ -14,8 +14,10 @@ import {
 import type { RouteContext } from "./app-context.js";
 import { opensWithCode } from "./hosted-teams.js";
 import { bearerToken, crossSite, fail, setSessionCookie } from "./http.js";
+import { statsTooLargeAnswer } from "./limit-answers.js";
 import { createTeamSession } from "./sessions.js";
-import { DASHBOARD_LIMITED, statsAccess } from "./stats-access.js";
+import { DASHBOARD_LIMITED, statsAccess, type StatsAccess } from "./stats-access.js";
+import { StatsTooLargeError } from "./stats-bounds.js";
 import { getStats } from "./stats.js";
 import { authenticate } from "./team-data.js";
 
@@ -67,6 +69,26 @@ function parseRange(c: Context): StatsRange | string {
   return filters ? { from, to, ...filters } : "invalid query";
 }
 
+/**
+ * The member whose stats the request asks for, or null for the whole team; otherwise the answer that refuses the
+ * request. `me` is the token's member; a session or the demo has no member of its own.
+ */
+function askedMember(
+  c: Context,
+  access: Extract<StatsAccess, { ok: true }>,
+  team: RouteContext["team"],
+): number | null | Response {
+  const { member } = c.req.query();
+  if (member === "me") return access.member === null ? fail(c, 400, "invalid member") : access.member.memberId;
+  if (!access.teamNumbers) return fail(c, 403, DASHBOARD_LIMITED);
+  if (member === undefined) return null;
+  if (!MEMBER_ID.test(member)) return fail(c, 400, "invalid query");
+  const memberId = Number(member);
+  if (!Number.isSafeInteger(memberId)) return fail(c, 400, "invalid query");
+  if (!team(access.teamId).memberExists(memberId)) return fail(c, 404, "member not found");
+  return memberId;
+}
+
 /** The routes the dashboard uses: signing in with an invite code and reading a team's stats. */
 export function dashboardRoutes(app: Hono, ctx: RouteContext): void {
   const { db, opts, team, teamOfInvite, session: sessionOf } = ctx;
@@ -99,19 +121,13 @@ export function dashboardRoutes(app: Hono, ctx: RouteContext): void {
     const range = parseRange(c);
     if (typeof range === "string") return fail(c, 400, range);
 
-    const { teamId, member: self, teamNumbers } = access;
-    const { member } = c.req.query();
-    if (member === "me") {
-      // `me` is the token's member; a session or the demo has no member of its own.
-      if (self === null) return fail(c, 400, "invalid member");
-      return c.json(getStats(db, teamId, { ...range, memberId: self.memberId }));
+    const memberId = askedMember(c, access, team);
+    if (memberId instanceof Response) return memberId;
+    try {
+      return c.json(getStats(db, access.teamId, memberId === null ? range : { ...range, memberId }));
+    } catch (err) {
+      if (err instanceof StatsTooLargeError) return statsTooLargeAnswer(c);
+      throw err;
     }
-    if (!teamNumbers) return fail(c, 403, DASHBOARD_LIMITED);
-    if (member === undefined) return c.json(getStats(db, teamId, range));
-    if (!MEMBER_ID.test(member)) return fail(c, 400, "invalid query");
-    const memberId = Number(member);
-    if (!Number.isSafeInteger(memberId)) return fail(c, 400, "invalid query");
-    if (!team(teamId).memberExists(memberId)) return fail(c, 404, "member not found");
-    return c.json(getStats(db, teamId, { ...range, memberId }));
   });
 }

@@ -1,7 +1,8 @@
 import { accountKey, datesBetween, planKey, type AccountKind, type Stats } from "@teamusage/shared";
 import type { Db } from "./db.js";
+import { checkNames, readWithin, STATS_BOUNDS, type StatsBounds } from "./stats-bounds.js";
 import { usageFilter } from "./stats-filter.js";
-import { dayRows, memberList, memberMachines, memberRows, type DayRow, type MemberInfo, type MemberRow, type Scope } from "./stats-rows.js";
+import { dayRows, memberList, memberMachines, memberRows, type DayRow, type Filter, type MemberInfo, type MemberRow, type Scope } from "./stats-rows.js";
 
 /** SQLite `total()` returns a float and cannot overflow; anything non-finite is clamped, never emitted as null. */
 const finite = (n: number): number => (Number.isFinite(n) ? n : n > 0 ? Number.MAX_VALUE : n < 0 ? -Number.MAX_VALUE : 0);
@@ -153,6 +154,7 @@ function availableFilters(rows: DayRow[]): Stats["available"] {
 /**
  * Aggregates the usage of team `teamId` for the range. Does not validate; every value reaches SQL as a bound parameter.
  * Reads `usage` in two grouped passes, by member and by day, plus an unfiltered by-day pass when a filter is active.
+ * Throws `StatsTooLargeError` when a pass has more groups, or the unfiltered by-day rows more names, than `bounds` allow.
  */
 export function getStats(
   db: Db,
@@ -166,12 +168,16 @@ export function getStats(
     accounts?: string[];
     plans?: string[];
   },
+  bounds: StatsBounds = STATS_BOUNDS,
 ): Stats {
   const scope: Scope = { teamId, from: q.from, to: q.to, memberId: q.memberId ?? null };
   const filter = usageFilter(q.agents ?? [], q.models ?? [], q.accounts ?? [], q.plans ?? []);
-  const days = dayRows(db, scope, filter);
-  const unfilteredDays = filter.sql === NO_FILTER.sql ? days : dayRows(db, scope, NO_FILTER);
-  const members = rankedMembers(memberList(db, scope), memberRows(db, scope, filter));
+  const daysOf = (f: Filter) => readWithin(bounds.dayGroups, (limit) => dayRows(db, scope, f, limit));
+  const days = daysOf(filter);
+  const unfilteredDays = filter.sql === NO_FILTER.sql ? days : daysOf(NO_FILTER);
+  checkNames(unfilteredDays, bounds);
+  const memberGroups = readWithin(bounds.memberGroups, (limit) => memberRows(db, scope, filter, limit));
+  const members = rankedMembers(memberList(db, scope), memberGroups);
 
   return {
     from: q.from,

@@ -25,8 +25,11 @@ type Labels = { agent: string; kind: AccountKind | null; org: string | null; pla
 
 export type MemberRow = Labels & { memberId: number; tokens: number; cost: number };
 
-/** Filtered tokens and cost per member, agent and labels, read through the index whose column order is the grouping's. */
-export function memberRows(db: Db, scope: Scope, filter: Filter): MemberRow[] {
+/**
+ * Filtered tokens and cost per member, agent and labels, read through the index whose column order is the grouping's;
+ * at most `limit` groups.
+ */
+export function memberRows(db: Db, scope: Scope, filter: Filter, limit: number): MemberRow[] {
   const scoped = inScope(scope);
   return select<MemberRow>(
     db,
@@ -34,8 +37,9 @@ export function memberRows(db: Db, scope: Scope, filter: Filter): MemberRow[] {
        u.account_plan as plan, total(u.total) as tokens, sum(u.cost_usd) as cost
      from usage u indexed by usage_by_member
      where ${scoped.sql} and ${filter.sql}
-     group by u.member_id, u.agent, u.account_kind, u.account_org, u.account_plan`,
-    { ...scoped.params, ...filter.params },
+     group by u.member_id, u.agent, u.account_kind, u.account_org, u.account_plan
+     limit @limit`,
+    { ...scoped.params, ...filter.params, limit },
   );
 }
 
@@ -52,10 +56,10 @@ export type DayRow = Labels & {
 };
 
 /**
- * Filtered token counts and cost per day, agent, model and labels. The team view reads `usage_by_day`, whose column
- * order is the grouping's; a member's view reads that member's rows from `usage_by_member`.
+ * Filtered token counts and cost per day, agent, model and labels; at most `limit` groups. The team view reads
+ * `usage_by_day`, whose column order is the grouping's; a member's view reads that member's rows from `usage_by_member`.
  */
-export function dayRows(db: Db, scope: Scope, filter: Filter): DayRow[] {
+export function dayRows(db: Db, scope: Scope, filter: Filter, limit: number): DayRow[] {
   const scoped = inScope(scope);
   const index = scope.memberId === null ? "usage_by_day" : "usage_by_member";
   return select<DayRow>(
@@ -65,8 +69,9 @@ export function dayRows(db: Db, scope: Scope, filter: Filter): DayRow[] {
        total(u.cache_read) as cacheRead, total(u.total) as total, sum(u.cost_usd) as cost, max(u.unpriced) as unpriced
      from usage u indexed by ${index}
      where ${scoped.sql} and ${filter.sql}
-     group by u.date, u.agent, u.model, u.account_kind, u.account_org, u.account_plan`,
-    { ...scoped.params, ...filter.params },
+     group by u.date, u.agent, u.model, u.account_kind, u.account_org, u.account_plan
+     limit @limit`,
+    { ...scoped.params, ...filter.params, limit },
   );
 }
 

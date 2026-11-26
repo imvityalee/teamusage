@@ -1,4 +1,5 @@
 import type { Context } from "hono";
+import { STATS_TOO_LARGE } from "./stats-bounds.js";
 import type { LimitName, TeamLimits } from "./team-limits.js";
 
 export type RefusedLimit = LimitName | "uploads";
@@ -15,13 +16,21 @@ const ANSWERS: Record<RefusedLimit, Answer> = {
   uploads: { status: 429, error: () => "too many uploads; try again in a minute" },
 };
 
+/** A limit's refusal: `{ error, limit }` with the limit's status, never stored by a cache. */
+function refusal(c: Context, status: 409 | 429 | 507, error: string, limit: RefusedLimit | "stats"): Response {
+  c.header("Cache-Control", "no-store");
+  return c.json({ error, limit }, status);
+}
+
 /** The answer to a request that a limit refuses: `{ error, limit }`, the limit's status, and Retry-After where waiting helps. */
 export function limitAnswer(c: Context, limit: RefusedLimit, team: TeamLimits, retryAfterSeconds?: number): Response {
   const { status, error } = ANSWERS[limit];
-  c.header("Cache-Control", "no-store");
   if (retryAfterSeconds !== undefined) c.header("Retry-After", String(retryAfterSeconds));
-  return c.json({ error: error(team), limit }, status);
+  return refusal(c, status, error(team), limit);
 }
+
+/** The answer to a stats request whose usage in scope is more than one answer may hold; in both modes. */
+export const statsTooLargeAnswer = (c: Context): Response => refusal(c, 409, STATS_TOO_LARGE, "stats");
 
 const DAY_MS = 86_400_000;
 
