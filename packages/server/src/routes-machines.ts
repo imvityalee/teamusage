@@ -24,22 +24,25 @@ function parseRegister(b: Record<string, unknown>): RegisterInput | string {
 /** The routes a machine uses: registering with an invite code and sending usage with its token. */
 export function machineRoutes(app: Hono, ctx: RouteContext): void {
   const { db, opts, team, teamOfInvite } = ctx;
-  const uploads = opts.limits && createLimiter({ max: opts.limits.uploadsPerMinute, windowMs: MINUTE_MS, now: ctx.now });
+  const limits = opts.limits && {
+    team: opts.limits.team,
+    uploads: createLimiter({ max: opts.limits.uploadsPerMinute, windowMs: MINUTE_MS, now: ctx.now }),
+  };
 
   /** The answer to a request a limit refused; any other error is rethrown. */
   const refused = (c: Context, err: unknown): Response => {
-    if (!(err instanceof LimitError) || !opts.limits) throw err;
+    if (!(err instanceof LimitError) || !limits) throw err;
     const wait = err.limit === "team-rows-per-day" ? secondsToUtcMidnight(ctx.now()) : undefined;
-    return limitAnswer(c, err.limit, opts.limits.team, wait);
+    return limitAnswer(c, err.limit, limits.team, wait);
   };
 
   /** The answer when the machine has used up its minute; otherwise counts this upload. */
   const tooManyUploads = (c: Context, who: { teamId: number; machineId: string }): Response | null => {
-    if (!uploads || !opts.limits) return null;
+    if (!limits) return null;
     const key = `${who.teamId}:${who.machineId}`;
-    const wait = uploads.retryAfter(key);
-    if (wait !== null) return limitAnswer(c, "uploads", opts.limits.team, wait);
-    uploads.count(key);
+    const wait = limits.uploads.retryAfter(key);
+    if (wait !== null) return limitAnswer(c, "uploads", limits.team, wait);
+    limits.uploads.count(key);
     return null;
   };
 
@@ -63,8 +66,8 @@ export function machineRoutes(app: Hono, ctx: RouteContext): void {
     // Identity comes only from the token; nothing in the body can influence it.
     const who = token ? authenticate(db, token) : null;
     if (!who) return fail(c, 401, "unauthorized");
-    const slow = tooManyUploads(c, who);
-    if (slow) return slow;
+    const outOfUploads = tooManyUploads(c, who);
+    if (outOfUploads) return outOfUploads;
     const body = await readJson(c);
     if (body === undefined) return fail(c, 400, "invalid JSON body");
     const batch = validateBatch(body, new Date(ctx.now()));

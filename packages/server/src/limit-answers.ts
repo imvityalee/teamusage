@@ -27,5 +27,5 @@ const DAY_MS = 86_400_000;
 
 /** Seconds from `now` (epoch milliseconds) to the next UTC midnight, at least 1. */
 export function secondsToUtcMidnight(now: number): number {
-  return Math.max(1, Math.ceil((DAY_MS - (now % DAY_MS)) / 1000));
+  return Math.ceil((DAY_MS - (now % DAY_MS)) / 1000);
 }

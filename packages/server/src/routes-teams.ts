@@ -4,6 +4,8 @@ import type { RouteContext } from "./app-context.js";
 import { createHostedTeam, MAX_TEAMS_PER_USER, TeamLimitError, type DashboardAccess } from "./hosted-teams.js";
 import { crossSite, fail, isObject, readJson } from "./http.js";
 
+const SIGN_UPS_PAUSED = "sign-ups are paused";
+
 const isDashboardAccess = (v: unknown): v is DashboardAccess => v === "code" || v === "admins";
 
 /** A team name is a display name that stays within MAX_TEAM_NAME_CHARS once trimmed. */
@@ -28,7 +30,7 @@ export function teamRoutes(app: Hono, ctx: RouteContext): void {
     if (!isTeamName(body.name)) return fail(c, 400, "invalid name");
     if (!isDashboardAccess(body.dashboardAccess)) return fail(c, 400, "invalid dashboardAccess");
 
-    if (opts.limits?.team.storageLow()) return fail(c, 503, "sign-ups are paused");
+    if (opts.limits?.team.storageLow()) return fail(c, 503, SIGN_UPS_PAUSED);
 
     try {
       const { team, code } = createHostedTeam(db, {
@@ -43,7 +45,7 @@ export function teamRoutes(app: Hono, ctx: RouteContext): void {
       if (!(err instanceof TeamLimitError)) throw err;
       return err.limit === "user"
         ? fail(c, 409, `you already own ${MAX_TEAMS_PER_USER} teams`)
-        : fail(c, 503, "sign-ups are paused");
+        : fail(c, 503, SIGN_UPS_PAUSED);
     }
   });
 }

@@ -94,15 +94,19 @@ test("a machine uploads three times a minute; the fourth is refused before its b
   expect((await upload(token, [record({ model: "m3" })])).status).toBe(200);
 });
 
-test("a first sync larger than a minute's allowance keeps what was sent and finishes after the minute", async () => {
+test("a first sync of more requests than a minute allows keeps what was sent and ends with every row stored", async () => {
+  server({ rowsPerMachine: 100 });
   const token = await join();
-  for (let i = 0; i < 3; i++) expect((await upload(token, rowsOf(1, i))).status).toBe(200);
-  const refused = await upload(token, rowsOf(1, 3));
-  expect([refused.status, refused.headers.get("retry-after")]).toEqual([429, "60"]);
-  expect(storedRows()).toEqual({ n: 3 });
+  const requests = Array.from({ length: 5 }, (_, i) => rowsOf(2, i * 2));
+  const statuses: number[] = [];
+  for (const records of requests) statuses.push((await upload(token, records)).status);
+  expect(statuses).toEqual([200, 200, 200, 429, 429]);
+  expect(storedRows()).toEqual({ n: 6 });
+  const refused = await upload(token, requests[3] as unknown[]);
+  expect(refused.headers.get("retry-after")).toBe("60");
   clock.t += 60_000;
-  expect((await upload(token, rowsOf(1, 3))).status).toBe(200);
-  expect(storedRows()).toEqual({ n: 4 });
+  for (const records of requests.slice(3)) expect((await upload(token, records)).status).toBe(200);
+  expect(storedRows()).toEqual({ n: 10 });
 });
 
 describe("the answers' texts", () => {
@@ -129,6 +133,13 @@ describe("the minute of uploads", () => {
   test("an upload refused for another reason still counts", async () => {
     const token = await join();
     for (let i = 0; i < 3; i++) expect((await uploadRaw(token, "{")).status).toBe(400);
+    expect((await upload(token, rowsOf(1))).status).toBe(429);
+  });
+  test("an upload refused by a limit still counts", async () => {
+    server({ rowsPerMachine: 1 });
+    const token = await join();
+    await upload(token, rowsOf(1));
+    for (let i = 0; i < 2; i++) expect((await upload(token, rowsOf(1, 1))).status).toBe(409);
     expect((await upload(token, rowsOf(1))).status).toBe(429);
   });
   test("an unknown token is 401 however often it comes, and does not use up a machine's minute", async () => {
