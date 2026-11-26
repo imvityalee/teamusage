@@ -2,7 +2,7 @@ import type { Context } from "hono";
 import { STATS_TOO_LARGE } from "./stats-bounds.js";
 import type { LimitName, TeamLimits } from "./team-limits.js";
 
-export type RefusedLimit = LimitName | "uploads";
+export type RefusedLimit = LimitName | "uploads" | "team-uploads";
 
 type Answer = { status: 409 | 429 | 507; error: (l: TeamLimits) => string };
 
@@ -14,6 +14,7 @@ const ANSWERS: Record<RefusedLimit, Answer> = {
   "team-rows-per-day": { status: 429, error: () => "this team has added too many usage rows today; try again tomorrow" },
   storage: { status: 507, error: () => "the server is not accepting new data right now; try again later" },
   uploads: { status: 429, error: () => "too many uploads; try again in a minute" },
+  "team-uploads": { status: 429, error: () => "this team is sending too much at once; try again in a minute" },
 };
 
 /** A limit's refusal: `{ error, limit }` with the limit's status, never stored by a cache. */

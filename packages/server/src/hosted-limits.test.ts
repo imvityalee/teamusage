@@ -11,6 +11,7 @@ test("a hosted server's limits are the hosted caps and the uploads a machine may
   expect(hostedLimits("/data", () => ({ free: 90, total: 100 }))).toEqual({
     team: { ...HOSTED_CAPS, storageLow: expect.any(Function) },
     uploadsPerMinute: UPLOADS_PER_MINUTE,
+    teamUploadRecordsPerMinute: 60_000,
   });
 });
 

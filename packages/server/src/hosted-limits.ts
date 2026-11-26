@@ -1,6 +1,6 @@
 import type { AppOptions } from "./app-context.js";
 import { storageGuard, type DiskSpace } from "./storage-guard.js";
-import { HOSTED_CAPS, UPLOADS_PER_MINUTE } from "./team-limits.js";
+import { HOSTED_CAPS, TEAM_UPLOAD_RECORDS_PER_MINUTE, UPLOADS_PER_MINUTE } from "./team-limits.js";
 
 export type HostedLimits = NonNullable<AppOptions["limits"]>;
 
@@ -12,5 +12,6 @@ export function hostedLimits(dataDir: string, measure?: (dir: string) => DiskSpa
   return {
     team: { ...HOSTED_CAPS, storageLow: storageGuard({ dir: dataDir, measure }) },
     uploadsPerMinute: UPLOADS_PER_MINUTE,
+    teamUploadRecordsPerMinute: TEAM_UPLOAD_RECORDS_PER_MINUTE,
   };
 }

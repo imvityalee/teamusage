@@ -27,6 +27,7 @@ export function machineRoutes(app: Hono, ctx: RouteContext): void {
   const limits = opts.limits && {
     team: opts.limits.team,
     uploads: createLimiter({ max: opts.limits.uploadsPerMinute, windowMs: MINUTE_MS, now: ctx.now }),
+    teamRecords: createLimiter({ max: opts.limits.teamUploadRecordsPerMinute, windowMs: MINUTE_MS, now: ctx.now }),
   };
 
   /** The answer to a request a limit refused; any other error is rethrown. */
@@ -44,6 +45,13 @@ export function machineRoutes(app: Hono, ctx: RouteContext): void {
     if (wait !== null) return limitAnswer(c, "uploads", limits.team, wait);
     limits.uploads.count(key);
     return null;
+  };
+
+  /** The answer when the team's machines have sent their budget of records this minute. */
+  const teamOverBudget = (c: Context, teamId: number): Response | null => {
+    if (!limits) return null;
+    const wait = limits.teamRecords.retryAfter(String(teamId));
+    return wait === null ? null : limitAnswer(c, "team-uploads", limits.team, wait);
   };
 
   app.post("/api/register", async (c) => {
@@ -68,10 +76,13 @@ export function machineRoutes(app: Hono, ctx: RouteContext): void {
     if (!who) return fail(c, 401, "unauthorized");
     const outOfUploads = tooManyUploads(c, who);
     if (outOfUploads) return outOfUploads;
+    const overBudget = teamOverBudget(c, who.teamId);
+    if (overBudget) return overBudget;
     const body = await readJson(c);
     if (body === undefined) return fail(c, 400, "invalid JSON body");
     const batch = validateBatch(body, new Date(ctx.now()));
     if (!batch.ok) return fail(c, 400, batch.error);
+    if (batch.records.length > 0) limits?.teamRecords.count(String(who.teamId), batch.records.length);
     try {
       return c.json(team(who.teamId).upsertUsage(who, batch.records));
     } catch (err) {

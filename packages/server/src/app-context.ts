@@ -15,8 +15,8 @@ export type AppOptions = {
   clientKey?: (c: Context) => string;
   /** Receives one line per 500; defaults to stderr. */
   logError?: (line: string) => void;
-  /** Hosted mode: what a team may hold and how often a machine may upload. Absent on a self-hosted server, which limits neither. */
-  limits?: { team: TeamLimits; uploadsPerMinute: number };
+  /** Hosted mode: what a team may hold, how often a machine may upload and how many upload records a team may send. Absent on a self-hosted server, which limits neither. */
+  limits?: { team: TeamLimits; uploadsPerMinute: number; teamUploadRecordsPerMinute: number };
   /** Hosted mode: users sign in with GitHub and teams are created by them. Absent on a self-hosted server. */
   hosted?: { github: GithubClient; publicUrl: string; codeKey: Buffer; maxTeams: number };
 };

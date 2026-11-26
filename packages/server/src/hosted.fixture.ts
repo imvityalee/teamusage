@@ -1,9 +1,11 @@
 import type { Hono } from "hono";
+import { goodReg, record } from "./app.fixture.js";
 import { createApp } from "./app.js";
 import type { AppOptions } from "./app-context.js";
 import { now, openDb, type Db } from "./db.js";
 import type { GithubClient, GithubUser } from "./github.js";
 import { createHostedTeam, hostedTeamCodes, type DashboardAccess, type Role } from "./hosted-teams.js";
+import type { TeamLimits } from "./team-limits.js";
 import { ensureUser } from "./users.js";
 
 /** The hosted test server's own origin. */
@@ -94,4 +96,28 @@ export async function signIn(app: Hono, code: string): Promise<string> {
   const session = cookieOf(res, "tu_session");
   if (!session) throw new Error(`signing in with ${code} failed`);
   return session;
+}
+
+/** A hosted app's limits for a test: `team` as given, three uploads a minute per machine, and every other limit out of the way unless `over` sets it. */
+export const testLimits = (team: TeamLimits, over: Partial<NonNullable<AppOptions["limits"]>> = {}): NonNullable<AppOptions["limits"]> => ({
+  team,
+  uploadsPerMinute: 3,
+  teamUploadRecordsPerMinute: 1_000_000,
+  ...over,
+});
+
+/** A machine id of 32 hex digits made of `n`. */
+export const mid = (n: number): string => n.toString(16).repeat(32);
+
+/** `n` records of different models, numbered from `from`. */
+export const rowsOf = (n: number, from = 0): ReturnType<typeof record>[] => Array.from({ length: n }, (_, i) => record({ model: `m${from + i}` }));
+
+/** What a machine does against a hosted app and a team's invite code, both read when a call is made, so a test may replace them. */
+export function machineClient(app: () => Hono, code: () => string) {
+  const post = (path: string, body: unknown, headers: Record<string, string> = {}) => postFromPage(app(), path, body, headers);
+  const register = (over: Record<string, unknown> = {}) => post("/api/register", goodReg({ inviteCode: code(), ...over }));
+  const join = async (over: Record<string, unknown> = {}) => ((await (await register(over)).json()) as { token: string }).token;
+  const uploadRaw = (token: string, text: string) => post("/api/usage", text, { Authorization: `Bearer ${token}` });
+  const upload = (token: string, records: unknown[]) => uploadRaw(token, JSON.stringify({ records }));
+  return { post, register, join, uploadRaw, upload };
 }

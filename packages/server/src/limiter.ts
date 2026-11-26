@@ -9,8 +9,8 @@ import { isIPv4, isIPv6 } from "node:net";
 export interface Limiter {
   /** Seconds to wait when the key is blocked, otherwise null. */
   retryAfter(key: string): number | null;
-  /** Counts one event for the key. */
-  count(key: string): void;
+  /** Counts one event for the key, or an event of `weight`. */
+  count(key: string, weight?: number): void;
   size(): number;
 }
 
@@ -44,18 +44,18 @@ export function createLimiter(o: {
       const e = entries.get(key);
       return e && e.resetAt > at && e.count >= max ? seconds(e.resetAt - at) : null;
     },
-    count(rawKey) {
+    count(rawKey, weight = 1) {
       const key = rawKey.slice(0, MAX_KEY_CHARS);
       const at = o.now();
       const e = entries.get(key);
       if (e && e.resetAt > at) {
-        e.count++;
+        e.count += weight;
         return;
       }
       entries.delete(key);
       if (entries.size >= maxKeys) purge(at);
       // Still full of live entries: this key is not tracked, so it is not limited (fail open).
-      if (entries.size < maxKeys) entries.set(key, { count: 1, resetAt: at + windowMs });
+      if (entries.size < maxKeys) entries.set(key, { count: weight, resetAt: at + windowMs });
     },
     size: () => entries.size,
   };

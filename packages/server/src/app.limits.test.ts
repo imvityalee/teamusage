@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, test } from "vitest";
 import type { Hono } from "hono";
-import { goodReg, record } from "./app.fixture.js";
+import { record } from "./app.fixture.js";
 import * as selfHosted from "./app.harness.js";
 import type { Db } from "./db.js";
-import { hostedApp, hostedTeam, postFromPage, signIn } from "./hosted.fixture.js";
+import { hostedApp, hostedTeam, machineClient, mid, rowsOf, signIn, testLimits } from "./hosted.fixture.js";
 import { limitAnswer, secondsToUtcMidnight, type RefusedLimit } from "./limit-answers.js";
 import { teamTables } from "./team-data.fixture.js";
 import { HOSTED_CAPS, UPLOADS_PER_MINUTE, type LimitName, type TeamLimits } from "./team-limits.js";
@@ -18,7 +18,7 @@ const caps = (over: Partial<TeamLimits> = {}): TeamLimits => ({
   membersPerTeam: 2, machinesPerMember: 2, rowsPerMachine: 5, rowsPerTeam: 100, rowsAddedPerDay: 100, storageLow: () => low, ...over,
 });
 function server(over: Partial<TeamLimits> = {}): void {
-  ({ db, app } = hostedApp({ limits: { team: caps(over), uploadsPerMinute: 3 }, now: () => clock.t }));
+  ({ db, app } = hostedApp({ limits: testLimits(caps(over)), now: () => clock.t }));
   code = hostedTeam(db, { githubId: 1, login: "ann" }, "code").code;
 }
 beforeEach(() => {
@@ -27,13 +27,7 @@ beforeEach(() => {
   server();
 });
 
-const mid = (n: number) => n.toString(16).repeat(32);
-const post = (path: string, body: unknown, headers: Record<string, string> = {}) => postFromPage(app, path, body, headers);
-const register = (over: Record<string, unknown> = {}) => post("/api/register", goodReg({ inviteCode: code, ...over }));
-const join = async (over: Record<string, unknown> = {}) => ((await (await register(over)).json()) as { token: string }).token;
-const uploadRaw = (token: string, text: string) => post("/api/usage", text, { Authorization: `Bearer ${token}` });
-const upload = (token: string, records: unknown[]) => uploadRaw(token, JSON.stringify({ records }));
-const rowsOf = (n: number, from = 0) => Array.from({ length: n }, (_, i) => record({ model: `m${from + i}` }));
+const { post, register, join, uploadRaw, upload } = machineClient(() => app, () => code);
 const storedRows = () => db.prepare("select count(*) as n from usage").get();
 
 /** Brings a team to the edge of `limit` through HTTP and returns the request the limit refuses, not yet sent. */
@@ -122,7 +116,7 @@ test("a first sync of more requests than a minute allows keeps what was sent and
 });
 
 describe("the answers' texts", () => {
-  const refusable: RefusedLimit[] = ["members", "machines", "machine-rows", "team-rows", "team-rows-per-day", "storage", "uploads"];
+  const refusable: RefusedLimit[] = ["members", "machines", "machine-rows", "team-rows", "team-rows-per-day", "storage", "uploads", "team-uploads"];
   const hosted: TeamLimits = { ...HOSTED_CAPS, storageLow: () => false };
   /** The answer to `limit` with the hosted values, from a route that sets no header of its own. */
   const answerOf = async (limit: RefusedLimit): Promise<Response> => {

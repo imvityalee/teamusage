@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, test } from "vitest";
 import type { Hono } from "hono";
 import { goodReg, MID, MID2, record } from "./app.fixture.js";
 import type { Db } from "./db.js";
-import { hostedApp, hostedTeam, postFromPage, signIn } from "./hosted.fixture.js";
+import { hostedApp, hostedTeam, postFromPage, signIn, testLimits } from "./hosted.fixture.js";
 import { rowsOf, SAME_EMAIL } from "./hosted.two-teams.fixture.js";
 import { STATS_BOUNDS } from "./stats-bounds.js";
 import { forTeam } from "./team-data.js";
@@ -26,7 +26,7 @@ let A: ReturnType<typeof hostedTeam>;
 let B: ReturnType<typeof hostedTeam>;
 
 beforeEach(() => {
-  ({ db, app } = hostedApp({ limits: { team: caps(), uploadsPerMinute: 3 }, now: () => NOW }));
+  ({ db, app } = hostedApp({ limits: testLimits(caps()), now: () => NOW }));
   A = hostedTeam(db, { githubId: 1, login: "ann" }, "code", "Aurora Quillfeather Collective");
   B = hostedTeam(db, { githubId: 2, login: "bob" }, "admins", "Borealis Zephyrine Guild");
 });

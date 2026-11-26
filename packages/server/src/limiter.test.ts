@@ -17,6 +17,14 @@ describe("createLimiter", () => {
     expect(limiter.retryAfter("a")).toBe(1);
   });
 
+  test("an event may weigh more than one", () => {
+    const { limiter } = setup({ max: 10 });
+    limiter.count("a", 9);
+    expect(limiter.retryAfter("a")).toBeNull();
+    limiter.count("a", 5);
+    expect(limiter.retryAfter("a")).toBe(1);
+  });
+
   test("keys are independent", () => {
     const { limiter } = setup();
     for (let i = 0; i < 3; i++) limiter.count("a");
