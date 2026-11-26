@@ -439,6 +439,9 @@ Read this before you deploy. This version is deliberately simple.
   addresses at a time; when it is full, a new address is not limited (the invite code's length is what
   stops guessing), while addresses already tracked keep their limits.
 - Uploads carry usage dates from 2024-01-01 up to tomorrow (UTC). A batch with any other date is refused.
+- One statistics request reads at most 60,000 day groups and 30,000 member groups, and shows at most
+  50 agents and 2,000 models. A team whose usage in the requested range goes beyond that gets an error
+  instead of numbers; a shorter range may fit.
 - Dashboard sessions last 30 days.
 - The server speaks plain HTTP. Use an HTTPS reverse proxy.
 - The database file and its directory are private to the server's user (modes 600 and 700).

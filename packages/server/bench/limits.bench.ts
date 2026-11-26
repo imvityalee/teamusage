@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { UsageRecord } from "@teamusage/shared";
+import type { AccountLabel, Stats, UsageRecord } from "@teamusage/shared";
 import { expect, test } from "vitest";
 import { openDb, type Db } from "../src/db.js";
 import { STATS_BOUNDS } from "../src/stats-bounds.js";
@@ -16,6 +16,9 @@ const TODAY = "2026-11-24";
 const DAY_MS = 24 * 60 * 60 * 1000;
 const BATCH_SIZE = 1000;
 const MODEL_CHARS = 128;
+const ORG_CHARS = 100;
+const ORGS = 100;
+const AGENT = "claude";
 
 /** The `days` dates ending at TODAY, newest first. */
 const lastDays = (days: number) =>
@@ -56,8 +59,14 @@ function timeUploads(db: Db): string[] {
   return [line("upload of 50 records (48 known, 2 new)", mixed), line("upload of 500 new records", bulk)];
 }
 
-/** Times the team view of a team holding as many day groups over as many 128-character model names as the bounds allow. */
-function timeWorstView(db: Db): string {
+/** A team account whose organisation follows from model `i`, so the labels add no day group of their own. */
+const accountOf = (i: number): AccountLabel => ({ kind: "team", org: `org-${i % ORGS}-`.padEnd(ORG_CHARS, "x") });
+
+/**
+ * A team holding as many day groups over as many 128-character model names as the bounds allow, each row of one agent
+ * and labelled with one of 100 organisations of 100 characters; returns the team and the range that holds its rows.
+ */
+function seedWidestTeam(db: Db): { team: number; range: { from: string; to: string } } {
   const team = createTeam(db, "Widest");
   const data = forTeam(db, team);
   const machineId = "f".repeat(32);
@@ -65,24 +74,44 @@ function timeWorstView(db: Db): string {
   const machine = { memberId, machineId };
   const days = lastDays(STATS_BOUNDS.dayGroups / STATS_BOUNDS.models);
   const model = (i: number) => `model-${i}-`.padEnd(MODEL_CHARS, "x");
-  const records = days.flatMap((date) => Array.from({ length: STATS_BOUNDS.models }, (_, i) => usage(date, "claude", model(i))));
+  const records = days.flatMap((date) =>
+    Array.from({ length: STATS_BOUNDS.models }, (_, i) => ({ ...usage(date, AGENT, model(i)), account: accountOf(i) })),
+  );
   for (let from = 0; from < records.length; from += BATCH_SIZE) data.upsertUsage(machine, records.slice(from, from + BATCH_SIZE));
-
-  const range = { from: days[days.length - 1]!, to: TODAY };
-  let bytes = 0;
-  const view = timeRuns(() => {
-    const stats = getStats(db, team, range);
-    expect(stats.models).toHaveLength(STATS_BOUNDS.models);
-    bytes = Buffer.byteLength(JSON.stringify(stats));
-  });
-  return `worst team view the bounds allow: ${view.median.toFixed(1)} ms, answer ${(bytes / 1e6).toFixed(1)} MB`;
+  return { team, range: { from: days[days.length - 1]!, to: TODAY } };
 }
 
-test("timing: uploads under the hosted caps, and the widest team view the bounds allow", () => {
+/** A stats request timed, with the size of its answer and, best effort, how much one call grows the heap. */
+function measureView(view: () => Stats): { median: string; answerMb: string; heapMb: string } {
+  const timing = timeRuns(() => expect(view().models).toHaveLength(STATS_BOUNDS.models));
+  globalThis.gc?.();
+  const heapBefore = process.memoryUsage().heapUsed;
+  const stats = view();
+  const heapGrowth = process.memoryUsage().heapUsed - heapBefore;
+  const megabytes = (bytes: number) => (bytes / 1e6).toFixed(1);
+  const answerMb = megabytes(Buffer.byteLength(JSON.stringify(stats)));
+  return { median: timing.median.toFixed(1), answerMb, heapMb: megabytes(heapGrowth) };
+}
+
+/**
+ * Times the widest team's view without a filter, and with a filter that matches every row: the worst the bounds allow,
+ * since a filtered request also reads the unfiltered by-day pass and holds both.
+ */
+function timeWidestViews(db: Db): string[] {
+  const { team, range } = seedWidestTeam(db);
+  const all = measureView(() => getStats(db, team, range));
+  const worst = measureView(() => getStats(db, team, { ...range, agents: [AGENT] }));
+  return [
+    `the same team view without a filter: ${all.median} ms, answer ${all.answerMb} MB`,
+    `worst team view the bounds allow: ${worst.median} ms, answer ${worst.answerMb} MB, heap about ${worst.heapMb} MB`,
+  ];
+}
+
+test("timing: uploads under the hosted caps, and the widest team views the bounds allow", () => {
   const dir = mkdtempSync(join(tmpdir(), "teamusage-bench-"));
   try {
     const db = openDb(join(dir, "bench.db"));
-    for (const printed of [...timeUploads(db), timeWorstView(db)]) console.log(printed);
+    for (const printed of [...timeUploads(db), ...timeWidestViews(db)]) console.log(printed);
     db.close();
   } finally {
     rmSync(dir, { recursive: true, force: true });
