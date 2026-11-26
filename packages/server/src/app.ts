@@ -16,6 +16,7 @@ import { forTeam } from "./team-data.js";
 export function createApp(db: Db, opts: AppOptions): Hono {
   const app = new Hono();
   const now = opts.now ?? Date.now;
+  const stopwatch = opts.stopwatch ?? (() => performance.now());
   const limiter = createLimiter({ now });
   const clientKey = opts.clientKey ?? (() => "unknown");
   const logError = opts.logError ?? ((line: string) => process.stderr.write(`${line}\n`));
@@ -72,7 +73,7 @@ export function createApp(db: Db, opts: AppOptions): Hono {
 
   const team = (teamId: number) =>
     forTeam(db, teamId, { clock: () => new Date(now()).toISOString(), limits: opts.limits?.team });
-  const ctx: RouteContext = { db, opts, now, team, teamOfInvite, session: sessionOf };
+  const ctx: RouteContext = { db, opts, now, stopwatch, team, teamOfInvite, session: sessionOf };
   machineRoutes(app, ctx);
   dashboardRoutes(app, ctx);
   authRoutes(app, ctx);

@@ -6,7 +6,7 @@ import type { Db } from "./db.js";
 import { migrate } from "./migrate.js";
 import { STATS_BOUNDS, StatsTooLargeError, type StatsBounds } from "./stats-bounds.js";
 import { getStats } from "./stats.js";
-import { newTeam, Q, rec, seed } from "./stats.fixture.js";
+import { newTeam, Q, rec, seed, storeTooManyModels } from "./stats.fixture.js";
 import { forTeam } from "./team-data.js";
 import { createTeam, ensureSingleTeam } from "./teams.js";
 
@@ -128,14 +128,11 @@ test("every pass asks SQLite for no more than its bound plus one", () => {
 describe("GET /api/stats of a team whose usage is too large", () => {
   useFreshApp();
   const TOO_LARGE = { error: "this team's usage has too many different agents, models or accounts to show", limit: "stats" };
-  const BATCH = 500;
 
   /** Registers Ann and stores 2,001 different models in range for her machine; returns her token. */
   async function fillTeam(): Promise<string> {
     const { token, memberId } = await register();
-    const records = Array.from({ length: 2001 }, (_, i) => rec(DAY, "claude", `m${i}`, 10));
-    const data = forTeam(appDb, ensureSingleTeam(appDb));
-    for (let i = 0; i < records.length; i += BATCH) data.upsertUsage({ memberId, machineId: MID }, records.slice(i, i + BATCH));
+    storeTooManyModels(appDb, ensureSingleTeam(appDb), { memberId, machineId: MID });
     return token;
   }
 

@@ -1,11 +1,11 @@
 import type { AppOptions } from "./app-context.js";
 import { storageGuard, type DiskSpace } from "./storage-guard.js";
-import { HOSTED_CAPS, TEAM_UPLOAD_RECORDS_PER_MINUTE, UPLOADS_PER_MINUTE } from "./team-limits.js";
+import { HOSTED_CAPS, TEAM_STATS_MS_PER_MINUTE, TEAM_UPLOAD_RECORDS_PER_MINUTE, UPLOADS_PER_MINUTE } from "./team-limits.js";
 
 export type HostedLimits = NonNullable<AppOptions["limits"]>;
 
 /**
- * What a hosted server's teams may hold and how often a machine may upload. Nothing that adds a row is accepted while
+ * What a hosted server's teams may hold, how often a machine may upload and what a team may use a minute. Nothing that adds a row is accepted while
  * the volume holding `dataDir` is nearly full; `measure` replaces the real measurement of that volume.
  */
 export function hostedLimits(dataDir: string, measure?: (dir: string) => DiskSpace): HostedLimits {
@@ -13,5 +13,6 @@ export function hostedLimits(dataDir: string, measure?: (dir: string) => DiskSpa
     team: { ...HOSTED_CAPS, storageLow: storageGuard({ dir: dataDir, measure }) },
     uploadsPerMinute: UPLOADS_PER_MINUTE,
     teamUploadRecordsPerMinute: TEAM_UPLOAD_RECORDS_PER_MINUTE,
+    teamStatsMsPerMinute: TEAM_STATS_MS_PER_MINUTE,
   };
 }

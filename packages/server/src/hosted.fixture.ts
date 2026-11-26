@@ -56,7 +56,7 @@ export function grantRole(db: Db, teamId: number, user: Person, role: Role): voi
 
 /** A hosted app on a fresh in-memory database, with the fake GitHub it signs users in with. */
 export function hostedApp(
-  o: { clientKey?: AppOptions["clientKey"]; maxTeams?: number; logError?: AppOptions["logError"]; limits?: AppOptions["limits"]; now?: AppOptions["now"] } = {},
+  o: Pick<AppOptions, "clientKey" | "logError" | "limits" | "now" | "stopwatch"> & { maxTeams?: number } = {},
 ) {
   const db = openDb(":memory:");
   const github = fakeGithub(USERS);
@@ -66,6 +66,7 @@ export function hostedApp(
     logError: o.logError,
     limits: o.limits,
     now: o.now,
+    stopwatch: o.stopwatch,
     hosted: { github, publicUrl: PUBLIC, codeKey: KEY, maxTeams: o.maxTeams ?? 200 },
   });
   return { db, app, github };
@@ -98,11 +99,12 @@ export async function signIn(app: Hono, code: string): Promise<string> {
   return session;
 }
 
-/** A hosted app's limits for a test: `team` as given, three uploads a minute per machine, and every other limit out of the way unless `over` sets it. */
+/** A hosted app's limits for a test: `team` as given, three uploads a minute per machine, and each team budget out of the way unless `over` sets it. */
 export const testLimits = (team: TeamLimits, over: Partial<NonNullable<AppOptions["limits"]>> = {}): NonNullable<AppOptions["limits"]> => ({
   team,
   uploadsPerMinute: 3,
   teamUploadRecordsPerMinute: 1_000_000,
+  teamStatsMsPerMinute: 2_000_000,
   ...over,
 });
 

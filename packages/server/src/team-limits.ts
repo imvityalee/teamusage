@@ -4,6 +4,9 @@ export const UPLOADS_PER_MINUTE = 30;
 /** Upload records all machines of one team may send in a minute. */
 export const TEAM_UPLOAD_RECORDS_PER_MINUTE = 60_000;
 
+/** Milliseconds of the server's thread one team's statistics may use in a minute. */
+export const TEAM_STATS_MS_PER_MINUTE = 6_000;
+
 /** What a team of a hosted server may hold. A self-hosted server sets none. */
 export type TeamLimits = {
   membersPerTeam: number;

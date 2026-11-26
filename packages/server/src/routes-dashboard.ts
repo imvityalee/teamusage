@@ -14,9 +14,10 @@ import {
 import type { RouteContext } from "./app-context.js";
 import { opensWithCode } from "./hosted-teams.js";
 import { bearerToken, crossSite, fail, setSessionCookie } from "./http.js";
-import { statsTooLargeAnswer } from "./limit-answers.js";
+import { statsTooLargeAnswer, teamStatsBusyAnswer } from "./limit-answers.js";
 import { createTeamSession } from "./sessions.js";
 import { DASHBOARD_LIMITED, statsAccess, type StatsAccess } from "./stats-access.js";
+import { createStatsBudget } from "./stats-budget.js";
 import { StatsTooLargeError } from "./stats-bounds.js";
 import { getStats } from "./stats.js";
 import { authenticate } from "./team-data.js";
@@ -92,6 +93,24 @@ function askedMember(
 /** The routes the dashboard uses: signing in with an invite code and reading a team's stats. */
 export function dashboardRoutes(app: Hono, ctx: RouteContext): void {
   const { db, opts, team, teamOfInvite, session: sessionOf } = ctx;
+  const statsBudget = opts.limits && createStatsBudget({ msPerMinute: opts.limits.teamStatsMsPerMinute, now: ctx.now });
+
+  /** The answer when the team's statistics have used up their minute; otherwise null. */
+  const statsBusy = (c: Context, teamId: number): Response | null => {
+    const wait = statsBudget?.retryAfter(teamId) ?? null;
+    return wait === null ? null : teamStatsBusyAnswer(c, wait);
+  };
+
+  /** Runs `work` and, on a hosted server, spends the time it took for the team, whether it returns or throws. */
+  const timed = <T>(teamId: number, work: () => T): T => {
+    if (!statsBudget) return work();
+    const start = ctx.stopwatch();
+    try {
+      return work();
+    } finally {
+      statsBudget.spend(teamId, ctx.stopwatch() - start);
+    }
+  };
 
   app.post("/api/login", async (c) => {
     c.header("Cache-Control", "no-store");
@@ -123,8 +142,10 @@ export function dashboardRoutes(app: Hono, ctx: RouteContext): void {
 
     const memberId = askedMember(c, access, team);
     if (memberId instanceof Response) return memberId;
+    const busy = statsBusy(c, access.teamId);
+    if (busy) return busy;
     try {
-      return c.json(getStats(db, access.teamId, memberId === null ? range : { ...range, memberId }));
+      return c.json(timed(access.teamId, () => getStats(db, access.teamId, memberId === null ? range : { ...range, memberId })));
     } catch (err) {
       if (err instanceof StatsTooLargeError) return statsTooLargeAnswer(c);
       throw err;

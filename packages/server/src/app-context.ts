@@ -11,12 +11,17 @@ export type AppOptions = {
   /** Demo mode: stats of this team are open to everyone. */
   demoTeamId?: number;
   now?: () => number;
+  /** A clock for measuring how long work takes, in milliseconds; the real one unless a test gives its own. */
+  stopwatch?: () => number;
   /** Identifies the client for failed-attempt limiting. No request header is trusted by default. */
   clientKey?: (c: Context) => string;
   /** Receives one line per 500; defaults to stderr. */
   logError?: (line: string) => void;
-  /** Hosted mode: what a team may hold, how often a machine may upload and how many upload records a team may send. Absent on a self-hosted server, which limits neither. */
-  limits?: { team: TeamLimits; uploadsPerMinute: number; teamUploadRecordsPerMinute: number };
+  /**
+   * Hosted mode: what a team may hold, how often a machine may upload, how many upload records a team may send and how
+   * many milliseconds of statistics work a team may use, each a minute. Absent on a self-hosted server, which limits none.
+   */
+  limits?: { team: TeamLimits; uploadsPerMinute: number; teamUploadRecordsPerMinute: number; teamStatsMsPerMinute: number };
   /** Hosted mode: users sign in with GitHub and teams are created by them. Absent on a self-hosted server. */
   hosted?: { github: GithubClient; publicUrl: string; codeKey: Buffer; maxTeams: number };
 };
@@ -35,6 +40,8 @@ export type RouteContext = {
   teamOfInvite(c: Context): Promise<InviteEntry | Response>;
   /** The server's clock in epoch milliseconds: `opts.now`, or the real one. */
   now(): number;
+  /** Milliseconds for measuring how long work takes: `opts.stopwatch`, or the real one. */
+  stopwatch(): number;
   /** The data of a team as the routes use it: the server's clock, and the limits when the server has any. */
   team(teamId: number): TeamData;
   /** The session the request's cookie opens; null when it has none, an unknown one or an expired one. */

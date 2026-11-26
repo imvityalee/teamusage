@@ -18,7 +18,7 @@ const ANSWERS: Record<RefusedLimit, Answer> = {
 };
 
 /** A limit's refusal: `{ error, limit }` with the limit's status, never stored by a cache. */
-function refusal(c: Context, status: 409 | 429 | 507, error: string, limit: RefusedLimit | "stats"): Response {
+function refusal(c: Context, status: 409 | 429 | 507, error: string, limit: RefusedLimit | "stats" | "team-stats"): Response {
   c.header("Cache-Control", "no-store");
   return c.json({ error, limit }, status);
 }
@@ -32,6 +32,12 @@ export function limitAnswer(c: Context, limit: RefusedLimit, team: TeamLimits, r
 
 /** The answer to a stats request whose usage in scope is more than one answer may hold; in both modes. */
 export const statsTooLargeAnswer = (c: Context): Response => refusal(c, 409, STATS_TOO_LARGE, "stats");
+
+/** The answer to a statistics request of a team whose minute's time is used up: 429, Retry-After, `limit: "team-stats"`. */
+export const teamStatsBusyAnswer = (c: Context, retryAfterSeconds: number): Response => {
+  c.header("Retry-After", String(retryAfterSeconds));
+  return refusal(c, 429, "this team's statistics are busy; try again in a minute", "team-stats");
+};
 
 const DAY_MS = 86_400_000;
 

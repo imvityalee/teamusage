@@ -25,6 +25,14 @@ export const rec = (date: string, agent: string, model: string, total: number, o
   ...over,
 });
 
+/** Stores 2,001 different models on one day in `Q` for machine `who` of team `teamId`: more than one stats answer may hold. */
+export function storeTooManyModels(db: Db, teamId: number, who: { memberId: number; machineId: string }): void {
+  const records = Array.from({ length: 2001 }, (_, i) => rec("2026-11-02", "claude", `m${i}`, 10));
+  const data = forTeam(db, teamId);
+  const batch = 500;
+  for (let i = 0; i < records.length; i += batch) data.upsertUsage(who, records.slice(i, i + batch));
+}
+
 /** A fresh database with one empty team. */
 export function newTeam(): { db: Db; team: number; data: TeamData } {
   const db = openDb(":memory:");
