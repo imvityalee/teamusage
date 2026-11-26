@@ -89,7 +89,7 @@ describe("two teams", () => {
     expect(a.listMembers()[0]!.machines[0]!.label).toBe("new");
   });
   test("a given clock stamps new rows and the last sync", () => {
-    const fixed = forTeam(db, A, () => "2026-11-24T12:00:00.000Z");
+    const fixed = forTeam(db, A, { clock: () => "2026-11-24T12:00:00.000Z" });
     const r = fixed.registerMachine(reg(MID));
     fixed.upsertUsage({ memberId: r.memberId, machineId: MID }, [rec()]);
     expect(fixed.listMembers()[0]!.machines[0]!.lastSyncAt).toBe("2026-11-24T12:00:00.000Z");

@@ -42,7 +42,7 @@ const machineId = (memberIndex: number, position: number) =>
 /** Fills team `teamId` with the same usage data on every run: it is derived from the member and day indexes and from `today`, never from the real clock. */
 export function seedLargeTeam(db: Db, teamId: number, o: SeedOptions): { machines: number; rows: number } {
   const dates = datesEndingAt(o.today, o.days);
-  const team = forTeam(db, teamId, () => `${o.today}T00:00:00.000Z`);
+  const team = forTeam(db, teamId, { clock: () => `${o.today}T00:00:00.000Z` });
   let machines = 0;
   let rows = 0;
   for (let i = 0; i < o.members; i++) {

@@ -3,7 +3,7 @@ import { beforeEach, expect, test } from "vitest";
 import { MID, MID2 } from "./app.fixture.js";
 import { openDb, type Db } from "./db.js";
 import { forTeam } from "./team-data.js";
-import { rec, reg } from "./team-data.fixture.js";
+import { rec, reg, rows } from "./team-data.fixture.js";
 import { createTeam } from "./teams.js";
 import { usageCounts } from "./usage-counts.js";
 
@@ -21,10 +21,8 @@ beforeEach(() => {
   B = createTeam(db, "B");
 });
 
-const on = (teamId: number, day: string) => forTeam(db, teamId, () => `${day}T12:00:00.000Z`);
+const on = (teamId: number, day: string) => forTeam(db, teamId, { clock: () => `${day}T12:00:00.000Z` });
 const held = (teamId: number) => (db.prepare("select count(*) as n from usage where team_id = ?").get(teamId) as { n: number }).n;
-/** `n` records with models `m<from>` onward. */
-const rows = (n: number, from = 0): UsageRecord[] => Array.from({ length: n }, (_, i) => rec({ model: `m${from + i}` }));
 
 /** Registers `machineId` for `email` in team `teamId` and uploads `records` from it on `day`. */
 function upload(teamId: number, day: string, machineId: string, records: UsageRecord[], email = "a@example.com"): void {

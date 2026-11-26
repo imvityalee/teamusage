@@ -63,7 +63,7 @@ const MEMBERS: { name: string; email: string; agents: string[]; scale: number; l
  */
 export function seedDemo(db: Db, teamId: number, today: string): void {
   // upsertUsage stamps last_sync_at from the clock; the demo must not depend on the real one.
-  const team = forTeam(db, teamId, () => `${today}T12:00:00.000Z`);
+  const team = forTeam(db, teamId, { clock: () => `${today}T12:00:00.000Z` });
   const rand = prng(20260818);
   const end = Date.parse(`${today}T00:00:00Z`);
   MEMBERS.forEach((m) => {

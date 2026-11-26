@@ -24,3 +24,6 @@ export const rec = (over: Partial<UsageRecord> = {}): UsageRecord => ({
   unpriced: false,
   ...over,
 });
+
+/** `n` records with models `m<from>` onward. */
+export const rows = (n: number, from = 0): UsageRecord[] => Array.from({ length: n }, (_, i) => rec({ model: `m${from + i}` }));
