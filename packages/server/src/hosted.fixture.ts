@@ -99,12 +99,16 @@ export async function signIn(app: Hono, code: string): Promise<string> {
   return session;
 }
 
-/** A hosted app's limits for a test: `team` as given, three uploads a minute per machine, and each team budget out of the way unless `over` sets it. */
+/**
+ * A hosted app's limits for a test: `team` as given, three uploads a minute per machine, and each team budget and the
+ * days a team keeps out of the way unless `over` sets them.
+ */
 export const testLimits = (team: TeamLimits, over: Partial<NonNullable<AppOptions["limits"]>> = {}): NonNullable<AppOptions["limits"]> => ({
   team,
   uploadsPerMinute: 3,
   teamUploadRecordsPerMinute: 1_000_000,
   teamStatsMsPerMinute: 2_000_000,
+  usageDaysKept: 100_000,
   ...over,
 });
 

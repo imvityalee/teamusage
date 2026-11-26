@@ -14,8 +14,9 @@ function machineRows(db: Db, teamId: number, machineId: string): number {
 
 /**
  * Stores the records of one machine of team `teamId` and counts the rows it added; `o.clock` gives the time written to
- * `last_sync_at` and the UTC date the new rows are counted on. When `o.limits` are set and the records would add a row
- * beyond one, throws `LimitError` and stores nothing of them.
+ * `last_sync_at` and the UTC date the new rows are counted on. A record dated before `oldestKept`, when given, is not
+ * written and counts as kept. When `o.limits` are set and the records would add a row beyond one, throws `LimitError`
+ * and stores nothing of them.
  */
 export function upsertUsage(
   db: Db,
@@ -23,6 +24,7 @@ export function upsertUsage(
   o: WriteOptions,
   who: { memberId: number; machineId: string },
   records: UsageRecord[],
+  oldestKept?: string,
 ): { stored: number; kept: number } {
   // The label changes only when tokens grew (or none is stored yet); a record without a label never clears one.
   // Kind and org share one condition and are set in the same statement, so they change together.
@@ -57,6 +59,10 @@ export function upsertUsage(
     let stored = 0;
     let kept = 0;
     for (const r of records) {
+      if (oldestKept !== undefined && r.date < oldestKept) {
+        kept++;
+        continue;
+      }
       const res = stmt.run({
         teamId,
         memberId: who.memberId,

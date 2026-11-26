@@ -72,7 +72,11 @@ export function createApp(db: Db, opts: AppOptions): Hono {
   app.get("/api/health", (c) => c.json({ ok: true, name: APP_NAME }));
 
   const team = (teamId: number) =>
-    forTeam(db, teamId, { clock: () => new Date(now()).toISOString(), limits: opts.limits?.team });
+    forTeam(db, teamId, {
+      clock: () => new Date(now()).toISOString(),
+      limits: opts.limits?.team,
+      daysKept: opts.limits?.usageDaysKept,
+    });
   const ctx: RouteContext = { db, opts, now, stopwatch, team, teamOfInvite, session: sessionOf };
   machineRoutes(app, ctx);
   dashboardRoutes(app, ctx);

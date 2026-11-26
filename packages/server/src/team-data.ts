@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import type { UsageRecord } from "@teamusage/shared";
 import { now, sha256, type Db } from "./db.js";
 import { refuseBeyondLimits, type TeamLimits } from "./team-limits.js";
+import { dropExpiredUsage, oldestDateKept } from "./team-retention.js";
 import { upsertUsage, type WriteOptions } from "./team-usage.js";
 import { countRemovedRows } from "./usage-counts.js";
 
@@ -41,12 +42,19 @@ export function authenticate(db: Db, token: string): MachineIdentity | null {
   return row ? { teamId: row.team_id, memberId: row.member_id, machineId: row.id } : null;
 }
 
-/** The data of team `teamId`. `clock` gives the time written to rows; `limits`, when set, bound what the team may hold. */
-export function forTeam(db: Db, teamId: number, o?: { clock?: () => string; limits?: TeamLimits }): TeamData {
+/**
+ * The data of team `teamId`. `clock` gives the time written to rows; `limits`, when set, bound what the team may hold;
+ * `daysKept`, when set, is how many days of usage the team keeps.
+ */
+export function forTeam(
+  db: Db,
+  teamId: number,
+  o?: { clock?: () => string; limits?: TeamLimits; daysKept?: number },
+): TeamData {
   const writes: WriteOptions = { clock: o?.clock ?? now, limits: o?.limits };
   return {
     registerMachine: (a) => registerMachine(db, teamId, writes, a),
-    upsertUsage: (who, records) => upsertUsage(db, teamId, writes, who, records),
+    upsertUsage: (who, records) => upsertKeptUsage(db, teamId, writes, o?.daysKept, who, records),
     listMembers: () => listMembers(db, teamId),
     removeMember: (email) => removeMember(db, teamId, email),
     removeMachine: (machineId) => removeMachine(db, teamId, machineId),
@@ -94,6 +102,24 @@ function registerMachine(
     }
     return { token, memberId };
   })();
+}
+
+/**
+ * Stores the records of one machine. With `daysKept`, first drops the team's expired rows in a transaction of their
+ * own, so that an upload a cap refuses has still dropped them, and skips the records dated before the oldest date kept.
+ */
+function upsertKeptUsage(
+  db: Db,
+  teamId: number,
+  o: WriteOptions,
+  daysKept: number | undefined,
+  who: { memberId: number; machineId: string },
+  records: UsageRecord[],
+): ReturnType<TeamData["upsertUsage"]> {
+  if (daysKept === undefined) return upsertUsage(db, teamId, o, who, records);
+  const oldest = oldestDateKept(o.clock(), daysKept);
+  dropExpiredUsage(db, teamId, oldest);
+  return upsertUsage(db, teamId, o, who, records, oldest);
 }
 
 /** Throws `LimitError` when `limits` leave team `teamId` no room for one more member. */

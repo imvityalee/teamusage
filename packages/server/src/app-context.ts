@@ -19,9 +19,16 @@ export type AppOptions = {
   logError?: (line: string) => void;
   /**
    * Hosted mode: what a team may hold, how often a machine may upload, how many upload records a team may send and how
-   * many milliseconds of statistics work a team may use, each a minute. Absent on a self-hosted server, which limits none.
+   * many milliseconds of statistics work a team may use, each a minute, and how many days of usage a team keeps. Absent
+   * on a self-hosted server, which limits none.
    */
-  limits?: { team: TeamLimits; uploadsPerMinute: number; teamUploadRecordsPerMinute: number; teamStatsMsPerMinute: number };
+  limits?: {
+    team: TeamLimits;
+    uploadsPerMinute: number;
+    teamUploadRecordsPerMinute: number;
+    teamStatsMsPerMinute: number;
+    usageDaysKept: number;
+  };
   /** Hosted mode: users sign in with GitHub and teams are created by them. Absent on a self-hosted server. */
   hosted?: { github: GithubClient; publicUrl: string; codeKey: Buffer; maxTeams: number };
 };
@@ -42,7 +49,7 @@ export type RouteContext = {
   now(): number;
   /** Milliseconds for measuring how long work takes: `opts.stopwatch`, or the real one. */
   stopwatch(): number;
-  /** The data of a team as the routes use it: the server's clock, and the limits when the server has any. */
+  /** The data of a team as the routes use it: the server's clock, and the limits and days kept when the server has any. */
   team(teamId: number): TeamData;
   /** The session the request's cookie opens; null when it has none, an unknown one or an expired one. */
   session(c: Context): Session | null;

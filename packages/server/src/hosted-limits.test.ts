@@ -10,7 +10,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-test("a hosted server's limits are the hosted caps, the uploads a machine may send a minute and a team's budgets a minute", () => {
+test("a hosted server's limits are the hosted caps, the uploads a machine may send a minute, a team's budgets a minute and its days kept", () => {
   const db = openDb(":memory:");
   try {
     expect(hostedLimits({ dataDir: "/data", db, measure: () => ({ free: 90e9, total: 100e9 }) })).toEqual({
@@ -18,6 +18,7 @@ test("a hosted server's limits are the hosted caps, the uploads a machine may se
       uploadsPerMinute: UPLOADS_PER_MINUTE,
       teamUploadRecordsPerMinute: 60_000,
       teamStatsMsPerMinute: 6_000,
+      usageDaysKept: 730,
     });
   } finally {
     db.close();

@@ -22,7 +22,7 @@ function offenders(pattern: RegExp, allowed: string[]): string[] {
 }
 
 test("only the team data layer, the stats rows and the upgrade steps write SQL on members, machines or usage", () => {
-  expect(offenders(/\b(from|into|update|join)\s+(members|machines|usage)\b/i, ["team-data.ts", "team-usage.ts", "stats-rows.ts", "migrations/"])).toEqual([]);
+  expect(offenders(/\b(from|into|update|join)\s+(members|machines|usage)\b/i, ["team-data.ts", "team-usage.ts", "team-retention.ts", "stats-rows.ts", "migrations/"])).toEqual([]);
 });
 test("only a self-hosted server resolves the single team", () => {
   expect(offenders(/ensureSingleTeam/, ["teams.ts", "main.ts", "admin.ts"])).toEqual([]);
