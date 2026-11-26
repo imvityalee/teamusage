@@ -5,7 +5,8 @@ import * as selfHosted from "./app.harness.js";
 import type { Db } from "./db.js";
 import { hostedApp, hostedTeam, postFromPage, signIn } from "./hosted.fixture.js";
 import { limitAnswer, secondsToUtcMidnight, type RefusedLimit } from "./limit-answers.js";
-import { HOSTED_CAPS, UPLOADS_PER_MINUTE, type TeamLimits } from "./team-limits.js";
+import { teamTables } from "./team-data.fixture.js";
+import { HOSTED_CAPS, UPLOADS_PER_MINUTE, type LimitName, type TeamLimits } from "./team-limits.js";
 
 const clock = { t: Date.parse("2026-11-25T10:30:00.000Z") };
 let db: Db;
@@ -35,35 +36,38 @@ const upload = (token: string, records: unknown[]) => uploadRaw(token, JSON.stri
 const rowsOf = (n: number, from = 0) => Array.from({ length: n }, (_, i) => record({ model: `m${from + i}` }));
 const storedRows = () => db.prepare("select count(*) as n from usage").get();
 
-/** Brings a team to `limit` through HTTP and returns the response the limit refuses. */
-async function reach(limit: string): Promise<Response> {
+/** Brings a team to the edge of `limit` through HTTP and returns the request the limit refuses, not yet sent. */
+async function approach(limit: string): Promise<() => Promise<Response>> {
   if (limit === "team-rows") server({ rowsPerTeam: 7 });
   if (limit === "team-rows-per-day") server({ rowsAddedPerDay: 6, rowsPerMachine: 100 });
   const first = await join({ machineId: mid(1) });
   switch (limit) {
     case "members":
       await join({ machineId: mid(2), email: "bob@example.com" });
-      return register({ machineId: mid(3), email: "cy@example.com" });
+      return () => register({ machineId: mid(3), email: "cy@example.com" });
     case "machines":
       await join({ machineId: mid(2) });
-      return register({ machineId: mid(3) });
+      return () => register({ machineId: mid(3) });
     case "machine-rows":
       await upload(first, rowsOf(5));
-      return upload(first, rowsOf(1, 5));
+      return () => upload(first, rowsOf(1, 5));
     case "team-rows": {
       await upload(first, rowsOf(5));
       const second = await join({ machineId: mid(2) });
       await upload(second, rowsOf(2));
-      return upload(second, rowsOf(1, 2));
+      return () => upload(second, rowsOf(1, 2));
     }
     case "team-rows-per-day":
       await upload(first, rowsOf(6));
-      return upload(first, rowsOf(1, 6));
+      return () => upload(first, rowsOf(1, 6));
     default:
       low = true;
-      return upload(first, rowsOf(1));
+      return () => upload(first, rowsOf(1));
   }
 }
+
+/** Brings a team to `limit` through HTTP and returns the response the limit refuses. */
+const reach = async (limit: string): Promise<Response> => (await approach(limit))();
 
 test.each([
   ["members", 409, "this team has reached its limit of 2 members"],
@@ -78,6 +82,14 @@ test.each([
   expect(await res.json()).toEqual({ error, limit });
   expect(res.headers.get("cache-control")).toBe("no-store");
   expect(res.headers.get("retry-after")).toBe(limit === "team-rows-per-day" ? "48600" : null); // 13 h 30 min to midnight
+});
+
+const limitNames: LimitName[] = ["members", "machines", "machine-rows", "team-rows", "team-rows-per-day", "storage"];
+test.each(limitNames)("a request refused by %s changes no stored row", async (limit) => {
+  const refused = await approach(limit);
+  const before = teamTables(db);
+  await refused();
+  expect(teamTables(db)).toEqual(before);
 });
 
 test("a machine uploads three times a minute; the fourth is refused before its body is read, and nothing is lost", async () => {
@@ -112,17 +124,26 @@ test("a first sync of more requests than a minute allows keeps what was sent and
 describe("the answers' texts", () => {
   const refusable: RefusedLimit[] = ["members", "machines", "machine-rows", "team-rows", "team-rows-per-day", "storage", "uploads"];
   const hosted: TeamLimits = { ...HOSTED_CAPS, storageLow: () => false };
-
-  test.each(refusable)("%s is at most 200 characters with the hosted values", async (limit) => {
+  /** The answer to `limit` with the hosted values, from a route that sets no header of its own. */
+  const answerOf = async (limit: RefusedLimit): Promise<Response> => {
     const probe = hostedApp().app;
     probe.get("/probe", (c) => limitAnswer(c, limit, hosted));
-    const { error } = (await (await probe.request("/probe")).json()) as { error: string };
+    return probe.request("/probe");
+  };
+
+  test.each(refusable)("%s is at most 200 characters with the hosted values, and no cache stores it", async (limit) => {
+    const res = await answerOf(limit);
+    const { error } = (await res.json()) as { error: string };
     expect(error.length).toBeLessThanOrEqual(200);
+    expect(res.headers.get("cache-control")).toBe("no-store");
   });
-  test("the hosted values are named in the texts they belong to", async () => {
-    const probe = hostedApp().app;
-    probe.get("/probe", (c) => limitAnswer(c, "machine-rows", hosted));
-    expect(await (await probe.request("/probe")).json()).toMatchObject({ error: "this machine has reached its limit of 20000 usage rows" });
+  test.each([
+    ["members", "this team has reached its limit of 2000 members"],
+    ["machines", "this member has reached the limit of 10 machines"],
+    ["machine-rows", "this machine has reached its limit of 20000 usage rows"],
+    ["team-rows", "this team has reached its limit of 1000000 usage rows"],
+  ] as const)("the hosted value of %s is named in its text", async (limit, error) => {
+    expect(await (await answerOf(limit)).json()).toMatchObject({ error });
   });
   test("a machine may upload thirty times a minute", () => {
     expect(UPLOADS_PER_MINUTE).toBe(30);

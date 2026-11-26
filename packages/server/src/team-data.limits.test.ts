@@ -2,7 +2,7 @@ import type { UsageRecord } from "@teamusage/shared";
 import { beforeEach, expect, test } from "vitest";
 import { openDb, type Db } from "./db.js";
 import { authenticate, forTeam } from "./team-data.js";
-import { reg, rows } from "./team-data.fixture.js";
+import { reg, rows, teamTables } from "./team-data.fixture.js";
 import { HOSTED_CAPS, LimitError, type TeamLimits } from "./team-limits.js";
 import { createTeam } from "./teams.js";
 import { usageCounts } from "./usage-counts.js";
@@ -34,7 +34,7 @@ const limitOf = (run: () => unknown): string => {
     return e instanceof LimitError ? e.limit : `threw ${String(e)}`;
   }
 };
-const everything = () => ["teams", "members", "machines", "usage", "usage_counts"].map((t) => db.prepare(`select * from ${t} order by rowid`).all());
+const everything = () => teamTables(db);
 const raised = (r: UsageRecord) => ({ ...r, input: r.input + 1, total: r.total + 1 });
 
 test("the beta's limits are the agreed values", () => {
@@ -97,7 +97,9 @@ test("a team adds its day's allowance exactly; updates are still accepted; the n
   const who = { memberId: team(A, l).registerMachine(reg(M1)).memberId, machineId: M1 };
   expect(limitOf(() => team(A, l).upsertUsage(who, rows(5)))).toBe("accepted");
   expect(limitOf(() => team(A, l).upsertUsage(who, rows(1, 5)))).toBe("accepted");
+  const before = everything();
   expect(limitOf(() => team(A, l).upsertUsage(who, rows(1, 6)))).toBe("team-rows-per-day");
+  expect(everything()).toEqual(before);
   expect(usageCounts(db, A, D1)).toEqual({ rows: 6, addedToday: 6 });
   expect(limitOf(() => team(A, l).upsertUsage(who, rows(6).map(raised)))).toBe("accepted");
   expect(usageCounts(db, A, D1)).toEqual({ rows: 6, addedToday: 6 });

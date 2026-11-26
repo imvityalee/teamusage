@@ -1,5 +1,12 @@
 import type { UsageRecord } from "@teamusage/shared";
+import type { Db } from "./db.js";
 import type { TeamData } from "./team-data.js";
+
+/** Every row of the tables a team's data lives in, each table in insertion order. */
+export const teamTables = (db: Db) =>
+  ["teams", "members", "machines", "usage", "usage_counts"].map((t) =>
+    db.prepare(`select * from ${t} order by rowid`).all(),
+  );
 
 /** A registration of `machineId` for member A <a@example.com>. */
 export const reg = (machineId: string, over: Partial<Parameters<TeamData["registerMachine"]>[0]> = {}) => ({
