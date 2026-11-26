@@ -7,22 +7,7 @@ import { getStats } from "../src/stats.js";
 import { forTeam } from "../src/team-data.js";
 import { createTeam } from "../src/teams.js";
 import { seedLargeTeam } from "./seed.js";
-
-const RUNS = 20;
-
-function timeRuns(run: () => unknown): { median: number; slowest: number } {
-  run(); // untimed: the first call pays for a cold page cache and statement planning
-  const ms = Array.from({ length: RUNS }, () => {
-    const start = performance.now();
-    run();
-    return performance.now() - start;
-  }).sort((a, b) => a - b);
-  const middle = RUNS / 2;
-  return { median: (ms[middle - 1]! + ms[middle]!) / 2, slowest: ms[RUNS - 1]! };
-}
-
-const line = (label: string, t: { median: number; slowest: number }) =>
-  `${label}: median ${t.median.toFixed(1)} ms, slowest ${t.slowest.toFixed(1)} ms`;
+import { line, timeRuns } from "./timing.js";
 
 test("the seed is sized as asked", () => {
   const db = openDb(":memory:");

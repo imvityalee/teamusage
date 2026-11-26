@@ -8,6 +8,7 @@ import { serve } from "@hono/node-server";
 import { getConnInfo } from "@hono/node-server/conninfo";
 import { Hono, type Context } from "hono";
 import { createApp } from "./app.js";
+import type { AppOptions } from "./app-context.js";
 import { parseServerConfig, type HostedConfig, type ServerConfig } from "./config.js";
 import { getInviteCode, getStoredInviteCode, openDb, setSetting, type Db } from "./db.js";
 import { claimDatabase } from "./db-mode.js";
@@ -17,6 +18,8 @@ import { githubClient, type GithubClient } from "./github.js";
 import { hostedTeamCodes } from "./hosted-teams.js";
 import { clientKeyFrom } from "./limiter.js";
 import { codeOf, openFailureMessage } from "./open-failure.js";
+import { storageGuard, type DiskSpace } from "./storage-guard.js";
+import { HOSTED_CAPS, UPLOADS_PER_MINUTE } from "./team-limits.js";
 import { ensureSingleTeam, singleTeamCodes } from "./teams.js";
 
 const CSP =
@@ -132,12 +135,32 @@ function selfHostedApi(db: Db, config: ServerConfig, clientKey: ClientKey): Api 
   return { api, inviteCode, inviteGenerated };
 }
 
-/** The API of a hosted server: people sign in with GitHub and create teams, each with its own code. */
-function hostedApi(db: Db, hosted: HostedConfig, clientKey: ClientKey, github: GithubClient | undefined): Api {
+/** Replaces parts of a server for a test: the web directory, the GitHub client and the disk measurement. */
+type BuildOptions = { webRoot?: string; github?: GithubClient; measureDisk?: (dir: string) => DiskSpace };
+
+type HostedLimits = NonNullable<AppOptions["limits"]>;
+
+/** The hosted limits: the caps, the uploads a machine may send a minute, and no new rows while `dataDir`'s volume is nearly full. */
+function hostedLimits(dataDir: string, measureDisk: BuildOptions["measureDisk"]): HostedLimits {
+  return {
+    team: { ...HOSTED_CAPS, storageLow: storageGuard({ dir: dataDir, measure: measureDisk }) },
+    uploadsPerMinute: UPLOADS_PER_MINUTE,
+  };
+}
+
+/** The API of a hosted server: people sign in with GitHub and create teams, each with its own code, within its limits. */
+function hostedApi(
+  db: Db,
+  hosted: HostedConfig,
+  clientKey: ClientKey,
+  github: GithubClient | undefined,
+  limits: HostedLimits,
+): Api {
   const { publicUrl, githubClientId: clientId, githubClientSecret: clientSecret, codeKey, maxTeams } = hosted;
   const api = createApp(db, {
     teamForCode: hostedTeamCodes(db),
     hosted: { github: github ?? githubClient({ clientId, clientSecret, publicUrl }), publicUrl, codeKey, maxTeams },
+    limits,
     clientKey,
   });
   return { api, inviteCode: undefined, inviteGenerated: false };
@@ -160,8 +183,11 @@ function serverApp(api: Hono, apiPaths: string[], webRoot: string): Hono {
   return app;
 }
 
-/** Opens storage and wires the app. Starts no listener. `opts.github` replaces the GitHub client in hosted mode. */
-export function buildServer(config: ServerConfig, opts: { webRoot?: string; github?: GithubClient } = {}): BuiltServer {
+/**
+ * Opens storage and wires the app. Starts no listener. In hosted mode `opts.github` replaces the GitHub client and
+ * `opts.measureDisk` the measurement of the data volume; a self-hosted server never measures it.
+ */
+export function buildServer(config: ServerConfig, opts: BuildOptions = {}): BuiltServer {
   const db = openStorage(config);
   // Before anything is written: a database stays with the mode of the server that first used it.
   try {
@@ -172,7 +198,7 @@ export function buildServer(config: ServerConfig, opts: { webRoot?: string; gith
   }
   const clientKey = clientKeyOf(config.trustedProxies);
   const { api, inviteCode, inviteGenerated } = config.hosted
-    ? hostedApi(db, config.hosted, clientKey, opts.github)
+    ? hostedApi(db, config.hosted, clientKey, opts.github, hostedLimits(config.dataDir, opts.measureDisk))
     : selfHostedApi(db, config, clientKey);
   // A hosted server also signs people in under /auth.
   const apiPaths = config.hosted ? ["/api/*", "/auth/*"] : ["/api/*"];

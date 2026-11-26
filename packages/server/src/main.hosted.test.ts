@@ -4,22 +4,11 @@ import { goodReg } from "./app.fixture.js";
 import type { ServerConfig } from "./config.js";
 import { openDb } from "./db.js";
 import { HostedDatabaseError, SelfHostedDatabaseError } from "./db-mode.js";
-import { cookieOf, fakeGithub, hostedTeam, KEY, signIn } from "./hosted.fixture.js";
-import { serverConfig, tempDataDir } from "./main.fixture.js";
+import { cookieOf, hostedTeam, KEY, signIn } from "./hosted.fixture.js";
+import { conn, from, github, hosted, PUBLIC_URL, roomy, SECRET, serverConfig, tempDataDir } from "./main.fixture.js";
 import { buildServer, startupLines } from "./main.js";
 
-const PUBLIC_URL = "https://usage.example.org";
-const SECRET = "github-secret-value-0123";
 const selfHosted = (dataDir: string): ServerConfig => serverConfig({ dataDir });
-const hosted = (dataDir: string): ServerConfig =>
-  serverConfig({
-    dataDir,
-    mode: "hosted",
-    hosted: { publicUrl: PUBLIC_URL, githubClientId: "github-client-id", githubClientSecret: SECRET, codeKey: KEY, maxTeams: 200 },
-  });
-const github = () => fakeGithub({ "code-ann": { id: 1, login: "ann" } });
-const from = (address: string) => ({ incoming: { socket: { remoteAddress: address } } });
-const conn = from("1.2.3.4");
 const SECURITY_HEADERS = {
   "x-content-type-options": "nosniff",
   "referrer-policy": "no-referrer",
@@ -42,7 +31,7 @@ function snapshot(dir: string) {
 
 /** Starts a hosted server on `dir`, signs ann in and creates a team; returns the team's code. */
 async function hostedServerWithTeam(dir: string): Promise<string> {
-  const first = buildServer(hosted(dir), { github: github() });
+  const first = buildServer(hosted(dir), { github: github(), measureDisk: roomy });
   try {
     const res = await first.app.request("/api/teams", {
       method: "POST",
@@ -126,7 +115,7 @@ describe("a hosted buildServer", () => {
   test("a second start on the same directory keeps the team created through the first, and its code", async () => {
     const dir = tempDataDir();
     const code = await hostedServerWithTeam(dir);
-    const second = buildServer(hosted(dir), { github: github() });
+    const second = buildServer(hosted(dir), { github: github(), measureDisk: roomy });
     try {
       expect(count(second.db, "teams")).toEqual({ n: 1 });
       const reg = await second.app.request("/api/register", { method: "POST", body: JSON.stringify(goodReg({ inviteCode: code })) }, conn);
@@ -162,7 +151,7 @@ describe("a hosted buildServer counts wrong codes per address", () => {
   const WRONG = "0".repeat(24);
   /** A hosted server with one team; `register(code, address, headers)` sends a registration from that address. */
   function serverWithTeam(over: Partial<ServerConfig> = {}) {
-    const s = buildServer({ ...hosted(tempDataDir()), ...over }, { github: github() });
+    const s = buildServer({ ...hosted(tempDataDir()), ...over }, { github: github(), measureDisk: roomy });
     const { code } = hostedTeam(s.db, { githubId: 1, login: "ann" }, "code");
     const register = (inviteCode: string, address: string, headers: Record<string, string> = {}) =>
       s.app.request("/api/register", { method: "POST", body: JSON.stringify(goodReg({ inviteCode })), headers }, from(address));
