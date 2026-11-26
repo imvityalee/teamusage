@@ -22,7 +22,10 @@ export class LimitError extends Error {
   }
 }
 
-/** The beta's limits. `rowsPerTeam` is lower than the design's 3,000,000: see the plan's measurements. */
+/**
+ * The beta's limits. `rowsPerTeam` is lower than the design's 3,000,000: when it was measured, a team view over about
+ * 3,000,000 rows held the server's only thread for 14 to 20 seconds.
+ */
 export const HOSTED_CAPS: Omit<TeamLimits, "storageLow"> = {
   membersPerTeam: 2000,
   machinesPerMember: 10,

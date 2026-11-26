@@ -27,7 +27,7 @@ function lineFor(state: State, previous: State, failure: string): string | undef
 
 /**
  * Whether the volume holding `dir` is nearly full, measured at each call. A volume that cannot be measured counts as
- * not full. `log` gets one line each time the answer changes.
+ * not full. `log` gets one line each time the answer changes or measuring starts to fail.
  */
 export function storageGuard(o: { dir: string; measure?: (dir: string) => DiskSpace; log?: (line: string) => void }): () => boolean {
   const measure = o.measure ?? diskSpace;
