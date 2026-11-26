@@ -44,6 +44,6 @@ export function storeRows(db: Db, machineId: string, n: number, from = 0): void 
 }
 
 /** Removes `machineId` and its rows from the single team of `db`. */
-export const removeMachineRows = (db: Db, machineId: string): void => {
+export function removeMachineRows(db: Db, machineId: string): void {
   forTeam(db, ensureSingleTeam(db)).removeMachine(machineId);
-};
+}

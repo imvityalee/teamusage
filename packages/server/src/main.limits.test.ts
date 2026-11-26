@@ -4,6 +4,7 @@ import { hostedTeam, signIn } from "./hosted.fixture.js";
 import { conn, github, hosted, PUBLIC_URL, roomy, serverConfig, tempDataDir } from "./main.fixture.js";
 import { buildServer, type BuiltServer } from "./main.js";
 import type { DiskSpace } from "./storage-guard.js";
+import { forTeam } from "./team-data.js";
 
 const full = () => ({ free: 10e9, total: 100e9 });
 
@@ -73,6 +74,39 @@ test("a hosted server on a nearly full volume takes no new machine, row or team,
     expect((await s.app.request("/api/health")).status).toBe(200);
     expect([...measured]).toEqual([dataDir]);
     expect(errors.mock.calls).toEqual([["teamusage: less than 15% of the data volume is free; requests that add rows are refused"]]);
+  } finally {
+    s.close();
+  }
+});
+
+/** Stores `count` rows of a machine over HTTP in uploads of 1,000: distinct models, dates spread over 2026-01 to 2026-10. */
+async function storeThousands(s: BuiltServer, token: string, count: number, tag: string) {
+  for (let from = 0; from < count; from += 1000) {
+    const batch = Array.from({ length: Math.min(1000, count - from) }, (_, i) =>
+      record({ date: `2026-${String((from + i) % 10 + 1).padStart(2, "0")}-15`, model: `${tag}${from + i}` }),
+    );
+    expect((await upload(s, token, batch)).status).toBe(200);
+  }
+}
+
+test("a hosted server on a nearly full volume accepts rows again once a machine's rows are removed", async () => {
+  const errors = captureErrors();
+  let space = roomy();
+  const { s, code, token } = await hostedMachine({ measureDisk: () => space });
+  try {
+    const second = await tokenOf(await register(s, goodReg({ inviteCode: code, machineId: MID2 })));
+    await storeThousands(s, token, 3000, "a");
+    await storeThousands(s, second, 3000, "b");
+    space = { free: 400_000, total: 4_000_000 };
+    const next = [record({ date: "2026-05-15", model: "new" })];
+    expect((await upload(s, token, next)).status).toBe(507);
+    const { id: teamId } = s.db.prepare("select id from teams").get() as { id: number };
+    expect(forTeam(s.db, teamId).removeMachine(MID2)).toBe(true);
+    expect((await upload(s, token, next)).status).toBe(200);
+    expect(errors.mock.calls).toEqual([
+      ["teamusage: less than 15% of the data volume is free; requests that add rows are refused"],
+      ["teamusage: the data volume has room again; requests that add rows are accepted"],
+    ]);
   } finally {
     s.close();
   }
