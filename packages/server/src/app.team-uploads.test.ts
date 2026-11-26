@@ -60,9 +60,11 @@ describe("what counts for the team", () => {
     expect((await upload(one, recordsOf(10))).status).toBe(409);
     expect(await (await upload(two, recordsOf(1))).json()).toEqual(REFUSED);
   });
-  test("an empty batch and a body that is not valid count nothing", async () => {
+  test("an empty batch, a body that is not JSON and a batch that fails validation count nothing", async () => {
     for (let i = 0; i < 3; i++) expect((await uploadRaw(one, "{")).status).toBe(400);
     for (let i = 0; i < 3; i++) await upload(one, []);
+    const oneBad = recordsOf(5).map((r, i) => (i === 2 ? { ...r, total: 99 } : r));
+    for (let i = 0; i < 3; i++) expect((await upload(one, oneBad)).status).toBe(400);
     expect((await upload(two, recordsOf(9))).status).toBe(200);
     expect((await upload(two, recordsOf(1, 9))).status).toBe(200); // the team is at 9 of 10 only if nothing above counted
     expect(await (await upload(two, recordsOf(1, 10))).json()).toEqual(REFUSED);
