@@ -4,18 +4,19 @@ import { codeOf } from "./open-failure.js";
 /** Below this share of free space the server stops accepting what adds rows. */
 export const MIN_FREE_FRACTION = 0.15;
 
-/** Free and total space of a volume, in the same unit. */
+/** Free and total space of a volume, in bytes. */
 export type DiskSpace = { free: number; total: number };
 
 type State = "room" | "full" | "unmeasurable";
 
-/** The space of the volume that holds `dir`, as an unprivileged process may use it (statfs: bavail and blocks). */
+/** The space of the volume that holds `dir`, as an unprivileged process may use it (statfs: bavail and blocks, times the block size). */
 export function diskSpace(dir: string): DiskSpace {
-  const { bavail, blocks } = statfsSync(dir);
-  return { free: bavail, total: blocks };
+  const { bavail, blocks, bsize } = statfsSync(dir);
+  return { free: bavail * bsize, total: blocks * bsize };
 }
 
-const isNearlyFull = ({ free, total }: DiskSpace): boolean => total > 0 && free / total < MIN_FREE_FRACTION;
+const isNearlyFull = ({ free, total }: DiskSpace, reusable: number): boolean =>
+  total > 0 && (free + reusable) / total < MIN_FREE_FRACTION;
 
 /** The line for entering `state` from `previous`, or none when the answer did not change. */
 function lineFor(state: State, previous: State, failure: string): string | undefined {
@@ -26,10 +27,16 @@ function lineFor(state: State, previous: State, failure: string): string | undef
 }
 
 /**
- * Whether the volume holding `dir` is nearly full, measured at each call. A volume that cannot be measured counts as
- * not full. `log` gets one line each time the answer changes or measuring starts to fail.
+ * Whether the volume holding `dir` is nearly full, measured at each call. `reusable`, when given, is room inside files
+ * on it that counts as free. A volume or room that cannot be measured counts as not full. `log` gets one line each
+ * time the answer changes or measuring starts to fail.
  */
-export function storageGuard(o: { dir: string; measure?: (dir: string) => DiskSpace; log?: (line: string) => void }): () => boolean {
+export function storageGuard(o: {
+  dir: string;
+  measure?: (dir: string) => DiskSpace;
+  reusable?: () => number;
+  log?: (line: string) => void;
+}): () => boolean {
   const measure = o.measure ?? diskSpace;
   const log = o.log ?? ((line: string) => console.error(line));
   let previous: State = "room";
@@ -37,7 +44,7 @@ export function storageGuard(o: { dir: string; measure?: (dir: string) => DiskSp
     let state: State;
     let failure = "";
     try {
-      state = isNearlyFull(measure(o.dir)) ? "full" : "room";
+      state = isNearlyFull(measure(o.dir), o.reusable?.() ?? 0) ? "full" : "room";
     } catch (err) {
       state = "unmeasurable";
       failure = codeOf(err);

@@ -181,7 +181,7 @@ export function buildServer(config: ServerConfig, opts: BuildOptions = {}): Buil
   }
   const clientKey = clientKeyOf(config.trustedProxies);
   const { api, inviteCode, inviteGenerated } = config.hosted
-    ? hostedApi(db, config.hosted, clientKey, opts.github, hostedLimits(config.dataDir, opts.measureDisk))
+    ? hostedApi(db, config.hosted, clientKey, opts.github, hostedLimits({ dataDir: config.dataDir, db, measure: opts.measureDisk }))
     : selfHostedApi(db, config, clientKey);
   // A hosted server also signs people in under /auth.
   const apiPaths = config.hosted ? ["/api/*", "/auth/*"] : ["/api/*"];

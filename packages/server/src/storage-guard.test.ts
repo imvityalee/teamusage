@@ -1,3 +1,4 @@
+import { statfsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { beforeEach, expect, test } from "vitest";
 import { diskSpace, storageGuard, type DiskSpace } from "./storage-guard.js";
@@ -88,4 +89,32 @@ test("the real measurement of a real directory gives two numbers that make sense
   expect(total).toBeGreaterThan(0);
   expect(free).toBeGreaterThanOrEqual(0);
   expect(free).toBeLessThanOrEqual(total);
+});
+test("room inside the database file counts as free space", () => {
+  let reusable = 0;
+  const low = storageGuard({ dir: "/data", measure: () => ({ free: 100, total: 1000 }), reusable: () => reusable, log: (l) => lines.push(l) });
+  expect(low()).toBe(true);
+  reusable = 49;
+  expect(low()).toBe(true);
+  reusable = 50; // (100 + 50) / 1000 is exactly 15%
+  expect(low()).toBe(false);
+  expect(lines).toEqual([FULL_LINE, ROOM_LINE]);
+});
+test("room that cannot be read is a failed measurement", () => {
+  const low = storageGuard({
+    dir: "/data",
+    measure: () => ({ free: 100, total: 1000 }),
+    reusable: () => {
+      throw Object.assign(new Error("x"), { code: "SQLITE_BUSY" });
+    },
+    log: (l) => lines.push(l),
+  });
+  expect(low()).toBe(false);
+  expect(lines).toEqual(["teamusage: could not measure the free space of the data volume (SQLITE_BUSY); the disk guard is off"]);
+});
+test("the real measurement is in bytes", () => {
+  const { bavail, blocks, bsize } = statfsSync(tmpdir());
+  const { free, total } = diskSpace(tmpdir());
+  expect(total).toBe(blocks * bsize);
+  expect(Math.abs(free - bavail * bsize)).toBeLessThan(total / 100); // other processes write meanwhile
 });

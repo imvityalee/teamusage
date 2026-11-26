@@ -49,7 +49,7 @@ export const hosted = (dataDir: string): ServerConfig =>
   });
 
 /** A data volume with room: a hosted server in a test measures this one, never the real disk. */
-export const roomy = (): DiskSpace => ({ free: 90, total: 100 });
+export const roomy = (): DiskSpace => ({ free: 90e9, total: 100e9 });
 
 /** A fake GitHub that signs ann in with the callback code "code-ann". */
 export const github = () => fakeGithub({ "code-ann": { id: 1, login: "ann" } });

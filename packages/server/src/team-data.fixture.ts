@@ -1,6 +1,7 @@
 import type { UsageRecord } from "@teamusage/shared";
 import type { Db } from "./db.js";
-import type { TeamData } from "./team-data.js";
+import { forTeam, type TeamData } from "./team-data.js";
+import { ensureSingleTeam } from "./teams.js";
 
 /** Every row of the tables a team's data lives in, each table in insertion order. */
 export const teamTables = (db: Db) =>
@@ -34,3 +35,15 @@ export const rec = (over: Partial<UsageRecord> = {}): UsageRecord => ({
 
 /** `n` records with models `m<from>` onward. */
 export const rows = (n: number, from = 0): UsageRecord[] => Array.from({ length: n }, (_, i) => rec({ model: `m${from + i}` }));
+
+/** Registers `machineId` in the single team of `db` and stores `n` records on it, models `m<from>` onward. */
+export function storeRows(db: Db, machineId: string, n: number, from = 0): void {
+  const team = forTeam(db, ensureSingleTeam(db));
+  const { memberId } = team.registerMachine(reg(machineId));
+  team.upsertUsage({ memberId, machineId }, rows(n, from));
+}
+
+/** Removes `machineId` and its rows from the single team of `db`. */
+export const removeMachineRows = (db: Db, machineId: string): void => {
+  forTeam(db, ensureSingleTeam(db)).removeMachine(machineId);
+};

@@ -5,7 +5,7 @@ import { conn, github, hosted, PUBLIC_URL, roomy, serverConfig, tempDataDir } fr
 import { buildServer, type BuiltServer } from "./main.js";
 import type { DiskSpace } from "./storage-guard.js";
 
-const full = () => ({ free: 10, total: 100 });
+const full = () => ({ free: 10e9, total: 100e9 });
 
 afterEach(() => {
   vi.restoreAllMocks();
