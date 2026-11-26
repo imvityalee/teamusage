@@ -2,6 +2,7 @@ import type { Db } from "./db.js";
 import { baseline } from "./migrations/baseline.js";
 import { hostedTeams } from "./migrations/hosted.js";
 import { teamKeys } from "./migrations/team-keys.js";
+import { usageCountsTable } from "./migrations/usage-counts.js";
 import { orderedUsageIndexes } from "./migrations/usage-indexes.js";
 
 /** One numbered upgrade of the database; step N moves it from version N - 1 to N. */
@@ -25,7 +26,7 @@ export class UpgradeFailedError extends Error {
 
 const BASELINE = 1;
 
-export const STEPS: readonly Step[] = [baseline, teamKeys, orderedUsageIndexes, hostedTeams];
+export const STEPS: readonly Step[] = [baseline, teamKeys, orderedUsageIndexes, hostedTeams, usageCountsTable];
 
 export const SCHEMA_VERSION = STEPS.length;
 

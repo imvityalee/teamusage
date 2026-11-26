@@ -1,7 +1,17 @@
 import type { UsageRecord } from "@teamusage/shared";
 import type { Db } from "./db.js";
+import { countAddedRows } from "./usage-counts.js";
 
-/** Stores the records of one machine of team `teamId`; `clock` gives the time written to `last_sync_at`. */
+/** The number of usage rows machine `machineId` of team `teamId` holds. */
+function machineRows(db: Db, teamId: number, machineId: string): number {
+  const row = db.prepare("select count(*) as n from usage where team_id = ? and machine_id = ?").get(teamId, machineId);
+  return (row as { n: number }).n;
+}
+
+/**
+ * Stores the records of one machine of team `teamId` and counts the rows it added; `clock` gives the time written to
+ * `last_sync_at` and the UTC date the new rows are counted on.
+ */
 export function upsertUsage(
   db: Db,
   teamId: number,
@@ -38,6 +48,7 @@ export function upsertUsage(
       account_plan = ${PLAN}
     where ${GROWS} or (${FILLS})`);
   return db.transaction(() => {
+    const rowsBefore = machineRows(db, teamId, who.machineId);
     let stored = 0;
     let kept = 0;
     for (const r of records) {
@@ -62,7 +73,10 @@ export function upsertUsage(
       if (res.changes > 0) stored++;
       else kept++;
     }
-    db.prepare("update machines set last_sync_at = ? where team_id = ? and id = ?").run(clock(), teamId, who.machineId);
+    const at = clock();
+    const added = machineRows(db, teamId, who.machineId) - rowsBefore;
+    if (added > 0) countAddedRows(db, teamId, added, at.slice(0, 10));
+    db.prepare("update machines set last_sync_at = ? where team_id = ? and id = ?").run(at, teamId, who.machineId);
     return { stored, kept };
   })();
 }

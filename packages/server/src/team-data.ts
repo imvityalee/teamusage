@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import type { UsageRecord } from "@teamusage/shared";
 import { now, sha256, type Db } from "./db.js";
 import { upsertUsage } from "./team-usage.js";
+import { countRemovedRows } from "./usage-counts.js";
 
 /** The machine id is already registered to a different member. */
 export class MachineOwnedError extends Error {
@@ -113,7 +114,8 @@ function removeMember(db: Db, teamId: number, email: string): boolean {
       .prepare("select id from members where team_id = ? and email = ?")
       .get(teamId, email.trim().toLowerCase()) as { id: number } | undefined;
     if (!row) return false;
-    db.prepare("delete from usage where team_id = ? and member_id = ?").run(teamId, row.id);
+    const usage = db.prepare("delete from usage where team_id = ? and member_id = ?").run(teamId, row.id);
+    countRemovedRows(db, teamId, usage.changes);
     db.prepare("delete from machines where team_id = ? and member_id = ?").run(teamId, row.id);
     db.prepare("delete from members where team_id = ? and id = ?").run(teamId, row.id);
     return true;
@@ -122,7 +124,8 @@ function removeMember(db: Db, teamId: number, email: string): boolean {
 
 function removeMachine(db: Db, teamId: number, machineId: string): boolean {
   return db.transaction(() => {
-    db.prepare("delete from usage where team_id = ? and machine_id = ?").run(teamId, machineId);
+    const usage = db.prepare("delete from usage where team_id = ? and machine_id = ?").run(teamId, machineId);
+    countRemovedRows(db, teamId, usage.changes);
     return db.prepare("delete from machines where team_id = ? and id = ?").run(teamId, machineId).changes > 0;
   })();
 }
