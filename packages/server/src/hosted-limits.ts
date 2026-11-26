@@ -5,8 +5,9 @@ import { HOSTED_CAPS, TEAM_STATS_MS_PER_MINUTE, TEAM_UPLOAD_RECORDS_PER_MINUTE, 
 export type HostedLimits = NonNullable<AppOptions["limits"]>;
 
 /**
- * What a hosted server's teams may hold, how often a machine may upload and what a team may use a minute. Nothing that adds a row is accepted while
- * the volume holding `dataDir` is nearly full; `measure` replaces the real measurement of that volume.
+ * What a hosted server's teams may hold, how often a machine may upload and what a team may use a minute. Nothing
+ * that adds a row is accepted while the volume holding `dataDir` is nearly full; `measure` replaces the real
+ * measurement of that volume.
  */
 export function hostedLimits(dataDir: string, measure?: (dir: string) => DiskSpace): HostedLimits {
   return {

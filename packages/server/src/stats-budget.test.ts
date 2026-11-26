@@ -16,6 +16,12 @@ test("a team asks until its minute's time is used up, and again when the minute 
   t = 60_000;
   expect(budget.retryAfter(1)).toBeNull();
 });
+test("one team's time is spent against that team only", () => {
+  const budget = createStatsBudget({ msPerMinute: 100, now: () => 0 });
+  budget.spend(2, 120);
+  expect(budget.retryAfter(2)).toBe(60);
+  expect(budget.retryAfter(1)).toBeNull();
+});
 test("work shorter than a millisecond still counts as one", () => {
   const budget = createStatsBudget({ msPerMinute: 2, now: () => 0 });
   budget.spend(1, 0.01);

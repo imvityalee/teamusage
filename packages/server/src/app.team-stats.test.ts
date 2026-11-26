@@ -78,13 +78,20 @@ test("a team's statistics answer until its minute's time is used up, for every k
   for (const caller of [sessionA, tokenA]) {
     const res = await stats(caller);
     expect(res.status).toBe(429);
-    expect(await res.json()).toEqual({ error: "this team's statistics are busy; try again in a minute", limit: "team-stats" });
+    expect(await res.json()).toEqual(BUSY);
     expect(res.headers.get("retry-after")).toBe("60");
     expect(res.headers.get("cache-control")).toBe("no-store");
   }
   expect((await stats(sessionB)).status).toBe(200);
   clock.t += 60_000;
   expect((await stats(sessionA)).status).toBe(200);
+});
+
+test("another team's time is spent against that team only", async () => {
+  expect((await stats(sessionA)).status).toBe(200);                       // 60 of A's 100
+  for (let i = 0; i < 2; i++) expect((await stats(sessionB)).status).toBe(200);   // 120 of B's own 100
+  expect((await stats(sessionA)).status).toBe(200);                       // A still had 40 left
+  expect(await answer(await stats(sessionB))).toEqual([429, BUSY]);
 });
 
 describe("while A is busy, a request it would refuse anyway gets today's answer", () => {
