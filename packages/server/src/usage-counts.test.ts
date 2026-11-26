@@ -59,7 +59,11 @@ test("new rows are counted once; sending them again or raising their totals adds
   expect(usageCounts(db, A, D1)).toEqual({ rows: 4, addedToday: 4 });
 });
 test("a new UTC day starts the day's count again and keeps the total", () => {
-  uploadOnTwoDays(A);
+  upload(A, D1, MID, rows(3));
+  expect(usageCounts(db, A, D2)).toEqual({ rows: 3, addedToday: 0 });
+  upload(A, D2, MID, rows(3));
+  expect(usageCounts(db, A, D2)).toEqual({ rows: 3, addedToday: 0 });
+  upload(A, D2, MID, rows(2, 3));
   expect(usageCounts(db, A, D2)).toEqual({ rows: 5, addedToday: 2 });
 });
 test("removing a machine or a member takes exactly its rows off the total and nothing off the day", () => {

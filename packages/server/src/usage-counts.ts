@@ -10,7 +10,11 @@ export function usageCounts(db: Db, teamId: number, day: string): UsageCounts {
   return { rows: row?.rows ?? 0, addedToday: row?.day === day ? row.added : 0 };
 }
 
-/** Counts `added` new rows on `day`, starting the day's count again when `day` is a new one; returns the counts after. */
+/**
+ * Counts `added` new rows on `day`, starting the day's count again when `day` differs from the stored one; returns the
+ * counts after. The day's count follows the latest clock reading, so a clock that steps back across UTC midnight starts
+ * it again.
+ */
 export function countAddedRows(db: Db, teamId: number, added: number, day: string): UsageCounts {
   // Every right-hand side of the update reads the row as it was before the update.
   const after = db
