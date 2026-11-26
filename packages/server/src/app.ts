@@ -14,7 +14,8 @@ import { findSession } from "./sessions.js";
 
 export function createApp(db: Db, opts: AppOptions): Hono {
   const app = new Hono();
-  const limiter = createLimiter({ now: opts.now ?? Date.now });
+  const now = opts.now ?? Date.now;
+  const limiter = createLimiter({ now });
   const clientKey = opts.clientKey ?? (() => "unknown");
   const logError = opts.logError ?? ((line: string) => process.stderr.write(`${line}\n`));
 
@@ -68,7 +69,7 @@ export function createApp(db: Db, opts: AppOptions): Hono {
 
   app.get("/api/health", (c) => c.json({ ok: true, name: APP_NAME }));
 
-  const ctx: RouteContext = { db, opts, teamOfInvite, session: sessionOf };
+  const ctx: RouteContext = { db, opts, now, teamOfInvite, session: sessionOf };
   machineRoutes(app, ctx);
   dashboardRoutes(app, ctx);
   authRoutes(app, ctx);

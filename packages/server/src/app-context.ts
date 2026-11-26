@@ -29,6 +29,8 @@ export type RouteContext = {
    * Over its limit, a client gets in only with a correct code, and only on a hosted server.
    */
   teamOfInvite(c: Context): Promise<InviteEntry | Response>;
+  /** The server's clock in epoch milliseconds: `opts.now`, or the real one. */
+  now(): number;
   /** The session the request's cookie opens; null when it has none, an unknown one or an expired one. */
   session(c: Context): Session | null;
 };

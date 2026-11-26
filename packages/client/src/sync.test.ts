@@ -41,7 +41,7 @@ const RECORD_KEYS = ["agent", "cacheCreate", "cacheRead", "costUsd", "date", "in
 const startServer = () => start(INVITE);
 
 const rec = (i: number, over: Partial<UsageRecord> = {}): UsageRecord => ({
-  date: `2026-11-${String((i % 28) + 1).padStart(2, "0")}`,
+  date: `2026-10-${String((i % 28) + 1).padStart(2, "0")}`,
   agent: i % 2 ? "codex" : "claude",
   model: `model-${i}`,
   input: 1,

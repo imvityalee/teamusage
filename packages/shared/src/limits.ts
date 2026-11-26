@@ -5,6 +5,8 @@
  */
 
 // Uploads. The bounds keep any number of rows far from SQLite's integer overflow and every sum finite.
+/** The earliest usage date an upload may carry. */
+export const MIN_USAGE_DATE = "2024-01-01";
 export const MAX_BATCH = 1000;
 export const MAX_TOKENS = 1e12; // each of input, output, cacheCreate, cacheRead
 export const MAX_TOTAL_TOKENS = 4e12;

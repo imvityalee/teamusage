@@ -438,6 +438,7 @@ Read this before you deploy. This version is deliberately simple.
   are counted per /64 network, since one host usually holds a whole /64. The limiter tracks at most 10,000
   addresses at a time; when it is full, a new address is not limited (the invite code's length is what
   stops guessing), while addresses already tracked keep their limits.
+- Uploads carry usage dates from 2024-01-01 up to tomorrow (UTC). A batch with any other date is refused.
 - Dashboard sessions last 30 days.
 - The server speaks plain HTTP. Use an HTTPS reverse proxy.
 - The database file and its directory are private to the server's user (modes 600 and 700).

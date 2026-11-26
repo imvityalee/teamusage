@@ -43,7 +43,7 @@ export function machineRoutes(app: Hono, ctx: RouteContext): void {
     if (!who) return fail(c, 401, "unauthorized");
     const body = await readJson(c);
     if (body === undefined) return fail(c, 400, "invalid JSON body");
-    const batch = validateBatch(body);
+    const batch = validateBatch(body, new Date(ctx.now()));
     if (!batch.ok) return fail(c, 400, batch.error);
     return c.json(forTeam(db, who.teamId).upsertUsage(who, batch.records));
   });

@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { addDays, checkRange, datesBetween, isIsoDate, localIsoDate, parseIsoDate } from "./dates.js";
+import { addDays, checkRange, datesBetween, isIsoDate, isUsageDate, latestUsageDate, localIsoDate, parseIsoDate } from "./dates.js";
 
 test("parseIsoDate accepts only strict, real calendar dates", () => {
   expect(parseIsoDate("2026-11-18")).toBe(Date.UTC(2026, 10, 18));
@@ -47,3 +47,11 @@ test("datesBetween lists every day, including the last one a date can have", () 
   expect(datesBetween("2026-01-02", "2026-01-01")).toEqual([]);
   expect(() => datesBetween("2026-02-30", "2026-03-01")).toThrow(RangeError);
 });
+
+test("latestUsageDate is tomorrow in UTC", () => {
+  expect(latestUsageDate(new Date("2026-12-31T12:00:00Z"))).toBe("2027-01-01");
+  expect(latestUsageDate(new Date("2028-02-28T00:00:00Z"))).toBe("2028-02-29");
+});
+
+test("isUsageDate refuses a day that is not on the calendar", () =>
+  expect(isUsageDate("2026-02-31", new Date("2026-11-25T10:30:00Z"))).toBe(false));

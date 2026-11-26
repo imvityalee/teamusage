@@ -1,4 +1,4 @@
-import { MAX_RANGE_DAYS } from "./limits.js";
+import { MAX_RANGE_DAYS, MIN_USAGE_DATE } from "./limits.js";
 
 // Calendar dates are YYYY-MM-DD strings, years 0000 to 9999. Arithmetic is done in UTC, so no time zone or DST
 // shift applies.
@@ -48,6 +48,16 @@ export function datesBetween(from: string, to: string): string[] {
 export function localIsoDate(d: Date = new Date()): string {
   const pad = (v: number, width = 2) => String(v).padStart(width, "0");
   return `${pad(d.getFullYear(), 4)}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/** The latest usage date an upload may carry at `now`: tomorrow in UTC, so a machine in any time zone can send its local today. */
+export function latestUsageDate(now: Date): string {
+  return addDays(now.toISOString().slice(0, 10), 1);
+}
+
+/** True for a real calendar date from MIN_USAGE_DATE to latestUsageDate(now), both included. */
+export function isUsageDate(date: string, now: Date): boolean {
+  return isIsoDate(date) && date >= MIN_USAGE_DATE && date <= latestUsageDate(now);
 }
 
 /** Inclusive range of exactly `days` days ending at `today` (YYYY-MM-DD). */
