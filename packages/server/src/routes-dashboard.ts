@@ -17,7 +17,7 @@ import { bearerToken, crossSite, fail, setSessionCookie } from "./http.js";
 import { createTeamSession } from "./sessions.js";
 import { DASHBOARD_LIMITED, statsAccess } from "./stats-access.js";
 import { getStats } from "./stats.js";
-import { authenticate, forTeam } from "./team-data.js";
+import { authenticate } from "./team-data.js";
 
 const MEMBER_ID = /^[1-9][0-9]{0,9}$/;
 
@@ -69,7 +69,7 @@ function parseRange(c: Context): StatsRange | string {
 
 /** The routes the dashboard uses: signing in with an invite code and reading a team's stats. */
 export function dashboardRoutes(app: Hono, ctx: RouteContext): void {
-  const { db, opts, teamOfInvite, session: sessionOf } = ctx;
+  const { db, opts, team, teamOfInvite, session: sessionOf } = ctx;
 
   app.post("/api/login", async (c) => {
     c.header("Cache-Control", "no-store");
@@ -111,7 +111,7 @@ export function dashboardRoutes(app: Hono, ctx: RouteContext): void {
     if (!MEMBER_ID.test(member)) return fail(c, 400, "invalid query");
     const memberId = Number(member);
     if (!Number.isSafeInteger(memberId)) return fail(c, 400, "invalid query");
-    if (!forTeam(db, teamId).memberExists(memberId)) return fail(c, 404, "member not found");
+    if (!team(teamId).memberExists(memberId)) return fail(c, 404, "member not found");
     return c.json(getStats(db, teamId, { ...range, memberId }));
   });
 }

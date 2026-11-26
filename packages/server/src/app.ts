@@ -11,6 +11,7 @@ import { dashboardRoutes } from "./routes-dashboard.js";
 import { machineRoutes } from "./routes-machines.js";
 import { teamRoutes } from "./routes-teams.js";
 import { findSession } from "./sessions.js";
+import { forTeam } from "./team-data.js";
 
 export function createApp(db: Db, opts: AppOptions): Hono {
   const app = new Hono();
@@ -44,7 +45,7 @@ export function createApp(db: Db, opts: AppOptions): Hono {
     if (limited) return limited;
     if (body === undefined) return fail(c, 400, "invalid JSON body");
     if (!isObject(body)) return fail(c, 400, "body must be an object");
-    limiter.fail(clientKey(c));
+    limiter.count(clientKey(c));
     return fail(c, 403, "invalid invite code");
   };
 
@@ -69,7 +70,9 @@ export function createApp(db: Db, opts: AppOptions): Hono {
 
   app.get("/api/health", (c) => c.json({ ok: true, name: APP_NAME }));
 
-  const ctx: RouteContext = { db, opts, now, teamOfInvite, session: sessionOf };
+  const team = (teamId: number) =>
+    forTeam(db, teamId, { clock: () => new Date(now()).toISOString(), limits: opts.limits?.team });
+  const ctx: RouteContext = { db, opts, now, team, teamOfInvite, session: sessionOf };
   machineRoutes(app, ctx);
   dashboardRoutes(app, ctx);
   authRoutes(app, ctx);

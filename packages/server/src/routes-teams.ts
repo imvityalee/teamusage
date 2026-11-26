@@ -28,6 +28,8 @@ export function teamRoutes(app: Hono, ctx: RouteContext): void {
     if (!isTeamName(body.name)) return fail(c, 400, "invalid name");
     if (!isDashboardAccess(body.dashboardAccess)) return fail(c, 400, "invalid dashboardAccess");
 
+    if (opts.limits?.team.storageLow()) return fail(c, 503, "sign-ups are paused");
+
     try {
       const { team, code } = createHostedTeam(db, {
         name: body.name.trim(),

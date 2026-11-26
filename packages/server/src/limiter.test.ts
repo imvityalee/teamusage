@@ -12,46 +12,46 @@ describe("createLimiter", () => {
     const { limiter } = setup();
     for (let i = 0; i < 3; i++) {
       expect(limiter.retryAfter("a")).toBeNull();
-      limiter.fail("a");
+      limiter.count("a");
     }
     expect(limiter.retryAfter("a")).toBe(1);
   });
 
   test("keys are independent", () => {
     const { limiter } = setup();
-    for (let i = 0; i < 3; i++) limiter.fail("a");
+    for (let i = 0; i < 3; i++) limiter.count("a");
     expect(limiter.retryAfter("a")).not.toBeNull();
     expect(limiter.retryAfter("b")).toBeNull();
   });
 
   test("unblocks once the window has passed", () => {
     const { limiter, advance } = setup();
-    for (let i = 0; i < 3; i++) limiter.fail("a");
+    for (let i = 0; i < 3; i++) limiter.count("a");
     advance(999);
     expect(limiter.retryAfter("a")).toBe(1);
     advance(1);
     expect(limiter.retryAfter("a")).toBeNull();
-    limiter.fail("a");
+    limiter.count("a");
     expect(limiter.retryAfter("a")).toBeNull();
   });
 
   test("rounds the wait up to whole seconds", () => {
     const { limiter, advance } = setup({ windowMs: 5000 });
-    for (let i = 0; i < 3; i++) limiter.fail("a");
+    for (let i = 0; i < 3; i++) limiter.count("a");
     advance(1500);
     expect(limiter.retryAfter("a")).toBe(4);
   });
 
   test("drops expired entries and caps the number of tracked keys", () => {
     const { limiter, advance } = setup({ maxKeys: 3 });
-    limiter.fail("a");
-    limiter.fail("b");
-    limiter.fail("c");
+    limiter.count("a");
+    limiter.count("b");
+    limiter.count("c");
     expect(limiter.size()).toBe(3);
-    limiter.fail("d");
+    limiter.count("d");
     expect(limiter.size()).toBe(3);
     advance(1000);
-    limiter.fail("e");
+    limiter.count("e");
     expect(limiter.size()).toBe(1);
   });
 });
@@ -59,46 +59,46 @@ describe("createLimiter", () => {
 describe("limiter bounds", () => {
   test("never evicts a live entry: with the table full, an unseen key is allowed and a tracked blocked key stays blocked", () => {
     const { limiter, advance } = setup({ maxKeys: 2, max: 1 });
-    limiter.fail("a");
-    limiter.fail("b");
+    limiter.count("a");
+    limiter.count("b");
     expect(limiter.retryAfter("a")).toBe(1); // tracked and blocked
     expect(limiter.retryAfter("c")).toBeNull(); // fail open: a full table is not a lockout
-    limiter.fail("c");
-    limiter.fail("c");
+    limiter.count("c");
+    limiter.count("c");
     expect(limiter.size()).toBe(2);
     expect(limiter.retryAfter("c")).toBeNull(); // not tracked, so never blocked
     expect(limiter.retryAfter("a")).toBe(1); // tracked keys keep their own limits
     expect(limiter.retryAfter("b")).toBe(1);
     advance(1000);
-    limiter.fail("c"); // expired entries are purged, so c is tracked now
+    limiter.count("c"); // expired entries are purged, so c is tracked now
     expect(limiter.retryAfter("c")).toBe(1);
   });
 
   test("purges at most once per second of clock time", () => {
     const { limiter, advance } = setup({ maxKeys: 1, windowMs: 100, max: 1 });
-    limiter.fail("a");
+    limiter.count("a");
     advance(100);
-    limiter.fail("b"); // first purge at this time: a is dropped
+    limiter.count("b"); // first purge at this time: a is dropped
     expect(limiter.size()).toBe(1);
     expect(limiter.retryAfter("b")).not.toBeNull();
     advance(100); // b expired but the purge ran less than 1s ago
-    limiter.fail("c");
+    limiter.count("c");
     expect(limiter.size()).toBe(1);
     expect(limiter.retryAfter("c")).toBeNull(); // c could not be tracked
     advance(1000);
-    limiter.fail("c");
+    limiter.count("c");
     expect(limiter.retryAfter("c")).not.toBeNull();
   });
 
   test("keys are capped at 64 characters", () => {
     const { limiter } = setup({ max: 1 });
-    limiter.fail("x".repeat(64) + "1");
+    limiter.count("x".repeat(64) + "1");
     expect(limiter.retryAfter("x".repeat(64) + "2")).not.toBeNull();
   });
 
   test("failures on other keys never block a key with no failures of its own", () => {
     const l = createLimiter({ now: () => 5_000 });
-    for (let i = 0; i < 100; i++) l.fail(`k${i}`);
+    for (let i = 0; i < 100; i++) l.count(`k${i}`);
     expect(l.retryAfter("unseen")).toBeNull();
   });
 });

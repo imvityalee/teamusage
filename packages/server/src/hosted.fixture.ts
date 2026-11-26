@@ -53,13 +53,17 @@ export function grantRole(db: Db, teamId: number, user: Person, role: Role): voi
 }
 
 /** A hosted app on a fresh in-memory database, with the fake GitHub it signs users in with. */
-export function hostedApp(o: { clientKey?: AppOptions["clientKey"]; maxTeams?: number; logError?: AppOptions["logError"] } = {}) {
+export function hostedApp(
+  o: { clientKey?: AppOptions["clientKey"]; maxTeams?: number; logError?: AppOptions["logError"]; limits?: AppOptions["limits"]; now?: AppOptions["now"] } = {},
+) {
   const db = openDb(":memory:");
   const github = fakeGithub(USERS);
   const app = createApp(db, {
     teamForCode: hostedTeamCodes(db),
     clientKey: o.clientKey,
     logError: o.logError,
+    limits: o.limits,
+    now: o.now,
     hosted: { github, publicUrl: PUBLIC, codeKey: KEY, maxTeams: o.maxTeams ?? 200 },
   });
   return { db, app, github };

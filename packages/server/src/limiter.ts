@@ -1,16 +1,16 @@
 import { isIPv4, isIPv6 } from "node:net";
 
 /**
- * In-memory fixed-window limiter for failed attempts, per key.
+ * In-memory limiter that counts events per key in fixed windows.
  * Memory is bounded: keys are capped in length and count, and live entries are never evicted. When the table
  * is full of live entries, a key it cannot track is allowed (fail open): a full table must not lock everyone
- * out, and guessing is defeated by the invite code's entropy. Tracked keys keep their own limits.
+ * out. Tracked keys keep their own limits.
  */
 export interface Limiter {
   /** Seconds to wait when the key is blocked, otherwise null. */
   retryAfter(key: string): number | null;
-  /** Records one failed attempt. */
-  fail(key: string): void;
+  /** Counts one event for the key. */
+  count(key: string): void;
   size(): number;
 }
 
@@ -44,7 +44,7 @@ export function createLimiter(o: {
       const e = entries.get(key);
       return e && e.resetAt > at && e.count >= max ? seconds(e.resetAt - at) : null;
     },
-    fail(rawKey) {
+    count(rawKey) {
       const key = rawKey.slice(0, MAX_KEY_CHARS);
       const at = o.now();
       const e = entries.get(key);

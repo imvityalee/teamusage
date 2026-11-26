@@ -1,3 +1,6 @@
+/** Uploads one machine may send in a minute. */
+export const UPLOADS_PER_MINUTE = 30;
+
 /** What a team of a hosted server may hold. A self-hosted server sets none. */
 export type TeamLimits = {
   membersPerTeam: number;
