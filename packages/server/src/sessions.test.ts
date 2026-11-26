@@ -5,8 +5,9 @@ import { join } from "node:path";
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { openDb, type Db } from "./db.js";
+import { migrate } from "./migrate.js";
 import { LEGACY_SCHEMA } from "./migrations/legacy.fixture.js";
-import { createTeamSession, createUserSession, endSession, endTeamSessions, findSession, MAX_TEAM_SESSIONS } from "./sessions.js";
+import { createTeamSession, createUserSession, endSession, endTeamSessions, findSession, MAX_TEAM_SESSIONS, MAX_USER_SESSIONS } from "./sessions.js";
 import { authenticate } from "./team-data.js";
 import { createTeam } from "./teams.js";
 
@@ -115,6 +116,54 @@ test("the oldest are chosen by creation time before insertion order", () => {
   vi.setSystemTime(new Date("2026-11-25T12:00:00.000Z"));
   const older = Array.from({ length: 4 }, () => createTeamSession(db, A, 3));
   expect([newest, ...older].map((sid) => findSession(db, sid) !== null)).toEqual([true, false, false, true, true]);
+});
+
+test("the cap on one account's sessions is 20", () => expect(MAX_USER_SESSIONS).toBe(20));
+
+test("an account holding more than its maximum keeps its newest sessions; other accounts and teams keep theirs", () => {
+  const bob = createUserSession(db, { githubId: 8, login: "bob" });
+  const team = createTeamSession(db, A);
+  const ann = Array.from({ length: 5 }, () => createUserSession(db, ANN, 3));
+  expect(ann.map((sid) => findSession(db, sid) !== null)).toEqual([false, false, true, true, true]);
+  expect(findSession(db, bob)).toEqual({ kind: "user", githubId: 8, login: "bob" });
+  expect(findSession(db, team)).toEqual({ kind: "team", teamId: A });
+});
+
+test("a team's cap leaves a user session alone, and an account's cap leaves a team session alone", () => {
+  const account = { githubId: A, login: "same-number-as-the-team" };
+  for (let i = 0; i < 3; i++) {
+    createTeamSession(db, A, 1);
+    createUserSession(db, account, 1);
+  }
+  expect(db.prepare("select kind from sessions order by kind").all()).toEqual([{ kind: "team" }, { kind: "user" }]);
+});
+
+test("an account's sessions are capped at 20 when no maximum is given", () => {
+  const sessions = Array.from({ length: MAX_USER_SESSIONS + 1 }, () => createUserSession(db, ANN));
+  expect(sessions.map((sid) => findSession(db, sid) !== null)).toEqual([false, ...Array(MAX_USER_SESSIONS).fill(true)]);
+});
+
+test.each(["team", "user"] as const)("a %s session opened after the clock stepped back is kept, and the oldest other one is dropped", (kind) => {
+  const open = () => (kind === "team" ? createTeamSession(db, A, 3) : createUserSession(db, ANN, 3));
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-11-25T12:01:00.000Z"));
+  const earlier = [open(), open(), open()];
+  vi.setSystemTime(new Date("2026-11-25T12:00:00.000Z"));
+  const latest = open();
+  expect(findSession(db, latest)).not.toBeNull();
+  expect(earlier.map((sid) => findSession(db, sid) !== null)).toEqual([false, true, true]);
+});
+
+test("the account's sessions are found through their index", () => {
+  const seen: string[] = [];
+  const verboseDb = new Database(":memory:", { verbose: (sql) => seen.push(String(sql)) });
+  migrate(verboseDb);
+  createUserSession(verboseDb, ANN);
+  const plans = seen
+    .filter((sql) => /delete from sessions where rowid in/.test(sql) && sql.includes("'user'"))
+    .map((sql) => (verboseDb.prepare(`explain query plan ${sql}`).all() as { detail: string }[]).map((r) => r.detail).join(" | "));
+  expect(plans).toHaveLength(1);
+  expect(plans[0]).toContain("sessions_github");
 });
 
 test("a token and a session from before the upgrade still work", () => {
