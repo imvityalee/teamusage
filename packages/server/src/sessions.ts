@@ -22,7 +22,10 @@ function dropExpired(db: Db): void {
 
 const newSessionId = (): string => randomBytes(32).toString("hex");
 
-/** Deletes an owner's sessions but the `max - 1` newest others and the session just opened; sessions opened in the same millisecond are told apart by insertion order (rowid). */
+/**
+ * Deletes an owner's oldest sessions: all but the session just opened (`id <> ?`) and the newest others, as many as the
+ * offset keeps. Sessions opened in the same millisecond are told apart by insertion order (rowid).
+ */
 function dropOldestStatement(owner: string): string {
   return `delete from sessions where rowid in (
     select rowid from sessions where ${owner} and id <> ?
@@ -35,33 +38,40 @@ const DROP_OLDEST_OF = {
   user: dropOldestStatement("kind = 'user' and github_id = ?"),
 };
 
-/** Inserts the session and drops its owner's oldest; the session just opened is never the one dropped, whatever the clock says. */
-function openSession(db: Db, insert: () => void, drop: string, ownerValue: number, id: string, max: number): void {
+/** Whose sessions a new one counts against: the statement that drops the oldest of them, and the value it binds. */
+type Owner = { dropOldest: string; value: number };
+
+/**
+ * Opens a session and returns its id: `insert` stores it under the hashed id, then the owner's oldest beyond `max` are
+ * dropped. The session just opened is never the one dropped, whatever the clock says.
+ */
+function openSession(db: Db, owner: Owner, max: number, insert: (hashedId: string) => void): string {
+  const id = newSessionId();
+  const hashedId = sha256(id);
   db.transaction(() => {
     dropExpired(db);
-    insert();
-    db.prepare(drop).run(ownerValue, sha256(id), max - 1);
+    insert(hashedId);
+    db.prepare(owner.dropOldest).run(owner.value, hashedId, max - 1);
   })();
+  return id;
 }
 
 /** Opens a session of the team; when the team then holds more than `max`, its oldest are dropped. */
 export function createTeamSession(db: Db, teamId: number, max: number = MAX_TEAM_SESSIONS): string {
-  const id = newSessionId();
-  const insert = () =>
-    db.prepare("insert into sessions (id, kind, team_id, created_at) values (?, 'team', ?, ?)").run(sha256(id), teamId, now());
-  openSession(db, insert, DROP_OLDEST_OF.team, teamId, id, max);
-  return id;
+  return openSession(db, { dropOldest: DROP_OLDEST_OF.team, value: teamId }, max, (hashedId) =>
+    db
+      .prepare("insert into sessions (id, kind, team_id, created_at) values (?, 'team', ?, ?)")
+      .run(hashedId, teamId, now()),
+  );
 }
 
 /** Opens a session of a GitHub user, creating no `users` row; when the account then holds more than `max`, its oldest are dropped. */
 export function createUserSession(db: Db, user: { githubId: number; login: string }, max: number = MAX_USER_SESSIONS): string {
-  const id = newSessionId();
-  const insert = () =>
+  return openSession(db, { dropOldest: DROP_OLDEST_OF.user, value: user.githubId }, max, (hashedId) =>
     db
       .prepare("insert into sessions (id, kind, github_id, github_login, created_at) values (?, 'user', ?, ?, ?)")
-      .run(sha256(id), user.githubId, user.login, now());
-  openSession(db, insert, DROP_OLDEST_OF.user, user.githubId, id, max);
-  return id;
+      .run(hashedId, user.githubId, user.login, now()),
+  );
 }
 
 function toSession(row: SessionRow): Session {
