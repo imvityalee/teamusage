@@ -34,15 +34,30 @@ const datesOf = (teamId: number) => db.prepare("select date from usage where tea
 
 test("the agreed values", () => expect([USAGE_DAYS_KEPT, EXPIRED_ROWS_PER_UPLOAD]).toEqual([730, 500]));
 test("the oldest date kept is 730 days before the clock's UTC date", () => {
-  expect(oldestDateKept("2026-11-26T00:00:00.000Z", 730)).toBe("2024-11-26");
-  expect(oldestDateKept("2026-11-26T23:59:59.999Z", 730)).toBe("2024-11-26");
-  expect(oldestDateKept("2028-02-29T12:00:00.000Z", 730)).toBe("2026-03-01");
+  const machineZone = process.env.TZ;
+  try {
+    for (const zone of ["Asia/Bishkek", "America/Los_Angeles"]) {
+      process.env.TZ = zone; // a machine east of UTC, then one west of it
+      expect(oldestDateKept("2026-11-26T00:00:00.000Z", 730)).toBe("2024-11-26");
+      expect(oldestDateKept("2026-11-26T23:59:59.999Z", 730)).toBe("2024-11-26");
+      expect(oldestDateKept("2028-02-29T12:00:00.000Z", 730)).toBe("2026-03-01");
+    }
+  } finally {
+    if (machineZone === undefined) delete process.env.TZ;
+    else process.env.TZ = machineZone;
+  }
 });
 test("a batch that mixes old and current records stores the current ones and counts the old as kept", () => {
   const who = { memberId: team(A).registerMachine(reg(M1)).memberId, machineId: M1 };
   expect(team(A).upsertUsage(who, [rec({ date: PAST }), rec({ date: EDGE }), rec({ date: TODAY })])).toEqual({ stored: 2, kept: 1 });
   expect(datesOf(A)).toEqual([EDGE, TODAY]);
   expect(usageCounts(db, A, TODAY)).toEqual({ rows: 2, addedToday: 2 });
+});
+test("a batch of old records only stores nothing, counts them all as kept and still stamps the machine's sync", () => {
+  const who = join(A);
+  expect(team(A).upsertUsage(who, [rec({ date: PAST }), rec({ date: addDays(PAST, -1) })])).toEqual({ stored: 0, kept: 2 });
+  expect(datesOf(A)).toEqual([]);
+  expect(db.prepare("select last_sync_at from machines where team_id = ?").all(A)).toEqual([{ last_sync_at: `${TODAY}T12:00:00.000Z` }]);
 });
 test("a row at the edge is kept today and dropped tomorrow, and the count follows", () => {
   const [whoA, whoB] = [join(A), join(B)];

@@ -54,7 +54,7 @@ export function forTeam(
   const writes: WriteOptions = { clock: o?.clock ?? now, limits: o?.limits };
   return {
     registerMachine: (a) => registerMachine(db, teamId, writes, a),
-    upsertUsage: (who, records) => upsertKeptUsage(db, teamId, writes, o?.daysKept, who, records),
+    upsertUsage: uploadWithin(db, teamId, writes, o?.daysKept),
     listMembers: () => listMembers(db, teamId),
     removeMember: (email) => removeMember(db, teamId, email),
     removeMachine: (machineId) => removeMachine(db, teamId, machineId),
@@ -105,21 +105,19 @@ function registerMachine(
 }
 
 /**
- * Stores the records of one machine. With `daysKept`, first drops the team's expired rows in a transaction of their
- * own, so that an upload a cap refuses has still dropped them, and skips the records dated before the oldest date kept.
+ * The team's upload. With `daysKept`, it first drops the team's expired rows in a transaction of their own, so that an
+ * upload a cap refuses has still dropped them, and sets aside the records dated before the oldest date kept: they are
+ * not written and count as kept.
  */
-function upsertKeptUsage(
-  db: Db,
-  teamId: number,
-  o: WriteOptions,
-  daysKept: number | undefined,
-  who: { memberId: number; machineId: string },
-  records: UsageRecord[],
-): ReturnType<TeamData["upsertUsage"]> {
-  if (daysKept === undefined) return upsertUsage(db, teamId, o, who, records);
-  const oldest = oldestDateKept(o.clock(), daysKept);
-  dropExpiredUsage(db, teamId, oldest);
-  return upsertUsage(db, teamId, o, who, records, oldest);
+function uploadWithin(db: Db, teamId: number, o: WriteOptions, daysKept: number | undefined): TeamData["upsertUsage"] {
+  return (who, records) => {
+    if (daysKept === undefined) return upsertUsage(db, teamId, o, who, records);
+    const oldest = oldestDateKept(o.clock(), daysKept);
+    dropExpiredUsage(db, teamId, oldest);
+    const current = records.filter((r) => r.date >= oldest);
+    const { stored, kept } = upsertUsage(db, teamId, o, who, current);
+    return { stored, kept: kept + records.length - current.length };
+  };
 }
 
 /** Throws `LimitError` when `limits` leave team `teamId` no room for one more member. */
