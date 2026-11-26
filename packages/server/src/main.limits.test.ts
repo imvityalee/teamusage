@@ -44,6 +44,19 @@ test("a hosted server lets a machine upload thirty times a minute", async () => 
   }
 });
 
+test("a hosted server lets one member register ten machines", async () => {
+  const { s, code } = await hostedMachine({ measureDisk: roomy });
+  try {
+    const machine = (n: number) => goodReg({ inviteCode: code, machineId: n.toString(16).padStart(32, "0") });
+    // hostedMachine registered the member's first machine.
+    for (let n = 2; n <= 10; n++) expect((await register(s, machine(n))).status).toBe(200);
+    const res = await register(s, machine(11));
+    expect([res.status, await res.json()]).toEqual([409, { error: "this member has reached the limit of 10 machines", limit: "machines" }]);
+  } finally {
+    s.close();
+  }
+});
+
 test("a hosted server on a nearly full volume takes no new machine, row or team, and still updates rows", async () => {
   const errors = captureErrors();
   let space = roomy();
@@ -54,7 +67,8 @@ test("a hosted server on a nearly full volume takes no new machine, row or team,
     space = full();
     expect((await register(s, goodReg({ inviteCode: code, email: "new@example.com", machineId: MID2 }))).status).toBe(507);
     expect((await upload(s, token, [record({ model: "new" })])).status).toBe(507);
-    expect((await createTeamAs(s, ann, { name: "Second", dashboardAccess: "code" })).status).toBe(503);
+    const team = await createTeamAs(s, ann, { name: "Second", dashboardAccess: "code" });
+    expect([team.status, await team.json()]).toEqual([503, { error: "sign-ups are paused" }]);
     expect(await (await upload(s, token, [record({ input: 91, total: 100 })])).json()).toEqual({ stored: 1, kept: 0 });
     expect((await s.app.request("/api/health")).status).toBe(200);
     expect([...measured]).toEqual([dataDir]);
@@ -83,7 +97,7 @@ test("a self-hosted server limits none of this and never measures the disk", asy
   }
 });
 
-test("a hosted server without a test's measurement measures its own data directory", async () => {
+test("a hosted server without a test's measurement measures the real volume, and a registration never fails with 500", async () => {
   const errors = captureErrors();
   const s = buildServer(hosted(tempDataDir()), { github: github() });
   try {
