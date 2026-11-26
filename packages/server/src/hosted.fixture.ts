@@ -110,7 +110,7 @@ export const testLimits = (team: TeamLimits, over: Partial<NonNullable<AppOption
 export const mid = (n: number): string => n.toString(16).repeat(32);
 
 /** `n` records of different models, numbered from `from`. */
-export const rowsOf = (n: number, from = 0): ReturnType<typeof record>[] => Array.from({ length: n }, (_, i) => record({ model: `m${from + i}` }));
+export const recordsOf = (n: number, from = 0): ReturnType<typeof record>[] => Array.from({ length: n }, (_, i) => record({ model: `m${from + i}` }));
 
 /** What a machine does against a hosted app and a team's invite code, both read when a call is made, so a test may replace them. */
 export function machineClient(app: () => Hono, code: () => string) {

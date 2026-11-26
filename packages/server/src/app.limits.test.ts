@@ -3,7 +3,7 @@ import type { Hono } from "hono";
 import { record } from "./app.fixture.js";
 import * as selfHosted from "./app.harness.js";
 import type { Db } from "./db.js";
-import { hostedApp, hostedTeam, machineClient, mid, rowsOf, signIn, testLimits } from "./hosted.fixture.js";
+import { hostedApp, hostedTeam, machineClient, mid, recordsOf, signIn, testLimits } from "./hosted.fixture.js";
 import { limitAnswer, secondsToUtcMidnight, type RefusedLimit } from "./limit-answers.js";
 import { teamTables } from "./team-data.fixture.js";
 import { HOSTED_CAPS, UPLOADS_PER_MINUTE, type LimitName, type TeamLimits } from "./team-limits.js";
@@ -43,20 +43,20 @@ async function approach(limit: string): Promise<() => Promise<Response>> {
       await join({ machineId: mid(2) });
       return () => register({ machineId: mid(3) });
     case "machine-rows":
-      await upload(first, rowsOf(5));
-      return () => upload(first, rowsOf(1, 5));
+      await upload(first, recordsOf(5));
+      return () => upload(first, recordsOf(1, 5));
     case "team-rows": {
-      await upload(first, rowsOf(5));
+      await upload(first, recordsOf(5));
       const second = await join({ machineId: mid(2) });
-      await upload(second, rowsOf(2));
-      return () => upload(second, rowsOf(1, 2));
+      await upload(second, recordsOf(2));
+      return () => upload(second, recordsOf(1, 2));
     }
     case "team-rows-per-day":
-      await upload(first, rowsOf(6));
-      return () => upload(first, rowsOf(1, 6));
+      await upload(first, recordsOf(6));
+      return () => upload(first, recordsOf(1, 6));
     default:
       low = true;
-      return () => upload(first, rowsOf(1));
+      return () => upload(first, recordsOf(1));
   }
 }
 
@@ -103,7 +103,7 @@ test("a machine uploads three times a minute; the fourth is refused before its b
 test("a first sync of more requests than a minute allows keeps what was sent and ends with every row stored", async () => {
   server({ rowsPerMachine: 100 });
   const token = await join();
-  const requests = Array.from({ length: 5 }, (_, i) => rowsOf(2, i * 2));
+  const requests = Array.from({ length: 5 }, (_, i) => recordsOf(2, i * 2));
   const statuses: number[] = [];
   for (const records of requests) statuses.push((await upload(token, records)).status);
   expect(statuses).toEqual([200, 200, 200, 429, 429]);
@@ -148,35 +148,35 @@ describe("the minute of uploads", () => {
   test("an upload refused for another reason still counts", async () => {
     const token = await join();
     for (let i = 0; i < 3; i++) expect((await uploadRaw(token, "{")).status).toBe(400);
-    expect((await upload(token, rowsOf(1))).status).toBe(429);
+    expect((await upload(token, recordsOf(1))).status).toBe(429);
   });
   test("an upload refused by a limit still counts", async () => {
     server({ rowsPerMachine: 1 });
     const token = await join();
-    await upload(token, rowsOf(1));
-    for (let i = 0; i < 2; i++) expect((await upload(token, rowsOf(1, 1))).status).toBe(409);
-    expect((await upload(token, rowsOf(1))).status).toBe(429);
+    await upload(token, recordsOf(1));
+    for (let i = 0; i < 2; i++) expect((await upload(token, recordsOf(1, 1))).status).toBe(409);
+    expect((await upload(token, recordsOf(1))).status).toBe(429);
   });
   test("an unknown token is 401 however often it comes, and does not use up a machine's minute", async () => {
     const token = await join();
     for (let i = 0; i < 4; i++) expect((await uploadRaw("nope", "{")).status).toBe(401);
-    for (let i = 0; i < 3; i++) expect((await upload(token, rowsOf(1, i))).status).toBe(200);
+    for (let i = 0; i < 3; i++) expect((await upload(token, recordsOf(1, i))).status).toBe(200);
   });
   test("registering the machine again does not reset its minute; a second machine has its own", async () => {
     const token = await join();
-    for (let i = 0; i < 3; i++) await upload(token, rowsOf(1, i));
+    for (let i = 0; i < 3; i++) await upload(token, recordsOf(1, i));
     const again = await join();
-    expect((await upload(again, rowsOf(1, 3))).status).toBe(429);
+    expect((await upload(again, recordsOf(1, 3))).status).toBe(429);
     const other = await join({ machineId: mid(2) });
-    expect((await upload(other, rowsOf(1, 3))).status).toBe(200);
+    expect((await upload(other, recordsOf(1, 3))).status).toBe(200);
   });
   test("the same laptop in two teams has two allowances", async () => {
     const token = await join();
-    for (let i = 0; i < 3; i++) await upload(token, rowsOf(1, i));
+    for (let i = 0; i < 3; i++) await upload(token, recordsOf(1, i));
     const bob = hostedTeam(db, { githubId: 2, login: "bob" }, "code");
     const joined = await register({ inviteCode: bob.code, email: "bob@example.com" });
     const { token: bobsToken } = (await joined.json()) as { token: string };
-    expect((await upload(bobsToken, rowsOf(1))).status).toBe(200);
+    expect((await upload(bobsToken, recordsOf(1))).status).toBe(200);
   });
 });
 
@@ -186,7 +186,7 @@ describe("an app without limits", () => {
   test("takes forty uploads in a minute", async () => {
     const { token } = await selfHosted.register();
     for (let i = 0; i < 40; i++) {
-      const res = await selfHosted.post("/api/usage", { records: rowsOf(1, i) }, selfHosted.bearer(token));
+      const res = await selfHosted.post("/api/usage", { records: recordsOf(1, i) }, selfHosted.bearer(token));
       expect(res.status).toBe(200);
     }
   });
