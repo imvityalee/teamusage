@@ -3,6 +3,9 @@ import type { Db } from "./db.js";
 import { refuseBeyondLimits, type TeamLimits } from "./team-limits.js";
 import { countAddedRows } from "./usage-counts.js";
 
+/** How a team's rows are written: `clock` gives the time written to them; `limits`, when set, bound what the team may hold. */
+export type WriteOptions = { clock: () => string; limits: TeamLimits | undefined };
+
 /** The number of usage rows machine `machineId` of team `teamId` holds. */
 function machineRows(db: Db, teamId: number, machineId: string): number {
   const row = db.prepare("select count(*) as n from usage where team_id = ? and machine_id = ?").get(teamId, machineId);
@@ -10,15 +13,14 @@ function machineRows(db: Db, teamId: number, machineId: string): number {
 }
 
 /**
- * Stores the records of one machine of team `teamId` and counts the rows it added; `clock` gives the time written to
- * `last_sync_at` and the UTC date the new rows are counted on. When `limits` are set and the records would add a row
+ * Stores the records of one machine of team `teamId` and counts the rows it added; `o.clock` gives the time written to
+ * `last_sync_at` and the UTC date the new rows are counted on. When `o.limits` are set and the records would add a row
  * beyond one, throws `LimitError` and stores nothing of them.
  */
 export function upsertUsage(
   db: Db,
   teamId: number,
-  clock: () => string,
-  limits: TeamLimits | undefined,
+  o: WriteOptions,
   who: { memberId: number; machineId: string },
   records: UsageRecord[],
 ): { stored: number; kept: number } {
@@ -76,12 +78,12 @@ export function upsertUsage(
       if (res.changes > 0) stored++;
       else kept++;
     }
-    const at = clock();
+    const at = o.clock();
     const rowsAfter = machineRows(db, teamId, who.machineId);
     const added = rowsAfter - rowsBefore;
     if (added > 0) {
       const counts = countAddedRows(db, teamId, added, at.slice(0, 10));
-      refuseBeyondLimits(limits, (l) => [
+      refuseBeyondLimits(o.limits, (l) => [
         { limit: "machine-rows", wouldHold: rowsAfter, cap: l.rowsPerMachine },
         { limit: "team-rows", wouldHold: counts.rows, cap: l.rowsPerTeam },
         { limit: "team-rows-per-day", wouldHold: counts.addedToday, cap: l.rowsAddedPerDay },

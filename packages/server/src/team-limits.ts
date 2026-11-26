@@ -29,7 +29,7 @@ export const HOSTED_CAPS: Omit<TeamLimits, "storageLow"> = {
 };
 
 /** A cap and what the team, member or machine would hold if the request were stored. */
-type Holding ={ limit: LimitName; wouldHold: number; cap: number };
+type Holding = { limit: LimitName; wouldHold: number; cap: number };
 
 /**
  * For a request that adds something: throws `LimitError` for the first limit it would pass, a nearly full disk before

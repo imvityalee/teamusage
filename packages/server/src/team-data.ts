@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import type { UsageRecord } from "@teamusage/shared";
 import { now, sha256, type Db } from "./db.js";
 import { refuseBeyondLimits, type TeamLimits } from "./team-limits.js";
-import { upsertUsage } from "./team-usage.js";
+import { upsertUsage, type WriteOptions } from "./team-usage.js";
 import { countRemovedRows } from "./usage-counts.js";
 
 /** The machine id is already registered to a different member. */
@@ -43,11 +43,10 @@ export function authenticate(db: Db, token: string): MachineIdentity | null {
 
 /** The data of team `teamId`. `clock` gives the time written to rows; `limits`, when set, bound what the team may hold. */
 export function forTeam(db: Db, teamId: number, o?: { clock?: () => string; limits?: TeamLimits }): TeamData {
-  const clock = o?.clock ?? now;
-  const limits = o?.limits;
+  const writes: WriteOptions = { clock: o?.clock ?? now, limits: o?.limits };
   return {
-    registerMachine: (a) => registerMachine(db, teamId, clock, limits, a),
-    upsertUsage: (who, records) => upsertUsage(db, teamId, clock, limits, who, records),
+    registerMachine: (a) => registerMachine(db, teamId, writes, a),
+    upsertUsage: (who, records) => upsertUsage(db, teamId, writes, who, records),
     listMembers: () => listMembers(db, teamId),
     removeMember: (email) => removeMember(db, teamId, email),
     removeMachine: (machineId) => removeMachine(db, teamId, machineId),
@@ -58,17 +57,16 @@ export function forTeam(db: Db, teamId: number, o?: { clock?: () => string; limi
 function registerMachine(
   db: Db,
   teamId: number,
-  clock: () => string,
-  limits: TeamLimits | undefined,
+  o: WriteOptions,
   a: Parameters<TeamData["registerMachine"]>[0],
 ): ReturnType<TeamData["registerMachine"]> {
   const email = a.email.trim().toLowerCase();
   const token = randomBytes(32).toString("hex");
   const tokenHash = sha256(token);
   return db.transaction(() => {
-    const at = clock();
+    const at = o.clock();
     const knownMember = db.prepare("select 1 from members where team_id = ? and email = ?").get(teamId, email);
-    if (!knownMember) refuseNewMember(db, teamId, limits);
+    if (!knownMember) refuseNewMember(db, teamId, o.limits);
     db.prepare(
       "insert into members (team_id, email, name, created_at) values (?, ?, ?, ?) on conflict (team_id, email) do update set name = excluded.name",
     ).run(teamId, email, a.name, at);
@@ -89,7 +87,7 @@ function registerMachine(
         a.machineId,
       );
     } else {
-      refuseNewMachine(db, teamId, memberId, limits);
+      refuseNewMachine(db, teamId, memberId, o.limits);
       db.prepare(
         "insert into machines (team_id, id, member_id, label, token_hash, created_at) values (?, ?, ?, ?, ?, ?)",
       ).run(teamId, a.machineId, memberId, a.machineLabel, tokenHash, at);

@@ -42,19 +42,21 @@ test("the beta's limits are the agreed values", () => {
 });
 
 test("a member beyond the cap is refused and leaves nothing; members already there still add a machine", () => {
-  team(A).registerMachine(reg(M1, { email: "a@example.com" }));
-  team(A).registerMachine(reg(M2, { email: "b@example.com" }));
+  const l = limits({ machinesPerMember: 10 });
+  team(A, l).registerMachine(reg(M1, { email: "a@example.com" }));
+  team(A, l).registerMachine(reg(M2, { email: "b@example.com" }));
   const before = everything();
-  expect(limitOf(() => team(A).registerMachine(reg(M3, { email: "c@example.com" })))).toBe("members");
+  expect(limitOf(() => team(A, l).registerMachine(reg(M3, { email: "c@example.com" })))).toBe("members");
   expect(everything()).toEqual(before);
-  expect(limitOf(() => team(A).registerMachine(reg(M3, { email: "a@example.com" })))).toBe("accepted");
+  expect(limitOf(() => team(A, l).registerMachine(reg(M3, { email: "a@example.com" })))).toBe("accepted");
 });
 
 test("a machine beyond the member's cap is refused and does not rename the member", () => {
-  team(A).registerMachine(reg(M1, { name: "Ann" }));
-  team(A).registerMachine(reg(M2, { name: "Ann" }));
+  const l = limits({ membersPerTeam: 10 });
+  team(A, l).registerMachine(reg(M1, { name: "Ann" }));
+  team(A, l).registerMachine(reg(M2, { name: "Ann" }));
   const before = everything();
-  expect(limitOf(() => team(A).registerMachine(reg(M3, { name: "Renamed" })))).toBe("machines");
+  expect(limitOf(() => team(A, l).registerMachine(reg(M3, { name: "Renamed" })))).toBe("machines");
   expect(everything()).toEqual(before);
 });
 
@@ -90,12 +92,14 @@ test("a team holds its cap exactly; one row more changes nothing; rows of either
   expect(limitOf(() => team(A, l).upsertUsage({ memberId, machineId: M2 }, rows(2).map(raised)))).toBe("accepted");
 });
 
-test("a team adds its day's allowance exactly; the next new row is accepted on the next UTC day", () => {
+test("a team adds its day's allowance exactly; updates are still accepted; the next new row is accepted on the next UTC day", () => {
   const l = limits({ rowsAddedPerDay: 6, rowsPerMachine: 100 });
   const who = { memberId: team(A, l).registerMachine(reg(M1)).memberId, machineId: M1 };
   expect(limitOf(() => team(A, l).upsertUsage(who, rows(5)))).toBe("accepted");
   expect(limitOf(() => team(A, l).upsertUsage(who, rows(1, 5)))).toBe("accepted");
   expect(limitOf(() => team(A, l).upsertUsage(who, rows(1, 6)))).toBe("team-rows-per-day");
+  expect(usageCounts(db, A, D1)).toEqual({ rows: 6, addedToday: 6 });
+  expect(limitOf(() => team(A, l).upsertUsage(who, rows(6).map(raised)))).toBe("accepted");
   expect(usageCounts(db, A, D1)).toEqual({ rows: 6, addedToday: 6 });
   expect(limitOf(() => team(A, l, D2).upsertUsage(who, rows(1, 6)))).toBe("accepted");
 });
@@ -112,6 +116,20 @@ test("removing a machine makes room in the team again; the day's allowance is no
   expect(limitOf(() => team(A, l).upsertUsage({ memberId, machineId: M3 }, rows(1)))).toBe("accepted");
   expect(usageCounts(db, A, D1)).toEqual({ rows: 6, addedToday: 8 });
   expect(limitOf(() => team(A, l).upsertUsage({ memberId, machineId: M3 }, rows(1, 1)))).toBe("team-rows-per-day");
+});
+
+test("removing a member makes room for another member and their rows; the day's allowance is not given back", () => {
+  const l = limits({ rowsPerTeam: 7, rowsAddedPerDay: 9 });
+  const ann = team(A, l).registerMachine(reg(M1)).memberId;
+  const bob = team(A, l).registerMachine(reg(M2, { email: "b@example.com" })).memberId;
+  team(A, l).upsertUsage({ memberId: ann, machineId: M1 }, rows(5));
+  team(A, l).upsertUsage({ memberId: bob, machineId: M2 }, rows(2));
+  expect(limitOf(() => team(A, l).registerMachine(reg(M3, { email: "c@example.com" })))).toBe("members");
+  team(A, l).removeMember("b@example.com");
+  const cid = team(A, l).registerMachine(reg(M3, { email: "c@example.com" })).memberId;
+  expect(limitOf(() => team(A, l).upsertUsage({ memberId: cid, machineId: M3 }, rows(2)))).toBe("accepted");
+  expect(usageCounts(db, A, D1)).toEqual({ rows: 7, addedToday: 9 });
+  expect(limitOf(() => team(A, l).upsertUsage({ memberId: cid, machineId: M3 }, rows(1, 2)))).toBe("team-rows");
 });
 
 test("on a nearly full disk nothing that adds is accepted and nothing changes; an upload that only updates is", () => {
