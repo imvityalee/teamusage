@@ -1,6 +1,9 @@
 import type { Hono } from "hono";
+import { expect } from "vitest";
+import type { Invite, InviteRole } from "./admin-invites.js";
 import { goodReg } from "./app.fixture.js";
 import type { Db } from "./db.js";
+import { teamsOf } from "./hosted-teams.js";
 import { rowsOf } from "./hosted.two-teams.fixture.js";
 import {
   grantRole,
@@ -18,6 +21,8 @@ import { removeRole } from "./team-roles.js";
 
 /** The moment the world's clock stands at until a test moves it; the default `record()` date is the day before. */
 export const T0 = "2026-11-02T09:30:00.000Z";
+/** A day in milliseconds, for moving the world's clock. */
+export const DAY_MS = 24 * 60 * 60 * 1000;
 /** The date range of a stats request that holds every upload of the world. */
 export const RANGE = "from=2026-11-01&to=2026-11-02";
 
@@ -145,6 +150,20 @@ export const asUser = async (w: Pick<ManageWorld, "app" | "cookies">, who: Who, 
     headers: { "Content-Type": "application/json", Origin: PUBLIC, Cookie: w.cookies[who] },
   });
 
+/** Checks a refusal: its status, `Cache-Control: no-store` and the body `{ error }`. */
+export async function expectAnswer(res: Response, status: number, error: string): Promise<void> {
+  expect(res.status).toBe(status);
+  expect(res.headers.get("cache-control")).toBe("no-store");
+  expect(await res.json()).toEqual({ error });
+}
+
+/** Creates an invite of `role` to `team` as the GitHub user `who` through the route; returns the invite and its token. */
+export async function newInvite(w: Pick<ManageWorld, "app" | "cookies">, who: Who, team: { publicId: string }, role: InviteRole): Promise<{ invite: Invite; token: string }> {
+  const res = await asUser(w, who, `/api/teams/${team.publicId}/invites`, { method: "POST", body: { role } });
+  if (res.status !== 201) throw new Error(`inviting answered ${res.status}`);
+  return (await res.json()) as { invite: Invite; token: string };
+}
+
 /**
  * A second hosted app on the world's database with another code key, as a server whose operator replaced the key; its
  * GitHub users sign in again; its errors go to `logError`. `as` and `post` send requests to it as a GitHub user.
@@ -170,6 +189,17 @@ export const codeRow = (db: Db, teamId: number): unknown => db.prepare("select c
 
 /** A team's rows of `team_roles`, in the order they were inserted. */
 export const roleRows = (db: Db, teamId: number): unknown[] => db.prepare("select * from team_roles where team_id = ? order by rowid").all(teamId);
+
+/** Every row of `users`, by id. */
+export const userRows = (db: Db): unknown[] => db.prepare("select * from users order by id").all();
+
+/** Gives `n` GitHub users the world has no session for a viewer's role in team `teamId`; their GitHub ids start at 800001. */
+export function addViewers(db: Db, teamId: number, n: number): void {
+  for (let i = 1; i <= n; i++) grantRole(db, teamId, { githubId: 800_000 + i, login: `viewer-${i}` }, "viewer");
+}
+
+/** How many teams the GitHub user owns. */
+export const ownedBy = (db: Db, githubId: number): number => teamsOf(db, githubId).filter((t) => t.role === "owner").length;
 
 /** The tables with a `team_id` column, read from the schema so that a table a later step adds is among them. */
 function tablesWithTeam(db: Db): string[] {

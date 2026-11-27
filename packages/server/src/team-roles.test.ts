@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { grantRole, hostedTeam } from "./hosted.fixture.js";
-import { roleIn, teamsOf } from "./hosted-teams.js";
-import { FAY, manageWorld, PEOPLE, roleRows, T0, type ManageWorld } from "./manage.fixture.js";
+import { roleIn } from "./hosted-teams.js";
+import { FAY, manageWorld, ownedBy, PEOPLE, roleRows, T0, userRows, type ManageWorld } from "./manage.fixture.js";
 import { handOver, HandOverError, listRoles, MAX_ADMINS_AND_VIEWERS, removeRole } from "./team-roles.js";
 
 let w: ManageWorld;
@@ -20,9 +20,7 @@ afterEach(() => {
 });
 
 const { bob, cyd, dee, eve, zoe, ann } = PEOPLE;
-const userRows = () => w.db.prepare("select * from users order by id").all();
 const otherTeams = () => ({ a: roleRows(w.db, w.A.id), third: roleRows(w.db, third) });
-const ownedBy = (githubId: number) => teamsOf(w.db, githubId).filter((t) => t.role === "owner").length;
 /** Makes `who` the owner of `n` more teams. */
 const giveTeams = (who: { githubId: number; login: string }, n: number) => {
   for (let i = 0; i < n; i++) hostedTeam(w.db, who, "members", `${who.login} ${i}`);
@@ -62,15 +60,15 @@ test("removeRole takes an admin's role in B only and drops the users row with th
   expect(otherTeams()).toEqual(before);                               // cyd is still a viewer of A and of the third team
 });
 test("removeRole of a viewer with a role in another team keeps the users row", () => {
-  const users = userRows();
+  const users = userRows(w.db);
   expect(removeRole(w.db, w.B.id, zoe.githubId)).toBe(true);
   expect(roleIn(w.db, w.A.id, zoe.githubId)).toBe("viewer");
-  expect(userRows()).toEqual(users);
+  expect(userRows(w.db)).toEqual(users);
 });
 test("removeRole is false for the owner, for a user with no role in the team and for an id with no users row; nothing changes", () => {
-  const before = { b: roleRows(w.db, w.B.id), others: otherTeams(), users: userRows() };
+  const before = { b: roleRows(w.db, w.B.id), others: otherTeams(), users: userRows(w.db) };
   for (const githubId of [bob.githubId, ann.githubId, eve.githubId, 9909]) expect(removeRole(w.db, w.B.id, githubId)).toBe(false);
-  expect({ b: roleRows(w.db, w.B.id), others: otherTeams(), users: userRows() }).toEqual(before);
+  expect({ b: roleRows(w.db, w.B.id), others: otherTeams(), users: userRows(w.db) }).toEqual(before);
 });
 
 test("handOver makes B's admin its owner and its owner an admin; the other teams' roles stay", () => {
@@ -89,9 +87,9 @@ test("handOver refuses a caller who is not the owner, also the second of two han
   expect(roleRows(w.db, w.B.id)).toEqual(after);
 });
 test("handOver refuses anyone but an admin of the team and changes nothing", () => {
-  const before = { b: roleRows(w.db, w.B.id), users: userRows() };
+  const before = { b: roleRows(w.db, w.B.id), users: userRows(w.db) };
   for (const to of [dee.githubId, zoe.githubId, ann.githubId, eve.githubId, bob.githubId, 9909]) expect(refusal(bob.githubId, to)).toBe("not-admin");
-  expect({ b: roleRows(w.db, w.B.id), users: userRows() }).toEqual(before);
+  expect({ b: roleRows(w.db, w.B.id), users: userRows(w.db) }).toEqual(before);
 });
 test("handOver refuses an admin who owns 5 teams and accepts one who owns 4; the count is the receiver's", () => {
   giveTeams(bob, 3);                                                  // bob owns 5: B, the third team and 3 more
@@ -101,5 +99,5 @@ test("handOver refuses an admin who owns 5 teams and accepts one who owns 4; the
   expect(refusal(bob.githubId, FAY.githubId)).toBe("owns-most");
   expect(roleRows(w.db, w.B.id)).toEqual(before);
   expect(refusal(bob.githubId, cyd.githubId)).toBeNull();
-  expect([ownedBy(cyd.githubId), ownedBy(bob.githubId)]).toEqual([5, 4]);
+  expect([ownedBy(w.db, cyd.githubId), ownedBy(w.db, bob.githubId)]).toEqual([5, 4]);
 });

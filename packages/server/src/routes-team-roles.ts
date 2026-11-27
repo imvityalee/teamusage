@@ -1,12 +1,14 @@
 import type { Context, Hono } from "hono";
+import { acceptInvite, cancelInvite, createInvite, InviteError, listInvites, MAX_PENDING_INVITES, type InviteRefusal, type InviteRole } from "./admin-invites.js";
 import type { RouteContext } from "./app-context.js";
-import { MAX_TEAMS_PER_USER } from "./hosted-teams.js";
+import { isPublicId, MAX_TEAMS_PER_USER } from "./hosted-teams.js";
 import { crossSite, fail, isObject, readJson } from "./http.js";
 import { ANY_ROLE, githubSession, MANAGERS, OWNER_ONLY, ROLE_NOT_ALLOWED, teamAccess } from "./team-access.js";
-import { handOver, HandOverError, listRoles, removeRole, type HandOverReason } from "./team-roles.js";
+import { handOver, HandOverError, listRoles, MAX_ADMINS_AND_VIEWERS, removeRole, type HandOverReason } from "./team-roles.js";
 
 const OWNER_CANNOT_LEAVE = "the owner cannot leave; hand the team over or delete it";
 const ROLE_NOT_FOUND = "role not found";
+const INVITE_NOT_FOUND = "invite not found";
 
 /** The answer to each refused handover. */
 const HAND_OVER_REFUSALS: Record<HandOverReason, { status: 403 | 409; error: string }> = {
@@ -15,7 +17,16 @@ const HAND_OVER_REFUSALS: Record<HandOverReason, { status: 403 | 409; error: str
   "owns-most": { status: 409, error: `that user already owns ${MAX_TEAMS_PER_USER} teams` },
 };
 
+/** The answer to each refused invite. */
+const INVITE_REFUSALS: Record<InviteRefusal, { status: 404 | 409; error: string }> = {
+  "too-many-pending": { status: 409, error: `this team has ${MAX_PENDING_INVITES} pending invites; cancel one first` },
+  "not-valid": { status: 404, error: "this invite is no longer valid" },
+  "has-role": { status: 409, error: "you already have a role in this team" },
+  "team-full": { status: 409, error: `this team has reached its limit of ${MAX_ADMINS_AND_VIEWERS} admins and viewers` },
+};
+
 const GITHUB_ID_PARAM = /^\d+$/;
+const INVITE_TOKEN = /^[a-f0-9]{64}$/;
 
 /** True for a GitHub id: a positive safe integer. */
 const isGithubId = (v: unknown): v is number => Number.isSafeInteger(v) && (v as number) > 0;
@@ -26,7 +37,20 @@ function githubIdParam(c: Context): number | null {
   return GITHUB_ID_PARAM.test(param) && Number.isSafeInteger(Number(param)) ? Number(param) : null;
 }
 
-/** Listing a team's roles, removing one or leaving, and handing ownership over. Mounted only on a hosted server. */
+/** True for a role an invite gives. */
+const isInviteRole = (v: unknown): v is InviteRole => v === "admin" || v === "viewer";
+
+/** The refusal's answer when `err` is an InviteError; otherwise `err` is thrown again. */
+function inviteRefused(c: Context, err: unknown): Response {
+  if (!(err instanceof InviteError)) throw err;
+  const { status, error } = INVITE_REFUSALS[err.reason];
+  return fail(c, status, error);
+}
+
+/**
+ * Listing a team's roles, removing one or leaving, handing ownership over, and the owner's invites with which someone
+ * becomes an admin or a viewer. Mounted only on a hosted server.
+ */
 export function teamRolesRoutes(app: Hono, ctx: RouteContext): void {
   const hosted = ctx.opts.hosted;
   if (hosted === undefined) return;
@@ -78,5 +102,64 @@ export function teamRolesRoutes(app: Hono, ctx: RouteContext): void {
       return fail(c, status, error);
     }
     return c.body(null, 204);
+  });
+  app.post("/api/teams/:team/invites", async (c) => {
+    c.header("Cache-Control", "no-store");
+    const refused = crossSite(c, hosted.publicUrl);
+    if (refused) return refused;
+    const user = githubSession(ctx, c);
+    if (user instanceof Response) return user;
+    const body = await readJson(c);
+    if (body === undefined) return fail(c, 400, "invalid JSON body");
+    if (!isObject(body)) return fail(c, 400, "body must be an object");
+    if (!isInviteRole(body.role)) return fail(c, 400, "invalid role");
+    // The role is read after the body, and the invite made in the same turn.
+    const access = teamAccess(ctx, c, user, OWNER_ONLY);
+    if (access instanceof Response) return access;
+    try {
+      return c.json(createInvite(ctx.db, access.team.id, body.role, ctx.now()), 201);
+    } catch (err) {
+      return inviteRefused(c, err);
+    }
+  });
+
+  app.get("/api/teams/:team/invites", (c) => {
+    c.header("Cache-Control", "no-store");
+    const user = githubSession(ctx, c);
+    if (user instanceof Response) return user;
+    const access = teamAccess(ctx, c, user, OWNER_ONLY);
+    if (access instanceof Response) return access;
+    return c.json({ invites: listInvites(ctx.db, access.team.id, ctx.now()) });
+  });
+
+  app.delete("/api/teams/:team/invites/:id", (c) => {
+    c.header("Cache-Control", "no-store");
+    const refused = crossSite(c, hosted.publicUrl);
+    if (refused) return refused;
+    const user = githubSession(ctx, c);
+    if (user instanceof Response) return user;
+    const access = teamAccess(ctx, c, user, OWNER_ONLY);
+    if (access instanceof Response) return access;
+    const id = c.req.param("id");
+    if (!isPublicId(id) || !cancelInvite(ctx.db, access.team.id, id)) return fail(c, 404, INVITE_NOT_FOUND);
+    return c.body(null, 204);
+  });
+
+  app.post("/api/invites/accept", async (c) => {
+    c.header("Cache-Control", "no-store");
+    const refused = crossSite(c, hosted.publicUrl);
+    if (refused) return refused;
+    const user = githubSession(ctx, c);
+    if (user instanceof Response) return user;
+    const body = await readJson(c);
+    if (body === undefined) return fail(c, 400, "invalid JSON body");
+    if (!isObject(body)) return fail(c, 400, "body must be an object");
+    if (typeof body.token !== "string" || !INVITE_TOKEN.test(body.token)) return fail(c, 400, "invalid token");
+    // An unknown token is not counted as a failed attempt: an invite's 256 random bits are not guessed.
+    try {
+      return c.json({ team: acceptInvite(ctx.db, body.token, user, ctx.now()) });
+    } catch (err) {
+      return inviteRefused(c, err);
+    }
   });
 }

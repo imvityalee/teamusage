@@ -1,7 +1,7 @@
 import { beforeEach, expect, test } from "vitest";
 import { grantRole, hostedTeam } from "./hosted.fixture.js";
-import { roleIn, teamsOf } from "./hosted-teams.js";
-import { asUser, everythingOf, FAY, manageWorld, PEOPLE, roleRows, type ManagedTeam, type ManageWorld, type Who } from "./manage.fixture.js";
+import { roleIn, type UserTeam } from "./hosted-teams.js";
+import { asUser, everythingOf, expectAnswer, FAY, manageWorld, ownedBy, PEOPLE, roleRows, userRows, type ManagedTeam, type ManageWorld, type Who } from "./manage.fixture.js";
 import { listRoles } from "./team-roles.js";
 
 let w: ManageWorld;
@@ -14,14 +14,7 @@ const post = (who: Who, path: string, body: unknown) => asUser(w, who, path, { m
 const ownerPath = (team: { publicId: string }) => `/api/teams/${team.publicId}/owner`;
 const handOver = (who: Who, team: ManagedTeam, body: unknown) => post(who, ownerPath(team), body);
 const roleOf = (teamId: number, githubId: number) => roleIn(w.db, teamId, githubId);
-const ownedBy = (githubId: number) => teamsOf(w.db, githubId).filter((t) => t.role === "owner").length;
-const userRows = () => w.db.prepare("select * from users order by id").all();
-const unchanged = () => ({ b: everythingOf(w.db, w.B.id), a: everythingOf(w.db, w.A.id), users: userRows() });
-const expectAnswer = async (res: Response, status: number, error: string) => {
-  expect(res.status).toBe(status);
-  expect(res.headers.get("cache-control")).toBe("no-store");
-  expect(await res.json()).toEqual({ error });
-};
+const unchanged = () => ({ b: everythingOf(w.db, w.B.id), a: everythingOf(w.db, w.A.id), users: userRows(w.db) });
 
 test("handing over: the admin becomes the owner and the owner an admin, and only one of two handovers sent together goes through", async () => {
   const answers = await Promise.all([post("bob", `/api/teams/${w.B.publicId}/owner`, { user: 3303 }), post("bob", `/api/teams/${w.B.publicId}/owner`, { user: 7707 })]);
@@ -82,7 +75,10 @@ test("two handovers to an admin who owns 4 teams, sent together: one goes throug
   expect(answers.map((r) => r.status).sort()).toEqual([204, 409]);
   const refused = answers.findIndex((r) => r.status === 409);
   expect(await answers[refused]!.json()).toEqual({ error: "that user already owns 5 teams" });
-  expect(ownedBy(3303)).toBe(5);
+  expect(ownedBy(w.db, 3303)).toBe(5);
   expect(roleOf(teams[refused]!.id, 2202)).toBe("owner");
   expect(roleOf(teams[1 - refused]!.id, 2202)).toBe("admin");
+  const me = (await (await asUser(w, "bob", "/api/me")).json()) as { teams: UserTeam[] };
+  expect(me.teams.find((t) => t.id === teams[1 - refused]!.publicId)?.role).toBe("admin");
+  await expectAnswer(await post("cyd", "/api/teams", { name: "Sixth", dashboardAccess: "members" }), 409, "you already own 5 teams");
 });

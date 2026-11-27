@@ -137,6 +137,7 @@ test("the team schema has its indexes and every foreign key cascades on delete",
   const db = openDb(":memory:");
   const indexes = db.prepare("select name from sqlite_master where type = 'index' and name not like 'sqlite_autoindex%' order by name").all();
   expect(indexes.map((r) => (r as { name: string }).name)).toEqual([
+    "admin_invites_team",
     "machines_team_member",
     "sessions_github",
     "sessions_machine",
@@ -158,5 +159,6 @@ test("the team schema has its indexes and every foreign key cascades on delete",
   expect(foreignKeys("sessions")).toEqual(["machines CASCADE", "teams CASCADE"]);
   expect(foreignKeys("dashboard_links")).toEqual(["machines CASCADE"]);
   expect(foreignKeys("team_roles")).toEqual(["teams CASCADE", "users CASCADE"]);
+  expect(foreignKeys("admin_invites")).toEqual(["teams CASCADE"]);
   expect(foreignKeys("users")).toEqual([]);
 });

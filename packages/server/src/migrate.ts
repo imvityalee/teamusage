@@ -1,5 +1,6 @@
 import type { Db } from "./db.js";
 import { accessValues } from "./migrations/access-values.js";
+import { adminInvites } from "./migrations/admin-invites.js";
 import { baseline } from "./migrations/baseline.js";
 import { hostedTeams } from "./migrations/hosted.js";
 import { memberSessions } from "./migrations/member-sessions.js";
@@ -36,6 +37,7 @@ export const STEPS: readonly Step[] = [
   usageCountsTable,
   accessValues,
   memberSessions,
+  adminInvites,
 ];
 
 export const SCHEMA_VERSION = STEPS.length;
