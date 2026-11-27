@@ -1,7 +1,7 @@
 import { beforeEach, expect, test } from "vitest";
 import { INVITE_DAYS, MAX_PENDING_INVITES, type Invite, type InviteRole } from "./admin-invites.js";
 import { sha256 } from "./db.js";
-import { PUBLIC } from "./hosted.fixture.js";
+import { heldRequest, PUBLIC, settle } from "./hosted.fixture.js";
 import { roleIn } from "./hosted-teams.js";
 import {
   asUser,
@@ -23,7 +23,7 @@ import {
   type Who,
 } from "./manage.fixture.js";
 import { createUserSession } from "./sessions.js";
-import { listRoles } from "./team-roles.js";
+import { handOver, listRoles } from "./team-roles.js";
 
 const ACCEPT = "/api/invites/accept";
 const NOT_VALID = "this invite is no longer valid";
@@ -172,6 +172,20 @@ test("every refused body is 400 and changes nothing", async () => {
   const tokens = [pending.token.toUpperCase(), pending.token.slice(1), `${pending.token}0`, 7, null];
   for (const [body, error] of bodies("token", tokens, "invalid token")) await expectAnswer(await post("eve", ACCEPT, body), 400, error);
   expect({ b: everythingOf(w.db, w.B.id), users: userRows(w.db) }).toEqual(before);
+});
+test("an owner whose team is handed over while their invite's body is read creates no invite", async () => {
+  const held = heldRequest(w.app, invitesPath(w.B), {
+    method: "POST",
+    text: JSON.stringify({ role: "admin" }),
+    headers: { "Content-Type": "application/json", Origin: PUBLIC, Cookie: w.cookies.bob },
+  });
+  await settle();                                                     // the handler now waits for the body
+  handOver(w.db, w.B.id, PEOPLE.bob.githubId, PEOPLE.cyd.githubId);   // bob is an admin from here on
+  held.finish();
+  const res = await held.answer;
+  expect(res.status).toBe(403);
+  expect(await res.json()).toEqual({ error: ROLE_NOT_ALLOWED });
+  expect(w.db.prepare("select count(*) as n from admin_invites where team_id = ?").get(w.B.id)).toEqual({ n: 0 });
 });
 test("the table of invites never holds a token, and the list gives exactly id, role, createdAt and expiresAt of the team's invites", async () => {
   const made = [await invite("bob", w.B, "admin"), await invite("bob", w.B, "viewer"), await invite("ann", w.A, "viewer")];
