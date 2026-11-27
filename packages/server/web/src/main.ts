@@ -24,15 +24,9 @@ import {
 } from "./filters.js";
 import { rangeText } from "./format.js";
 import { loadLang, pickLang, saveLang, t, type Lang, type MessageKey } from "./i18n.js";
-import {
-  applyMemberSearch,
-  applyStaticText,
-  renderBackLink,
-  renderMember,
-  renderMemberHead,
-  renderNotFound,
-  renderStats,
-} from "./render.js";
+import { applyMemberSearch } from "./dashboard/members-panel.js";
+import { DEFAULT_SORT, type MemberSort } from "./dashboard/members-table.js";
+import { applyStaticText, renderBackLink, renderMember, renderMemberHead, renderNotFound, renderStats } from "./render.js";
 import { parseRoute, type Route } from "./route.js";
 
 /** Wires state and events. The source is chosen once at start; all drawing goes through `paint()`, so a language switch re-renders everything. */
@@ -87,6 +81,8 @@ const state: {
   shown: Shown | null;
   /** The member search text. It lives only here and in the input: never sent, stored or put in the URL. */
   query: string;
+  /** The members table's order; kept here so a repaint (a new range, a filter, the language) gives it back. */
+  sort: MemberSort;
   /** The agent, model, account and plan filters. Only here: sent as query parameters, never stored or put in the URL. */
   filters: Filters;
   open: FilterKind | null;
@@ -109,6 +105,7 @@ const state: {
   route: parseRoute(location.hash),
   shown: null,
   query: "",
+  sort: DEFAULT_SORT,
   filters: NO_FILTERS,
   open: null,
   modelQuery: "",
@@ -214,7 +211,7 @@ function paint(): void {
   switch (shown.kind) {
     case "team":
       ui.pageHead.replaceChildren();
-      ui.stats.replaceChildren(renderStats(document, shown.stats, lang, today(), { query: state.query, filters: shown.filters }));
+      ui.stats.replaceChildren(renderStats(document, shown.stats, lang, today(), { query: state.query, filters: shown.filters, sort: state.sort, onSort: (sort) => (state.sort = sort) }));
       break;
     case "member": {
       ui.pageHead.replaceChildren(renderMemberHead(document, shown.stats, shown.id, lang, today()));

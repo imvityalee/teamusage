@@ -46,6 +46,26 @@ a { color: var(--link); text-decoration: none; border-radius: 2px; }
 input { font: inherit; color: var(--text); background: var(--soft); border: 0; border-radius: 8px; padding: 6px 8px; min-width: 0; }
 input::placeholder { color: var(--muted); opacity: 1; }
 
+/* The pager under a long table (src/site/pager.ts): the dashboard and the team page both draw it. */
+.pager { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; margin-top: 12px; font-size: 13px; color: var(--muted); }
+.pager-range { font-variant-numeric: tabular-nums; }
+.pager-size { display: inline-flex; align-items: center; gap: 8px; }
+.pager-steps { display: inline-flex; gap: 8px; }
+.pager select { min-height: 44px; padding: 0 12px; border: 0; border-radius: 10px; background: var(--soft); color: var(--text); font: inherit; font-size: 16px;
+  cursor: pointer; -webkit-user-select: none; user-select: none; }
+.pager button { min-height: 44px; padding: 0 16px; border: 0; border-radius: 10px; background: var(--soft); color: var(--text); font: inherit; cursor: pointer;
+  transition: transform 160ms var(--ease-out); }
+.pager button:disabled { opacity: .4; cursor: default; }
+.pager button:active:not(:disabled) { transform: scale(0.97); }
+.pager select:active { opacity: .6; }
+.pager select:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+@media (hover: hover) and (pointer: fine) { .pager button:not(:disabled):hover, .pager select:hover { background: var(--control); } }
+@media (prefers-reduced-motion: reduce) {
+  /* A press shows at once, without scaling. */
+  .pager button { transition: none; }
+  .pager button:active:not(:disabled) { transform: none; opacity: .8; }
+}
+
 /* The phone baseline */
 /* No grey flash on a tap, so each page gives every control its own :active state (style.css, site.css; guarded by
    src/press-states.test.ts), and no font inflation in landscape. */

@@ -52,3 +52,6 @@ export function icon(doc: Document, name: IconName, className = "icon"): SVGSVGE
   svg.append(path);
   return svg;
 }
+
+/** "Members 3": a heading's text with its count. */
+export const counted = (doc: Document, label: string, n: number): Child[] => [label, " ", h(doc, "span", { class: "n" }, String(n))];

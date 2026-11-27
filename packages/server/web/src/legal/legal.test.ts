@@ -21,6 +21,11 @@ const FACT_PHRASES = {
   en: ["24 months", "not verified", "can read the database"],
   ru: ["24 месяцев", "не проверяется", "может читать базу данных"],
 };
+/** The sentence about the language and the sentence that names the table's page size (`teamusage.rows`), which must follow it at once. */
+const BROWSER_STORAGE = {
+  en: ["Your choice of language, in the browser's local storage.", "The number of rows a table shows per page is kept there too."],
+  ru: ["Выбранный язык хранится в локальном хранилище браузера.", "Там же хранится выбранное число строк на странице таблицы."],
+};
 
 describe("the string table", () => {
   test("has the same keys in both languages, no empty text and the same placeholders", () => {
@@ -97,6 +102,12 @@ describe("the facts of the privacy page", () => {
     const facts = PRIVACY[lang].filter((s) => !s.placeholder);
     const text = facts.flatMap((s) => s.paragraphs).join("\n");
     for (const phrase of FACT_PHRASES[lang]) expect(text, phrase).toContain(phrase);
+  });
+
+  test.each(LANGS)("name the rows-per-page choice in %s right after the sentence about the language", (lang) => {
+    const [language, rows] = BROWSER_STORAGE[lang];
+    const keeps = PRIVACY[lang].filter((s) => !s.placeholder)[4]?.paragraphs.join("\n") ?? "";
+    expect(keeps).toContain(`${language} ${rows}`);
   });
 
   test("are seven sections of facts, then the six placeholders the brief names", () => {

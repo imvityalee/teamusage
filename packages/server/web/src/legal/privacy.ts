@@ -33,7 +33,7 @@ const en: LegalSection[] = [
   facts(
     "What a browser keeps",
     "After you sign in, one sign-in cookie that lasts 30 days. While you sign in with GitHub, one more cookie that lasts 10 minutes and serves only that sign-in.",
-    "Your choice of language, in the browser's local storage. An invitation's token waits in the tab's session storage while you sign in with GitHub. It is removed once the invitation is used or no longer valid, and in any case when you close the tab.",
+    "Your choice of language, in the browser's local storage. The number of rows a table shows per page is kept there too. An invitation's token waits in the tab's session storage while you sign in with GitHub. It is removed once the invitation is used or no longer valid, and in any case when you close the tab.",
     "Nothing else: no analytics, no advertising, and nothing is loaded from other sites.",
   ),
   facts(
@@ -81,7 +81,7 @@ const ru: LegalSection[] = [
   facts(
     "Что хранит браузер",
     "После входа браузер хранит один cookie входа на 30 дней. Пока вы входите через GitHub, есть ещё один cookie на 10 минут, он нужен только для этого входа.",
-    "Выбранный язык хранится в локальном хранилище браузера. Токен приглашения хранится в сессионном хранилище вкладки, пока вы входите через GitHub. Он удаляется, когда приглашение использовано или больше не действует, и в любом случае — когда вы закрываете вкладку.",
+    "Выбранный язык хранится в локальном хранилище браузера. Там же хранится выбранное число строк на странице таблицы. Токен приглашения хранится в сессионном хранилище вкладки, пока вы входите через GitHub. Он удаляется, когда приглашение использовано или больше не действует, и в любом случае — когда вы закрываете вкладку.",
     "Больше ничего: ни аналитики, ни рекламы, и ничего не загружается с других сайтов.",
   ),
   facts(

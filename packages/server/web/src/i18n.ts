@@ -344,7 +344,8 @@ export function t(lang: Lang, key: MessageKey, vars: Record<string, string | num
 /** "N of M members", with the noun agreeing with M ("из 21 участника", "of 1 member"). */
 export function matchCount(lang: Lang, n: number, m: number): string {
   const one = lang === "ru" ? m % 10 === 1 && m % 100 !== 11 : m === 1;
-  return t(lang, one ? "matchCount1" : "matchCount", { n, m });
+  const format = new Intl.NumberFormat(locale(lang)).format;
+  return t(lang, one ? "matchCount1" : "matchCount", { n: format(n), m: format(m) });
 }
 
 export type CountedNoun = "agents" | "models" | "accounts" | "plans" | "machines" | "daysAgo" | "syncedDaysAgo" | "noSyncDays";
@@ -366,6 +367,4 @@ export function count(lang: Lang, noun: CountedNoun, n: number): string {
   return t(lang, FORMS[noun][form === "other" ? "many" : form], { n });
 }
 
-export function locale(lang: Lang): string {
-  return lang === "ru" ? "ru-RU" : "en-US";
-}
+export const locale = (lang: Lang): string => (lang === "ru" ? "ru-RU" : "en-US");

@@ -7,7 +7,7 @@
 #stats.loading { opacity: .5; }
 
 .link { border: 0; background: none; padding: 8px 2px; font: inherit; font-size: 13px; color: var(--link); cursor: pointer; border-radius: 4px; }
-.link:hover { color: var(--link-hover); }
+@media (hover: hover) and (pointer: fine) { .link:hover { color: var(--link-hover); } }
 .sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .msg { color: var(--danger); font-size: 13px; margin: 0; }
 
@@ -103,6 +103,12 @@ tbody th { font-weight: 400; }
 th:first-child, td:first-child, th.l, td.l { text-align: left; }
 tbody tr:last-child th, tbody tr:last-child td { border-bottom: 0; }
 th .sort { margin-left: 4px; }
+/* A sortable header is a button as tall as a finger; the th gives its padding to the button. */
+th.sortable { padding: 0 4px; }
+.sort-btn { display: inline-flex; align-items: center; min-height: 44px; padding: 0 6px; border: 0; border-radius: 8px; background: none; color: inherit;
+  font: inherit; cursor: pointer; }
+th[aria-sort] .sort-btn { color: var(--text); font-weight: 600; }
+@media (hover: hover) and (pointer: fine) { .sort-btn:hover { color: var(--text); } }
 td.strong { font-weight: 600; }
 .unpriced { margin-left: 6px; padding: 0 5px; border-radius: 4px; background: var(--soft); color: var(--muted); font-size: 11px; }
 
@@ -175,7 +181,7 @@ td.accts-cell { white-space: normal; min-width: 8em; max-width: 16em; }
    controls and rows dim. */
 .seg button, .pill, .chip, .status button, .login button { transition: transform 160ms var(--ease-out); }
 .seg button:active, .pill:active, .chip:active, .status button:active, .login button:active:not(:disabled) { transform: scale(0.97); }
-a:active, .link:active { opacity: .6; }
+a:active, .link:active, .sort-btn:active { opacity: .6; }
 .pop-row:not(:has(input:disabled)):active { opacity: .6; }
 
 @media (max-width: 760px) { .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

@@ -1,13 +1,14 @@
-import { parseAccountKey, parsePlanKey, type Stats } from "@teamusage/shared";
-import { accountPlanName, planShort } from "./accounts.js";
-import { agentIcon, agentName, OTHER_SERIES, SERIES, SERIES_CLASS, otherAgentsIcon, seriesOf } from "./agents.js";
+import type { Stats } from "@teamusage/shared";
+import { accountPlanName } from "./accounts.js";
+import { agentIcon, agentName, OTHER_SERIES, SERIES, otherAgentsIcon } from "./agents.js";
 import { dailyAgentTotals, buckets, drawChart, presentSeries, rankAgents, WEEKLY_AFTER_DAYS } from "./chart.js";
-import { h, icon, type Child } from "./dom.js";
+import { counted, h, icon, type Child } from "./dom.js";
+import { membersPanel } from "./dashboard/members-panel.js";
+import { DEFAULT_SORT, type MemberSort } from "./dashboard/members-table.js";
+import { byAccountPlanOf, lastSync, pct, STALE_DAYS, sumOf } from "./dashboard/member-facts.js";
 import { availableTotal, isActive, NO_FILTERS, type Filters } from "./filters.js";
 import { compact, daysSince, full, initials, longDate, shortDate, usd } from "./format.js";
-import { count, locale, matchCount, messages, t, type Lang, type MessageKey } from "./i18n.js";
-import { isMemberId, memberHref } from "./route.js";
-import { matchMembers } from "./search.js";
+import { count, locale, messages, t, type Lang, type MessageKey } from "./i18n.js";
 
 /**
  * Builds the page body from a Stats. Every value, from the server or not, goes in as a text node or an attribute
@@ -31,9 +32,6 @@ export function applyStaticText(doc: Document, lang: Lang): void {
   }
 }
 
-const pct = (part: number, whole: number): number => (whole > 0 ? Math.round((part / whole) * 100) : 0);
-const STALE_DAYS = 7;
-
 function tile(doc: Document, label: string, value: Child[], sub: string, hint?: string): HTMLElement {
   const v = h(doc, "div", { class: "v" }, ...value);
   if (hint) v.title = hint;
@@ -42,14 +40,6 @@ function tile(doc: Document, label: string, value: Child[], sub: string, hint?: 
 
 /** "N of M", with the "of M" quieter. */
 const nOfM = (doc: Document, lang: Lang, n: number, m: number): Child[] => [String(n), " ", h(doc, "span", { class: "of" }, t(lang, "ofN", { n: m }))];
-
-function lastSync(lang: Lang, at: string | null, today: string): { text: string; days: number | null } {
-  const days = at === null ? null : daysSince(at, today);
-  if (days === null) return { text: "—", days };
-  if (days === 0) return { text: t(lang, "today"), days };
-  if (days === 1) return { text: t(lang, "yesterday"), days };
-  return { text: count(lang, "daysAgo", days), days };
-}
 
 function headCell(doc: Document, label: string, left: boolean, sorted: boolean): HTMLElement {
   const attrs: Record<string, string> = { scope: "col" };
@@ -60,189 +50,6 @@ function headCell(doc: Document, label: string, left: boolean, sorted: boolean):
 
 function panel(doc: Document, heading: Child[], headingId: string, ...children: Child[]): HTMLElement {
   return h(doc, "section", { class: "panel", "aria-labelledby": headingId }, h(doc, "h2", { id: headingId }, ...heading), ...children);
-}
-
-/** "Members 3": the heading with its count. */
-const counted = (doc: Document, label: string, n: number): Child[] => [label, " ", h(doc, "span", { class: "n" }, String(n))];
-
-/**
- * A member's tokens by agent, as a Map. The answer is server data checked only for its shape, so a malformed `byAgent`
- * gives an empty Map and entries without a finite, positive number are left out.
- */
-function agentMixOf(m: Stats["members"][number]): Map<string, number> {
-  const v: unknown = m.byAgent;
-  const out = new Map<string, number>();
-  if (typeof v !== "object" || v === null || Array.isArray(v)) return out;
-  for (const [agent, n] of Object.entries(v)) if (typeof n === "number" && Number.isFinite(n) && n > 0) out.set(agent, n);
-  return out;
-}
-
-/**
- * A member's tokens by account and plan, largest first (ties by label, so the order never depends on the server's).
- * Entries with a malformed account or plan key or a bad number are left out; entries that show the same name
- * (for example a plan with no short name and no plan) are added together. Each is `[account, plan, tokens]`.
- */
-function byAccountPlanOf(m: Stats["members"][number]): [string, string, number][] {
-  const v = (m as { byAccountPlan?: unknown }).byAccountPlan;
-  if (!Array.isArray(v)) return [];
-  const merged = new Map<string, [string, string, number]>();
-  for (const e of v as unknown[]) {
-    if (typeof e !== "object" || e === null) continue;
-    const { account, plan, tokens: n } = e as { account?: unknown; plan?: unknown; tokens?: unknown };
-    if (typeof account !== "string" || typeof plan !== "string") continue;
-    if (parseAccountKey(account) === undefined || parsePlanKey(plan) === undefined) continue;
-    if (typeof n !== "number" || !Number.isFinite(n) || n <= 0) continue;
-    const id = `${account}\u0000${planShort(plan)}`;
-    const old = merged.get(id);
-    if (old) old[2] = Math.min(old[2] + n, Number.MAX_VALUE);
-    else merged.set(id, [account, plan, n]);
-  }
-  const label = (e: [string, string, number]) => accountPlanName(e[0], e[1], "en");
-  return [...merged.values()].sort((a, b) => b[2] - a[2] || (label(a) < label(b) ? -1 : label(a) > label(b) ? 1 : 0));
-}
-
-const sumOf = (parts: [string, string, number][]): number => parts.reduce((s, [, , n]) => s + n, 0);
-/** Accounts shown per member in the table; the rest are counted as "+N". */
-const ACCOUNT_LINES = 2;
-
-/** "Team · Devcats 78%" lines, at most two, then "+N"; a dash when there is nothing to show. Text only. */
-function accountsCell(doc: Document, lang: Lang, m: Stats["members"][number]): HTMLElement {
-  const parts = byAccountPlanOf(m);
-  const cell = h(doc, "td", { class: "l accts-cell" });
-  if (parts.length === 0) {
-    cell.textContent = "—";
-    return cell;
-  }
-  const total = sumOf(parts);
-  const lines = parts
-    .slice(0, ACCOUNT_LINES)
-    .map(([key, plan, n]) => h(doc, "li", {}, h(doc, "span", { class: "acct-name" }, accountPlanName(key, plan, lang)), " ", h(doc, "span", { class: "acct-share" }, `${pct(n, total)}%`)));
-  if (parts.length > ACCOUNT_LINES) lines.push(h(doc, "li", { class: "acct-more" }, `+${parts.length - ACCOUNT_LINES}`));
-  cell.append(h(doc, "ul", { class: "accts" }, ...lines));
-  return cell;
-}
-
-/** The fixed five first in their order, then the others by tokens. */
-function mixOrder(mix: Map<string, number>): [string, number][] {
-  return [...mix].sort((a, b) => seriesOf(a[0]) - seriesOf(b[0]) || b[1] - a[1]);
-}
-
-/**
- * The agent-mix bar: its length is the member's share of the top member's tokens, its segments the member's
- * tokens by agent in agent colours.
- */
-function mixBar(doc: Document, lang: Lang, m: Stats["members"][number], top: number, teamTokens: number, filtered: boolean): HTMLElement {
-  const bar = h(doc, "div", { class: "mix-bar" });
-  bar.style.width = `${top > 0 ? Number(((m.tokens / top) * 100).toFixed(1)) : 0}%`;
-  const share = pct(m.tokens, teamTokens);
-  const parts = mixOrder(agentMixOf(m));
-  const total = parts.reduce((s, [, n]) => s + n, 0);
-  // One segment per series, so all agents outside the fixed five share one grey segment.
-  const bySeries = new Map<number, number>();
-  for (const [agent, n] of parts) bySeries.set(seriesOf(agent), (bySeries.get(seriesOf(agent)) ?? 0) + n);
-  for (const [series, n] of [...bySeries].sort((a, b) => a[0] - b[0])) {
-    const seg = h(doc, "i", { class: SERIES_CLASS[series] as string });
-    seg.style.flexGrow = (n / total).toFixed(4);
-    bar.append(seg);
-  }
-  const label =
-    parts.length === 0
-      ? t(lang, filtered ? "shareLabelFiltered" : "shareLabel", { share })
-      : t(lang, filtered ? "mixLabelFiltered" : "mixLabel", { share, parts: parts.map(([agent, n]) => `${agentName(agent)} ${pct(n, total)}%`).join(", ") });
-  return h(doc, "div", { class: "mix", role: "img", "aria-label": label }, bar);
-}
-
-function memberRows(doc: Document, stats: Stats, lang: Lang, today: string, shown: Stats["members"], filtered: boolean): HTMLElement[] {
-  // Bars scale to the top member of the whole team, so they do not jump while searching.
-  const top = stats.members[0]?.tokens ?? 0;
-  return shown.map((m) => {
-    // The href comes from the numeric id alone; a name or any other string never reaches it.
-    const name = isMemberId(m.id) ? h(doc, "a", { href: memberHref(m.id) }, m.name) : h(doc, "b", {}, m.name);
-    const sync = lastSync(lang, m.lastSyncAt, today);
-    const stale = sync.days !== null && sync.days >= STALE_DAYS;
-    return h(
-      doc,
-      "tr",
-      {},
-      h(
-        doc,
-        "th",
-        { scope: "row", class: "who" },
-        h(
-          doc,
-          "span",
-          { class: "who-in" },
-          h(doc, "span", { class: "avatar", "aria-hidden": "true" }, initials(m.name)),
-          h(doc, "span", { class: "who-text" }, name, h(doc, "span", { class: "email" }, m.email)),
-        ),
-      ),
-      h(doc, "td", {}, full(m.tokens)),
-      h(doc, "td", {}, usd(m.costUsd)),
-      h(doc, "td", { class: "l" }, mixBar(doc, lang, m, top, stats.totals.tokens, filtered)),
-      accountsCell(doc, lang, m),
-      h(doc, "td", stale ? { class: "stale" } : {}, sync.text),
-      h(doc, "td", { class: "chev-cell", "aria-hidden": "true" }, icon(doc, "right")),
-    );
-  });
-}
-
-/**
- * Shows the members matching `query` in an already rendered members panel, without rebuilding the search box.
- * `filtered`: the numbers are narrowed by a filter, so the bars speak of the filtered tokens.
- */
-export function applyMemberSearch(doc: Document, root: ParentNode, stats: Stats, lang: Lang, today: string, query: string, filtered = false): void {
-  const table = root.querySelector("#members");
-  const body = table?.querySelector("tbody");
-  const countLine = root.querySelector<HTMLElement>("#members-count");
-  const scroll = table?.parentElement;
-  if (!body || !countLine || !scroll) return;
-  const shown = matchMembers(stats.members, query);
-  body.replaceChildren(...memberRows(doc, stats, lang, today, shown, filtered));
-  const filtering = query.trim() !== "";
-  countLine.hidden = !filtering;
-  countLine.textContent = !filtering ? "" : shown.length === 0 ? t(lang, "noMatch") : matchCount(lang, shown.length, stats.members.length);
-  scroll.hidden = shown.length === 0;
-}
-
-function membersPanel(doc: Document, stats: Stats, lang: Lang, today: string, query: string, filtered: boolean): HTMLElement {
-  const input = h(doc, "input", { type: "search", id: "member-search", autocomplete: "off", spellcheck: "false" }) as HTMLInputElement;
-  input.placeholder = t(lang, "searchPlaceholder");
-  input.value = query; // a property, never markup
-  const head = h(
-    doc,
-    "thead",
-    {},
-    h(
-      doc,
-      "tr",
-      {},
-      headCell(doc, t(lang, "colMember"), true, false),
-      headCell(doc, t(lang, "colTokens"), false, true),
-      headCell(doc, t(lang, "colCost"), false, false),
-      headCell(doc, t(lang, "colAgentMix"), true, false),
-      headCell(doc, t(lang, "colAccounts"), true, false),
-      headCell(doc, t(lang, "colLastSync"), false, false),
-      h(doc, "td", { class: "chev-cell", "aria-hidden": "true" }),
-    ),
-  );
-  const table = h(doc, "table", { id: "members" }, head, h(doc, "tbody"));
-  const section = h(
-    doc,
-    "section",
-    { class: "panel", "aria-labelledby": "members-heading" },
-    h(
-      doc,
-      "div",
-      { class: "panel-head" },
-      h(doc, "div", {}, h(doc, "h2", { id: "members-heading" }, ...counted(doc, t(lang, "members"), stats.members.length)), h(doc, "p", { class: "hint" }, t(lang, "membersHint"))),
-      h(doc, "div", { class: "search" }, h(doc, "label", { for: "member-search", class: "sr" }, t(lang, "searchMembers")), icon(doc, "search", "search-icon"), input),
-    ),
-    h(doc, "p", { id: "members-count", class: "count", "aria-live": "polite" }),
-    h(doc, "div", { class: "scroll" }, table),
-    h(doc, "p", { class: "mix-note" }, t(lang, "mixNote")),
-  );
-  applyMemberSearch(doc, section, stats, lang, today, query, filtered);
-  return section;
 }
 
 /** The agent's tile and name, for tables and the legend. */
@@ -352,7 +159,7 @@ function activeSub(f: Filters): MessageKey {
 }
 
 /** The team view: tiles, then the chart and tables, or the empty state when nothing matches. */
-export function renderStats(doc: Document, stats: Stats, lang: Lang, today: string, opts: { query?: string; filters?: Filters } = {}): DocumentFragment {
+export function renderStats(doc: Document, stats: Stats, lang: Lang, today: string, opts: { query?: string; filters?: Filters; sort?: MemberSort; onSort?: (sort: MemberSort) => void } = {}): DocumentFragment {
   const filters = opts.filters ?? NO_FILTERS;
   const days = Math.max(1, stats.daily.length);
   const active = tile(
@@ -367,7 +174,7 @@ export function renderStats(doc: Document, stats: Stats, lang: Lang, today: stri
     out.append(emptyState(doc, lang, filters));
     return out;
   }
-  out.append(chartPanel(doc, stats, lang), membersPanel(doc, stats, lang, today, opts.query ?? "", isActive(filters)), modelsPanel(doc, stats, lang));
+  out.append(chartPanel(doc, stats, lang), membersPanel(doc, stats, lang, today, { query: opts.query ?? "", filtered: isActive(filters), sort: opts.sort ?? DEFAULT_SORT, onSort: opts.onSort }), modelsPanel(doc, stats, lang));
   return out;
 }
 
