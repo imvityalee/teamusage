@@ -12,7 +12,6 @@ import {
   parsePlanKey,
 } from "@teamusage/shared";
 import type { RouteContext } from "./app-context.js";
-import { membersSeeTeam } from "./hosted-teams.js";
 import { bearerToken, fail, setSessionCookie } from "./http.js";
 import { statsTooLargeAnswer, teamStatsBusyAnswer } from "./limit-answers.js";
 import { createTeamSession } from "./sessions.js";
@@ -119,7 +118,6 @@ export function dashboardRoutes(app: Hono, ctx: RouteContext): void {
     if (opts.hosted) return fail(c, 403, CODE_OPENS_NO_DASHBOARD);
     const entry = await teamOfInvite(c);
     if (entry instanceof Response) return entry;
-    if (!membersSeeTeam(db, entry.teamId)) return fail(c, 403, DASHBOARD_LIMITED);
     setSessionCookie(c, createTeamSession(db, entry.teamId));
     return c.body(null, 204);
   });

@@ -3,7 +3,7 @@ import type { Context, Hono } from "hono";
 import { getCookie } from "hono/cookie";
 import type { RouteContext } from "./app-context.js";
 import { safeEqual, type Db } from "./db.js";
-import { membersSeeTeam, teamById, teamsOf } from "./hosted-teams.js";
+import { teamById, teamsOf } from "./hosted-teams.js";
 import { clearPrivateCookie, clearSessionCookie, crossSite, fail, SESSION_COOKIE, setPrivateCookie, setSessionCookie } from "./http.js";
 import { createUserSession, endSession, type Session } from "./sessions.js";
 
@@ -40,9 +40,9 @@ function callbackOf(c: Context): { code: string; verifier: string } | null {
  */
 function meOf(db: Db, session: Session) {
   if (session.kind === "user") return { kind: "user", login: session.login, teams: teamsOf(db, session.githubId) };
-  if (session.kind === "team" || !membersSeeTeam(db, session.teamId)) return null;
+  if (session.kind === "team") return null;
   const team = teamById(db, session.teamId);
-  if (team === null) return null;
+  if (team?.dashboardAccess !== "members") return null;
   return { kind: "member", team: { id: team.publicId, name: team.name }, memberId: session.memberId };
 }
 

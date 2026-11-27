@@ -6,7 +6,7 @@ import type { Session } from "./sessions.js";
 import { statsAccess } from "./stats-access.js";
 import { authenticate, forTeam, type MachineIdentity } from "./team-data.js";
 import { reg } from "./team-data.fixture.js";
-import { createTeam } from "./teams.js";
+import { createTeam, ensureSingleTeam } from "./teams.js";
 
 const ann = { githubId: 1, login: "ann" };
 const bob = { githubId: 2, login: "bob" };
@@ -24,9 +24,17 @@ const machineOf = (teamId: number) => {
 const userSession = (u: { githubId: number; login: string }): Session => ({ kind: "user", ...u });
 const teamSession = (teamId: number): Session => ({ kind: "team", teamId });
 
-/** statsAccess on a hosted server (no code sessions) with no demo team, no token and no session, unless `over` gives one. */
-const access = (over: Partial<Parameters<typeof statsAccess>[1]> = {}) =>
-  statsAccess(db, { demoTeamId: undefined, token: undefined, who: null, session: null, teamParam: undefined, codeSessions: false, ...over });
+type AccessArgs = Partial<Parameters<typeof statsAccess>[1]>;
+/** statsAccess on database `on` with no demo team, no token and no session, unless `over` gives one. */
+const accessOn = (on: Db, codeSessions: boolean, over: AccessArgs) =>
+  statsAccess(on, { demoTeamId: undefined, token: undefined, who: null, session: null, teamParam: undefined, codeSessions, ...over });
+/** statsAccess on the hosted database, as a hosted server calls it: code sessions are not honoured. */
+const access = (over: AccessArgs = {}) => accessOn(db, false, over);
+
+/** A self-hosted server's own database and its one team. */
+let selfHosted: { db: Db; teamId: number };
+/** statsAccess on the self-hosted database, as a self-hosted server calls it: code sessions are honoured. */
+const selfHostedAccess = (over: AccessArgs = {}) => accessOn(selfHosted.db, true, over);
 
 beforeEach(() => {
   db = openDb(":memory:");
@@ -34,6 +42,8 @@ beforeEach(() => {
   b = hostedTeam(db, bob, "admins").team;
   machineA = machineOf(a.id);
   machineB = machineOf(b.id);
+  const own = openDb(":memory:");
+  selfHosted = { db: own, teamId: ensureSingleTeam(own) };
 });
 
 describe("demo mode", () => {
@@ -50,7 +60,7 @@ describe("a presented token", () => {
   test("that is invalid is 401, and no session rescues it", () => {
     const unauthorized = { ok: false, status: 401, error: "unauthorized" };
     expect(access({ token: "bad" })).toEqual(unauthorized);
-    expect(access({ token: "bad", session: teamSession(a.id), codeSessions: true })).toEqual(unauthorized);
+    expect(selfHostedAccess({ token: "bad", session: teamSession(selfHosted.teamId) })).toEqual(unauthorized);
     expect(access({ token: "bad", session: userSession(ann), teamParam: a.publicId })).toEqual(unauthorized);
   });
   test("of a team whose members see it reads that team, as its member, with the team's numbers", () => {
@@ -67,13 +77,11 @@ describe("a presented token", () => {
 
 describe("a team session", () => {
   const unauthorized = { ok: false, status: 401, error: "unauthorized" };
-  test("where code sessions are honoured, of a team whose members see it reads that team, with no member, and ignores the query's team", () => {
-    const open = { ok: true, teamId: a.id, member: null, teamNumbers: true };
-    expect(access({ session: teamSession(a.id), codeSessions: true })).toEqual(open);
-    expect(access({ session: teamSession(a.id), teamParam: b.publicId, codeSessions: true })).toEqual(open);
-  });
-  test("where code sessions are honoured, of an admins-only team is 401", () => {
-    expect(access({ session: teamSession(b.id), codeSessions: true })).toEqual(unauthorized);
+  test("on a self-hosted server, where code sessions are honoured, reads its team, with no member, and ignores the query's team", () => {
+    const session = teamSession(selfHosted.teamId);
+    const open = { ok: true, teamId: selfHosted.teamId, member: null, teamNumbers: true };
+    expect(selfHostedAccess({ session })).toEqual(open);
+    expect(selfHostedAccess({ session, teamParam: "0123456789abcdef" })).toEqual(open);
   });
   test("where code sessions are not honoured is 401, whatever its team and the query's team", () => {
     expect(access({ session: teamSession(a.id) })).toEqual(unauthorized);
@@ -97,7 +105,6 @@ describe("a member's session", () => {
     expect(c.id).toBe(3);
     expect(access({ session })).toEqual(reads);
     expect(access({ session, teamParam: b.publicId })).toEqual(reads);
-    expect(access({ session, codeSessions: true })).toEqual(reads);
   });
   test("of an admins-only team is 401", () => {
     expect(access({ session: memberSession(b.id) })).toEqual({ ok: false, status: 401, error: "unauthorized" });
