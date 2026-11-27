@@ -77,10 +77,9 @@ test("the owner deletes the team: everything that was the team's is gone at once
   await linkToken(w.B.tia.one.token);                                 // a pending link
   const before = everythingOf(w.db, w.A.id);                          // A's rows of every table that carries a team
   expect((await post("bob", deletePath(w.B), { name: w.B.name })).status).toBe(204);
-  for (const table of ["members", "machines", "usage", "usage_counts", "sessions", "dashboard_links", "team_roles", "admin_invites"]) {
-    expect(countOf(table, w.B.id), table).toBe(0);
-  }
-  expect(teamRow(w.B.id)).toBeUndefined();
+  const { teams, ...held } = everythingOf(w.db, w.B.id);            // B's rows of every table that carries a team, from the schema
+  expect(teams).toEqual([undefined]);
+  for (const [table, left] of Object.entries(held)) expect(left, table).toEqual([]);
   expect(everythingOf(w.db, w.A.id)).toEqual(before);
   expect(w.db.pragma("foreign_key_check")).toEqual([]);
   expect((await upload(w.B.tia.one.token, [record()])).status).toBe(401);
@@ -89,6 +88,7 @@ test("the owner deletes the team: everything that was the team's is gone at once
   expect(await (await as("bob", "/api/me")).json()).toEqual({ kind: "user", login: "bob", teams: [] });
   expect(userRow(2202)).toBeUndefined();
   expect((await as("bob", `/api/teams/${w.B.publicId}`)).status).toBe(404);
+  await expectAnswer(await as("cyd", `/api/teams/${w.B.publicId}/members`), 404, "team not found");
 });
 test("the usage goes in slices, with the count right and uploads answered at each pause", async () => {
   const seen: number[] = [];
@@ -247,18 +247,18 @@ test("a user with a role in another team keeps their users row; the GitHub sessi
   expect(await (await as("cyd", "/api/me")).json()).toEqual({ kind: "user", login: "cyd", teams: [teamA] });
   expect(await (await as("dee", "/api/me")).json()).toEqual({ kind: "user", login: "dee", teams: [] });
 });
-test("the next team created has an id higher than the deleted one's, also when its owner owned 5 teams", async () => {
+test("an owner of 5 teams creates one again once one of them is deleted", async () => {
   for (const name of ["Second", "Third", "Fourth", "Fifth"]) await created(w, await createAs(w, "bob", name));
   expect((await createAs(w, "bob", "Sixth")).status).toBe(409);
   expect((await deleteAs(w, "bob", w.B)).status).toBe(204);
-  const again = await created(w, await createAs(w, "bob", "Sixth"));
-  expect(again.id).toBeGreaterThan(w.B.id);
+  await created(w, await createAs(w, "bob", "Sixth"));
 });
-test("a server at maxTeams accepts a new team again once one is deleted", async () => {
+test("a server at maxTeams accepts a new team again once one is deleted, and the new team does not take the deleted one's id", async () => {
   const v = await manageWorld({ maxTeams: 2 });
   expect((await createAs(v, "eve", "Third")).status).toBe(503);
-  expect((await deleteAs(v, "bob", v.B)).status).toBe(204);
-  await created(v, await createAs(v, "eve", "Third"));
+  expect((await deleteAs(v, "bob", v.B)).status).toBe(204);         // B has the highest id there is
+  const next = await created(v, await createAs(v, "eve", "Third"));
+  expect(next.id).toBeGreaterThan(v.B.id);
 });
 test("a team created right after a deletion is answered 200 at its first upload and its first statistics request", async () => {
   // B's machines sent 9 records at set-up, its whole minute; each statistics request takes 60 ms of B's 100.

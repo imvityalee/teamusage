@@ -155,21 +155,27 @@ test("a team name may be as long as MAX_TEAM_NAME_CHARS", () => {
 });
 
 test("deleteTeam deletes the team with all it holds and the users left without a role; another team and its people stay", () => {
-  const cyd = { githubId: 33, login: "cyd" };
-  const other = make({ name: "Other" }).team;
-  const { team } = make({ name: "Doomed", owner: bob });
+  // GitHub ids that equal no row id; eli's row comes first, so the deleted team's id (2) equals no users or member id.
+  const amy = { githubId: 1101, login: "amy" };
+  const ben = { githubId: 2202, login: "ben" };
+  const cyd = { githubId: 3303, login: "cyd" };
+  const eli = { githubId: 5505, login: "eli" };
+  const other = make({ name: "Other", owner: amy }).team;
+  grantRole(db, other.id, eli, "viewer");
+  const { team } = make({ name: "Doomed", owner: ben });
   grantRole(db, team.id, cyd, "admin");
-  grantRole(db, team.id, ann, "viewer");
+  grantRole(db, team.id, amy, "viewer");
   const data = forTeam(db, team.id);
   const { memberId } = data.registerMachine(reg(machineIdOf(0xd1)));
   data.upsertUsage({ memberId, machineId: machineIdOf(0xd1) }, rows(4));
+  expect([team.id, findUser(db, ben.githubId)?.id, findUser(db, cyd.githubId)?.id, memberId]).toEqual([2, 3, 4, 1]);
   const otherBefore = everythingOf(db, other.id);
   expect(deleteTeam(db, team.id)).toBe(true);
   const { teams, ...held } = everythingOf(db, team.id);
   expect(teams).toEqual([undefined]);
   for (const [table, left] of Object.entries(held)) expect(left, table).toEqual([]);
-  expect([findUser(db, bob.githubId), findUser(db, cyd.githubId)]).toEqual([null, null]);
-  expect(findUser(db, ann.githubId)).not.toBeNull();                 // she owns the other team
+  expect([findUser(db, ben.githubId), findUser(db, cyd.githubId)]).toEqual([null, null]);
+  expect(findUser(db, amy.githubId)).not.toBeNull();                 // she owns the other team
   expect(everythingOf(db, other.id)).toEqual(otherBefore);
   expect(db.pragma("foreign_key_check")).toEqual([]);
 });
