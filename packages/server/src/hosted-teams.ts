@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { isDisplayName, MAX_TEAM_NAME_CHARS } from "@teamusage/shared";
 import { codeHash, isTeamCode, newTeamCode, sealCode } from "./codes.js";
 import { now, type Db } from "./db.js";
 import { ensureUser } from "./users.js";
@@ -30,6 +31,9 @@ export const newPublicId = (): string => randomBytes(8).toString("hex");
 
 /** True for a string in the format of newPublicId. */
 export const isPublicId = (v: unknown): v is string => typeof v === "string" && PUBLIC_ID.test(v);
+
+/** True for a team name: a display name that stays within MAX_TEAM_NAME_CHARS once trimmed. */
+export const isTeamName = (v: unknown): v is string => isDisplayName(v) && v.trim().length <= MAX_TEAM_NAME_CHARS;
 
 /** True for a value of DashboardAccess. */
 export const isDashboardAccess = (v: unknown): v is DashboardAccess => v === "members" || v === "admins";

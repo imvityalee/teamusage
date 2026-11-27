@@ -12,7 +12,7 @@ import { ensureUser } from "./users.js";
 export const PUBLIC = "https://teamusage.example";
 /** The hosted test server's code key. */
 export const KEY = Buffer.alloc(32, 7);
-/** The GitHub users the fixture's fake GitHub knows, by the callback code that signs each in. */
+/** The GitHub users the fixture's fake GitHub knows unless a test gives its own, by the callback code that signs each in. */
 const USERS: Record<string, GithubUser> = {
   "code-ann": { id: 1, login: "ann" },
   "code-bob": { id: 2, login: "bob" },
@@ -54,16 +54,20 @@ export function grantRole(db: Db, teamId: number, user: Person, role: Role): voi
   db.prepare("insert into team_roles (team_id, user_id, role, created_at) values (?, ?, ?, ?)").run(teamId, ensureUser(db, user).id, role, now());
 }
 
-/** What a test may give a hosted app; `limits` may be made from the database the app opens. */
+/**
+ * What a test may give a hosted app; `limits` may be made from the database the app opens, and `users` replaces the
+ * GitHub users its fake GitHub knows.
+ */
 export type HostedAppOptions = Pick<AppOptions, "clientKey" | "logError" | "now" | "stopwatch"> & {
   limits?: AppOptions["limits"] | ((db: Db) => AppOptions["limits"]);
   maxTeams?: number;
+  users?: Record<string, GithubUser>;
 };
 
 /** A hosted app on a fresh in-memory database, with the fake GitHub it signs users in with. */
 export function hostedApp(o: HostedAppOptions = {}) {
   const db = openDb(":memory:");
-  const github = fakeGithub(USERS);
+  const github = fakeGithub(o.users ?? USERS);
   const app = createApp(db, {
     teamForCode: hostedTeamCodes(db),
     clientKey: o.clientKey,
@@ -100,15 +104,51 @@ export async function signIn(app: Hono, code: string): Promise<string> {
   return session;
 }
 
+/** Asks for a sign-in link as the machine `token`; returns the link's token. */
+export async function dashboardLinkToken(app: Hono, token: string): Promise<string> {
+  const linked = await app.request("/api/dashboard-link", { method: "POST", headers: { Authorization: `Bearer ${token}` } });
+  if (linked.status !== 200) throw new Error(`asking for a sign-in link answered ${linked.status}`);
+  return ((await linked.json()) as { path: string }).path.slice("/open#".length);
+}
+
 /** Signs a browser in as the machine `token`'s member: asks for a link and opens it; returns the `tu_session` cookie. */
 export async function memberSignIn(app: Hono, token: string): Promise<string> {
-  const linked = await app.request("/api/dashboard-link", { method: "POST", headers: { Authorization: `Bearer ${token}` } });
-  const { path } = (await linked.json()) as { path?: string };
-  const opened = await postFromPage(app, "/api/dashboard-link/open", { token: path?.slice("/open#".length) });
+  const opened = await postFromPage(app, "/api/dashboard-link/open", { token: await dashboardLinkToken(app, token) });
   const session = cookieOf(opened, "tu_session");
-  if (!session) throw new Error(`signing in as a member answered ${linked.status}, then ${opened.status}`);
+  if (!session) throw new Error(`opening a sign-in link answered ${opened.status}`);
   return session;
 }
+
+/**
+ * Sends a request whose body the test finishes later. It carries Content-Length, as a real client's request does, so the
+ * handler runs up to its wait for the body (without the header Hono's body limit reads the whole body first).
+ */
+export function heldRequest(
+  app: Hono,
+  path: string,
+  a: { method: string; text: string; headers: Record<string, string> },
+): { answer: Promise<Response>; finish: () => void } {
+  const bytes = new TextEncoder().encode(a.text);
+  let finish = () => {};
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      finish = () => {
+        controller.enqueue(bytes);
+        controller.close();
+      };
+    },
+  });
+  const request = new Request(new URL(path, PUBLIC), {
+    method: a.method,
+    body,
+    duplex: "half",
+    headers: { ...a.headers, "Content-Length": String(bytes.length) },
+  } as RequestInit);
+  return { answer: Promise.resolve(app.request(request)), finish: () => finish() };
+}
+
+/** Lets every handler that is running reach its next wait. */
+export const settle = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
 
 /** Caps for a test's team, each a value of its own, with room on the volume unless `over` says otherwise. */
 export const testCaps = (over: Partial<TeamLimits> = {}): TeamLimits => ({

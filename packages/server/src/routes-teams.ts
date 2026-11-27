@@ -1,17 +1,14 @@
 import type { Hono } from "hono";
-import { isDisplayName, MAX_TEAM_NAME_CHARS } from "@teamusage/shared";
 import type { RouteContext } from "./app-context.js";
-import { createHostedTeam, isDashboardAccess, MAX_TEAMS_PER_USER, TeamLimitError } from "./hosted-teams.js";
+import { createHostedTeam, isDashboardAccess, isTeamName, MAX_TEAMS_PER_USER, TeamLimitError } from "./hosted-teams.js";
 import { crossSite, fail, isObject, readJson } from "./http.js";
+import { githubSession } from "./team-access.js";
 
 const SIGN_UPS_PAUSED = "sign-ups are paused";
 
-/** A team name is a display name that stays within MAX_TEAM_NAME_CHARS once trimmed. */
-const isTeamName = (v: unknown): v is string => isDisplayName(v) && v.trim().length <= MAX_TEAM_NAME_CHARS;
-
 /** Creating a team as the signed-in GitHub user. Mounted only on a hosted server. */
 export function teamRoutes(app: Hono, ctx: RouteContext): void {
-  const { db, opts, session: sessionOf } = ctx;
+  const { db, opts } = ctx;
   const hosted = opts.hosted;
   if (hosted === undefined) return;
 
@@ -19,8 +16,8 @@ export function teamRoutes(app: Hono, ctx: RouteContext): void {
     c.header("Cache-Control", "no-store");
     const refused = crossSite(c, hosted.publicUrl);
     if (refused) return refused;
-    const session = sessionOf(c);
-    if (session?.kind !== "user") return fail(c, 401, "unauthorized");
+    const session = githubSession(ctx, c);
+    if (session instanceof Response) return session;
 
     const body = await readJson(c);
     if (body === undefined) return fail(c, 400, "invalid JSON body");
