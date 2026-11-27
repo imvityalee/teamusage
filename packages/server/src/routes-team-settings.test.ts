@@ -1,6 +1,6 @@
 import { beforeEach, expect, test } from "vitest";
 import { dashboardLinkToken, heldRequest, postFromPage, PUBLIC, settle } from "./hosted.fixture.js";
-import { asUser, manageWorld, RANGE, removeRoleRow, teamRow, type Machine, type ManagedTeam, type ManageWorld, type Who } from "./manage.fixture.js";
+import { asUser, expectAnswer, manageWorld, RANGE, removeRoleRow, teamRow, type Machine, type ManagedTeam, type ManageWorld, type Who } from "./manage.fixture.js";
 
 let w: ManageWorld;
 beforeEach(async () => {
@@ -131,6 +131,11 @@ test("a PATCH without the server's Origin is 403 and changes nothing", async () 
     expect(res.headers.get("cache-control")).toBe("no-store");
     expect(await res.json()).toEqual({ error: "cross-site request refused" });
   }
+  expect(teamRow(w.db, w.B.id)).toEqual(before);
+});
+test("a body over the limit is 413 with no-store and changes nothing", async () => {
+  const before = teamRow(w.db, w.B.id);
+  await expectAnswer(await patch("bob", w.B, { name: "N".repeat(3 * 1024 * 1024) }), 413, "payload too large");
   expect(teamRow(w.db, w.B.id)).toEqual(before);
 });
 test("the role is read after the body: an admin whose role goes while the body is read renames nothing", async () => {

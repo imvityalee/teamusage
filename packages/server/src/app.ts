@@ -65,7 +65,13 @@ export function createApp(db: Db, opts: AppOptions): Hono {
   };
 
   app.use(
-    bodyLimit({ maxSize: MAX_BODY_BYTES, onError: (c) => fail(c, 413, "payload too large") }),
+    bodyLimit({
+      maxSize: MAX_BODY_BYTES,
+      onError: (c) => {
+        c.header("Cache-Control", "no-store");
+        return fail(c, 413, "payload too large");
+      },
+    }),
   );
   app.notFound((c) => fail(c, 404, "not found"));
   app.onError((err, c) => {
