@@ -37,12 +37,14 @@ test("after a rotation the old code joins nobody, the new one does, and nobody a
   expect((await register(w.A.code, "other@example.com")).status).toBe(200);
 });
 test("a code sealed under a key the server no longer has cannot be shown, and rotating repairs it", async () => {
-  const other = await appOnSameDatabase(w.db, Buffer.alloc(32, 9)); // the same database, another code key, bob signed in again
+  // The same database, another code key, bob signed in again; its errors are collected too.
+  const other = await appOnSameDatabase(w.db, Buffer.alloc(32, 9), (line) => logged.push(line));
   const shown = await other.as("bob", codePath());
   expect(shown.status).toBe(409);
   expect(await shown.json()).toEqual({ error: "this code can no longer be shown; rotate it" });
   const { code } = (await (await other.post("bob", rotatePath())).json()) as { code: string };
   expect(await (await other.as("bob", codePath())).json()).toEqual({ code });
+  expect(logged).toEqual([]);
 });
 test("a viewer gets 403 on both routes and the code row is unchanged", async () => {
   const before = codeRow(w.db, w.B.id);
@@ -80,16 +82,15 @@ test("a rotation without the server's Origin is 403 and rotates nothing", async 
   }
   expect(codeRow(w.db, w.B.id)).toEqual(before);
 });
-test("the answers carry no-store, and no code reaches the error log after a show, a rotation and a 409", async () => {
+test("the answers carry no-store, and no line is logged after a show, a rotation, a 409 and the repair", async () => {
   const shown = await as("bob", codePath());
   const rotated = await post("bob", rotatePath());
   const other = await appOnSameDatabase(w.db, Buffer.alloc(32, 9), (line) => logged.push(line));
   const refused = await other.as("bob", codePath());
-  expect([shown.status, rotated.status, refused.status]).toEqual([200, 200, 409]);
-  for (const res of [shown, rotated, refused]) expect(res.headers.get("cache-control")).toBe("no-store");
-  const shownByRefusal = await codeOf(rotated); // the code the 409 refused to show
-  const repaired = await codeOf(await other.post("bob", rotatePath()));
-  for (const code of [w.B.code, shownByRefusal, repaired]) expect(logged.join("\n")).not.toContain(code);
+  const repaired = await other.post("bob", rotatePath());
+  expect([shown.status, rotated.status, refused.status, repaired.status]).toEqual([200, 200, 409, 200]);
+  for (const res of [shown, rotated, refused, repaired]) expect(res.headers.get("cache-control")).toBe("no-store");
+  expect(logged).toEqual([]);
 });
 test("two rotations open together each answer with a code of their own; one of them is the team's", async () => {
   const before = codeRow(w.db, w.A.id);

@@ -155,7 +155,8 @@ test("a team name may be as long as MAX_TEAM_NAME_CHARS", () => {
 });
 
 test("deleteTeam deletes the team with all it holds and the users left without a role; another team and its people stay", () => {
-  // GitHub ids that equal no row id; eli's row comes first, so the deleted team's id (2) equals no users or member id.
+  // GitHub ids that equal no row id. The deleted team's id (2) is no id of a row the deletion takes (ben's and cyd's
+  // users rows, its member); it is eli's users id, so a deletion that took users by the team's id would take eli.
   const amy = { githubId: 1101, login: "amy" };
   const ben = { githubId: 2202, login: "ben" };
   const cyd = { githubId: 3303, login: "cyd" };
@@ -168,7 +169,7 @@ test("deleteTeam deletes the team with all it holds and the users left without a
   const data = forTeam(db, team.id);
   const { memberId } = data.registerMachine(reg(machineIdOf(0xd1)));
   data.upsertUsage({ memberId, machineId: machineIdOf(0xd1) }, rows(4));
-  expect([team.id, findUser(db, ben.githubId)?.id, findUser(db, cyd.githubId)?.id, memberId]).toEqual([2, 3, 4, 1]);
+  expect([team.id, findUser(db, eli.githubId)?.id, findUser(db, ben.githubId)?.id, findUser(db, cyd.githubId)?.id, memberId]).toEqual([2, 2, 3, 4, 1]);
   const otherBefore = everythingOf(db, other.id);
   expect(deleteTeam(db, team.id)).toBe(true);
   const { teams, ...held } = everythingOf(db, team.id);
@@ -176,6 +177,7 @@ test("deleteTeam deletes the team with all it holds and the users left without a
   for (const [table, left] of Object.entries(held)) expect(left, table).toEqual([]);
   expect([findUser(db, ben.githubId), findUser(db, cyd.githubId)]).toEqual([null, null]);
   expect(findUser(db, amy.githubId)).not.toBeNull();                 // she owns the other team
+  expect(findUser(db, eli.githubId)).not.toBeNull();                 // a viewer of the other team
   expect(everythingOf(db, other.id)).toEqual(otherBefore);
   expect(db.pragma("foreign_key_check")).toEqual([]);
 });
