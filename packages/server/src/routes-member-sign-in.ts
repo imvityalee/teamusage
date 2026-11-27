@@ -1,10 +1,11 @@
 import type { Hono } from "hono";
+import { getCookie } from "hono/cookie";
 import type { RouteContext } from "./app-context.js";
 import { createDashboardLink, DASHBOARD_LINK_SECONDS, takeDashboardLink } from "./dashboard-links.js";
 import type { Db } from "./db.js";
 import { membersSeeTeam } from "./hosted-teams.js";
-import { bearerToken, crossSite, fail, readObject, setSessionCookie } from "./http.js";
-import { createMemberSession } from "./sessions.js";
+import { bearerToken, crossSite, fail, readObject, SESSION_COOKIE, setSessionCookie } from "./http.js";
+import { createMemberSession, replaceSession } from "./sessions.js";
 import { DASHBOARD_ADMINS_ONLY } from "./stats-access.js";
 import { authenticate } from "./team-data.js";
 
@@ -13,15 +14,16 @@ const LINK_NOT_VALID = "this link is no longer valid; ask your agent for a new o
 const LINK_TOKEN = /^[a-f0-9]{64}$/;
 
 /**
- * Uses up the link and opens a session of its machine's member, all in one immediate transaction; otherwise the text
- * of the 403 that refuses it. A link of a team whose members no longer see it is used up and opens nothing.
+ * Uses up the link and opens a session of its machine's member in place of the session `replaced`, all in one
+ * immediate transaction; otherwise the text of the 403 that refuses it. A link of a team whose members no longer see
+ * it is used up and opens nothing.
  */
-function openWithLink(db: Db, token: string, now: number): { sessionId: string } | { refused: string } {
+function openWithLink(db: Db, token: string, now: number, replaced: string | undefined): { sessionId: string } | { refused: string } {
   return db.transaction(() => {
     const who = takeDashboardLink(db, token, now);
     if (who === null) return { refused: LINK_NOT_VALID };
     if (!membersSeeTeam(db, who.teamId)) return { refused: DASHBOARD_ADMINS_ONLY };
-    return { sessionId: createMemberSession(db, who) };
+    return { sessionId: replaceSession(db, replaced, () => createMemberSession(db, who)) };
   }).immediate();
 }
 
@@ -48,7 +50,7 @@ export function memberSignInRoutes(app: Hono, ctx: RouteContext): void {
     if (body instanceof Response) return body;
     if (typeof body.token !== "string" || !LINK_TOKEN.test(body.token)) return fail(c, 400, "invalid token");
     // An unknown token is not counted as a failed attempt: a link's 256 random bits are not guessed.
-    const opened = openWithLink(db, body.token, ctx.now());
+    const opened = openWithLink(db, body.token, ctx.now(), getCookie(c, SESSION_COOKIE));
     if ("refused" in opened) return fail(c, 403, opened.refused);
     setSessionCookie(c, opened.sessionId);
     return c.body(null, 204);

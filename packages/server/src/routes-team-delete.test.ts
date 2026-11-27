@@ -65,7 +65,7 @@ test("the owner deletes the team: everything that was the team's is gone at once
   expect((await uploadAs(w, w.B.tia.one.token, [record()])).status).toBe(401);
   expect((await statsAs(w, w.B.tia.session)).status).toBe(401);
   expect((await registerAs(w, NEWCOMER, w.B.code)).status).toBe(403);
-  expect(await (await as("bob", "/api/me")).json()).toEqual({ kind: "user", login: "bob", teams: [] });
+  expect(await (await as("bob", "/api/me")).json()).toEqual({ kind: "user", githubId: PEOPLE.bob.githubId, login: "bob", teams: [] });
   expect(userRow(2202)).toBeUndefined();
   expect((await as("bob", `/api/teams/${w.B.publicId}`)).status).toBe(404);
   await expectAnswer(await as("cyd", `/api/teams/${w.B.publicId}/members`), 404, "team not found");
@@ -224,8 +224,8 @@ test("a user with a role in another team keeps their users row; the GitHub sessi
   expect(userRow(PEOPLE.cyd.githubId)).toBeDefined();
   expect(userRow(PEOPLE.dee.githubId)).toBeUndefined();
   const teamA = { id: w.A.publicId, name: w.A.name, role: "viewer", dashboardAccess: "members" };
-  expect(await (await as("cyd", "/api/me")).json()).toEqual({ kind: "user", login: "cyd", teams: [teamA] });
-  expect(await (await as("dee", "/api/me")).json()).toEqual({ kind: "user", login: "dee", teams: [] });
+  expect(await (await as("cyd", "/api/me")).json()).toEqual({ kind: "user", githubId: PEOPLE.cyd.githubId, login: "cyd", teams: [teamA] });
+  expect(await (await as("dee", "/api/me")).json()).toEqual({ kind: "user", githubId: PEOPLE.dee.githubId, login: "dee", teams: [] });
 });
 test("an owner of 5 teams creates one again once one of them is deleted", async () => {
   for (const name of ["Second", "Third", "Fourth", "Fifth"]) await created(w, await createAs(w, "bob", name));

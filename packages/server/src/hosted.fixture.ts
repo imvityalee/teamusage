@@ -95,13 +95,24 @@ export const postFromPage = async (app: Hono, path: string, body: unknown, heade
 export const cookieOf = (res: Response, name: string): string =>
   new RegExp(`${name}=[^;]*`).exec(res.headers.get("set-cookie") ?? "")?.[0] ?? "";
 
-/** Signs in through start and callback with the GitHub callback `code`; returns the `tu_session` cookie. */
-export async function signIn(app: Hono, code: string): Promise<string> {
-  const start = await app.request("/auth/github/start");
+/** True when the response expires `tu_oauth` on the path it was set for. */
+export const clearsOauth = (res: Response): boolean =>
+  /tu_oauth=;[^,]*Max-Age=0;[^,]*Path=\/auth\/github/.test(res.headers.get("set-cookie") ?? "");
+
+/**
+ * Follows `startPath`, then calls the callback with the GitHub callback `code`, the state and `tu_oauth` cookie the start
+ * gave, and the browser's other cookies `headers.Cookie`; returns the callback's answer.
+ */
+export async function finishSignIn(app: Hono, startPath: string, code: string, headers: { Cookie?: string } = {}): Promise<Response> {
+  const start = await app.request(startPath);
   const state = new URL(start.headers.get("location") ?? "").searchParams.get("state") ?? "";
-  const res = await app.request(`/auth/github/callback?code=${encodeURIComponent(code)}&state=${state}`, {
-    headers: { Cookie: cookieOf(start, "tu_oauth") },
-  });
+  const cookie = [headers.Cookie, cookieOf(start, "tu_oauth")].filter(Boolean).join("; ");
+  return app.request(`/auth/github/callback?code=${encodeURIComponent(code)}&state=${state}`, { headers: { Cookie: cookie } });
+}
+
+/** Signs in through start and callback with the GitHub callback `code` from a browser holding `headers.Cookie`; returns the `tu_session` cookie. */
+export async function signIn(app: Hono, code: string, headers: { Cookie?: string } = {}): Promise<string> {
+  const res = await finishSignIn(app, "/auth/github/start", code, headers);
   const session = cookieOf(res, "tu_session");
   if (!session) throw new Error(`signing in with ${code} failed`);
   return session;

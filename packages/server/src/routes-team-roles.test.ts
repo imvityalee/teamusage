@@ -45,7 +45,7 @@ test("the owner removes an admin, who is refused at their next request and keeps
   expect((await as("cyd", `/api/teams/${w.B.publicId}/members`)).status).toBe(200);
   expect((await del("bob", `/api/teams/${w.B.publicId}/roles/3303`)).status).toBe(204);
   expect((await as("cyd", `/api/teams/${w.B.publicId}/members`)).status).toBe(404);
-  expect(await (await as("cyd", "/api/me")).json()).toEqual({ kind: "user", login: "cyd", teams: [] });
+  expect(await (await as("cyd", "/api/me")).json()).toEqual({ kind: "user", githubId: PEOPLE.cyd.githubId, login: "cyd", teams: [] });
   expect(userRow(3303)).toBeUndefined();                              // no role left anywhere
   expect(roleRows(w.db, w.A.id)).toEqual(rolesA);
 });

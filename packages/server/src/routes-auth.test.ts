@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { beforeEach, expect, test } from "vitest";
 import type { Db } from "./db.js";
-import { cookieOf, hostedApp, signIn, type FakeGithub } from "./hosted.fixture.js";
+import { clearsOauth, cookieOf, hostedApp, signIn, type FakeGithub } from "./hosted.fixture.js";
 
 let db: Db;
 let app: ReturnType<typeof hostedApp>["app"];
@@ -17,8 +17,6 @@ const started = async (code = "code-ann") => {
   const state = new URL(res.headers.get("location")!).searchParams.get("state")!;
   return { state, oauth: cookieOf(res, "tu_oauth"), url: `/auth/github/callback?code=${code}&state=${state}` };
 };
-/** True when the response expires `tu_oauth` on the path it was set for. */
-const clearsOauth = (res: Response) => /tu_oauth=;[^,]*Max-Age=0;[^,]*Path=\/auth\/github/.test(res.headers.get("set-cookie") ?? "");
 
 test("start sends the browser to GitHub with a state and a challenge it can prove later", async () => {
   const res = await app.request("/auth/github/start");
@@ -33,7 +31,7 @@ test("start sends the browser to GitHub with a state and a challenge it can prov
 test("start makes a 32-byte state and verifier that last ten minutes, Secure only over https", async () => {
   const { state, oauth } = await started();
   expect(state).toMatch(/^[a-f0-9]{64}$/);
-  expect(oauth).toMatch(/^tu_oauth=[a-f0-9]{64}\.[A-Za-z0-9_-]{43}$/);
+  expect(oauth).toMatch(/^tu_oauth=[a-f0-9]{64}\.[A-Za-z0-9_-]{43}\.teams$/);
   const plain = (await app.request("/auth/github/start")).headers.get("set-cookie");
   expect(plain).toMatch(/Max-Age=600/);
   expect(plain).not.toMatch(/Secure/i);
@@ -45,14 +43,14 @@ test("start makes a 32-byte state and verifier that last ten minutes, Secure onl
 test("a callback with the browser's own state signs the user in", async () => {
   const cookie = await signIn(app, "code-ann");          // fakeGithub({ "code-ann": { id: 1, login: "ann" } })
   const me = await app.request("/api/me", { headers: { Cookie: cookie } });
-  expect(await me.json()).toEqual({ kind: "user", login: "ann", teams: [] });
+  expect(await me.json()).toEqual({ kind: "user", githubId: 1, login: "ann", teams: [] });
   expect(me.headers.get("cache-control")).toBe("no-store");
 });
 test("the callback proves the cookie's verifier to GitHub, sets today's session cookie and goes home", async () => {
   const { oauth, url } = await started();
   const res = await app.request(url, { headers: { Cookie: oauth } });
   expect(res.status).toBe(302);
-  expect(res.headers.get("location")).toBe("/");
+  expect(res.headers.get("location")).toBe("/teams");
   expect(github.calls).toEqual([{ code: "code-ann", verifier: oauth.split(".")[1] }]);
   const sc = res.headers.get("set-cookie")!;
   expect(sc).toMatch(/tu_session=[a-f0-9]{64}; Max-Age=2592000; Path=\/; HttpOnly; SameSite=Lax(,|$)/);
@@ -70,8 +68,8 @@ test.each([
 ])("a callback %s opens no session", async (_name, build) => {
   const { url, cookie } = build("a".repeat(64));
   const res = await app.request(url, { headers: cookie ? { Cookie: cookie } : {} });
-  expect(res.status).toBe(400);
-  expect(await res.json()).toEqual({ error: "sign-in failed" });
+  expect(res.status).toBe(302);
+  expect(res.headers.get("location")).toBe("/teams?error=signin");
   expect(res.headers.get("set-cookie") ?? "").not.toContain("tu_session=");
   expect(github.calls).toEqual([]);
   expect(db.prepare("select count(*) as n from sessions").get()).toEqual({ n: 0 });
@@ -80,11 +78,11 @@ test.each([
   ["has no dot", (s: string) => `tu_oauth=${s}`],
   ["has an empty state", () => "tu_oauth=.v"],
   ["has an empty verifier", (s: string) => `tu_oauth=${s}.`],
-  ["has an extra part", (s: string) => `tu_oauth=${s}.v.w`],
+  ["has an extra part", (s: string) => `tu_oauth=${s}.v.teams.w`],
 ])("a callback whose oauth cookie %s opens no session", async (_name, cookie) => {
   const s = "a".repeat(64);
   const res = await app.request(`/auth/github/callback?code=code-ann&state=${s}`, { headers: { Cookie: cookie(s) } });
-  expect(res.status).toBe(400);
+  expect(res.status).toBe(302);
   expect(github.calls).toEqual([]);
   expect(sessionCount()).toEqual({ n: 0 });
 });
@@ -96,7 +94,7 @@ test.each([
 ])("a callback with %s opens no session", async (_name, query) => {
   const { state, oauth } = await started();
   const res = await app.request(`/auth/github/callback?${query(state)}`, { headers: { Cookie: oauth } });
-  expect(res.status).toBe(400);
+  expect(res.status).toBe(302);
   expect(github.calls).toEqual([]);
   expect(sessionCount()).toEqual({ n: 0 });
 });
@@ -107,7 +105,7 @@ test("a state cannot be used twice", async () => {
   // The first answer expired tu_oauth, so the browser sends the second callback without it.
   expect(clearsOauth(first)).toBe(true);
   const second = await app.request(url);
-  expect(second.status).toBe(400);
+  expect(second.status).toBe(302);
   expect(cookieOf(second, "tu_session")).toBe("");
   expect(sessionCount()).toEqual({ n: 1 });
 });
@@ -116,24 +114,24 @@ test("a callback replayed with the same cookie and code opens no second session"
   expect((await app.request(url, { headers: { Cookie: oauth } })).status).toBe(302);
   // The server keeps no list of used states; a replay from the same browser is refused by GitHub's single-use code.
   const replay = await app.request(url, { headers: { Cookie: oauth } });
-  expect(replay.status).toBe(502);
-  expect(await replay.json()).toEqual({ error: "sign-in failed" });
+  expect(replay.status).toBe(302);
+  expect(replay.headers.get("location")).toBe("/teams?error=signin");
   expect(cookieOf(replay, "tu_session")).toBe("");
   expect(sessionCount()).toEqual({ n: 1 });
 });
 test("a callback with a state of another length opens no session", async () => {
   const { oauth } = await started();
   const res = await app.request("/auth/github/callback?code=code-ann&state=abc", { headers: { Cookie: oauth } });
-  expect(res.status).toBe(400);
-  expect(await res.json()).toEqual({ error: "sign-in failed" });
+  expect(res.status).toBe(302);
+  expect(res.headers.get("location")).toBe("/teams?error=signin");
   expect(github.calls).toEqual([]);
   expect(sessionCount()).toEqual({ n: 0 });
 });
 test("when GitHub gives no user, sign-in fails and no session is opened", async () => {
   const { oauth, url } = await started("unknown");
   const res = await app.request(url, { headers: { Cookie: oauth } });
-  expect(res.status).toBe(502);
-  expect(await res.json()).toEqual({ error: "sign-in failed" });
+  expect(res.status).toBe(302);
+  expect(res.headers.get("location")).toBe("/teams?error=signin");
   expect(cookieOf(res, "tu_session")).toBe("");
   expect(sessionCount()).toEqual({ n: 0 });
 });
@@ -141,6 +139,6 @@ test("every callback answer expires the oauth cookie", async () => {
   const refused = await app.request("/auth/github/callback?code=code-ann", { headers: { Cookie: `tu_oauth=${"a".repeat(64)}.v` } });
   const { oauth, url } = await started("unknown");
   const failed = await app.request(url, { headers: { Cookie: oauth } });
-  expect([refused.status, failed.status]).toEqual([400, 502]);
+  expect([refused.status, failed.status]).toEqual([302, 302]);
   expect([clearsOauth(refused), clearsOauth(failed)]).toEqual([true, true]);
 });

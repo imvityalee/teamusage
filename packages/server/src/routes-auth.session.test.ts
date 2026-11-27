@@ -58,6 +58,7 @@ test("me lists the teams a signed-in user has a role in", async () => {
   const res = await me(await signIn(app, "code-ann"));
   expect(await res.json()).toEqual({
     kind: "user",
+    githubId: 1,
     login: "ann",
     teams: [{ id: team.publicId, name: "Acme", role: "owner", dashboardAccess: "admins" }],
   });
@@ -84,7 +85,7 @@ test("every answer of the sign-in routes is no-store", async () => {
     await me(""),
     await me(await signIn(app, "code-ann")),
   ];
-  expect(answers.map((r) => r.status)).toEqual([302, 502, 302, 400, 403, 204, 401, 200]);
+  expect(answers.map((r) => r.status)).toEqual([302, 302, 302, 302, 403, 204, 401, 200]);
   for (const r of answers) expect(r.headers.get("cache-control")).toBe("no-store");
 });
 test("a self-hosted server has none of these routes", async () => {

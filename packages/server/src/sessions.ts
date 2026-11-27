@@ -116,6 +116,17 @@ export function endSession(db: Db, id: string): void {
   db.prepare("delete from sessions where id = ?").run(sha256(id));
 }
 
+/**
+ * Ends the session `replaced` names, when it names one, and opens the session `open` makes, in one transaction;
+ * returns the new session's id. A browser that signs in again keeps no earlier session alive.
+ */
+export function replaceSession(db: Db, replaced: string | undefined, open: () => string): string {
+  return db.transaction(() => {
+    if (replaced) endSession(db, replaced);
+    return open();
+  })();
+}
+
 /** Ends every session of team `teamId`, opened with its code or by its members; user sessions are left alone. */
 export function endTeamSessions(db: Db, teamId: number): void {
   db.prepare("delete from sessions where kind in ('team', 'member') and team_id = ?").run(teamId);

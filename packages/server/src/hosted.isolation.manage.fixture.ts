@@ -66,6 +66,11 @@ type RowRequest = {
   oneUse?: boolean;
   /** The team whose rows a successful cell changes; `B` unless given. */
   actsOn?: (caller: CallerName) => TeamKey;
+  /**
+   * True when the row's request carries the caller's other headers but no `Cookie`: a successful opening of a link ends
+   * the session the cookie named, and the table's later cells still need each caller's session.
+   */
+  withoutCookie?: boolean;
 };
 
 export type Route = RowRequest & {
@@ -106,7 +111,7 @@ export const ROUTES: Route[] = [
   row("POST /api/dashboard-link",                 [401, 200, 200, 401, 401, 401, 401, 401, 401, 401, 401, 401],
     { actsOn: (caller) => (caller === "machineA" ? "A" : "B") }),
   row("POST /api/dashboard-link/open",            [204, 204, 204, 204, 204, 204, 204, 204, 204, 204, 204, 403],
-    { body: (s) => ({ token: s.link }), prepare: newLink }),
+    { body: (s) => ({ token: s.link }), prepare: newLink, withoutCookie: true }),
   row("GET /api/teams/:team",                     [401, 401, 401, 401, 401, 404, 404, 404, 200, 200, 200, 200], { path: team() }),
   row("GET /api/teams/:team/code",                [401, 401, 401, 401, 401, 404, 404, 404, 403, 200, 200, 200], { path: team("/code") }),
   row("GET /api/teams/:team/members",             [401, 401, 401, 401, 401, 404, 404, 404, 403, 200, 200, 200], { path: team("/members") }),
@@ -161,10 +166,12 @@ function errorOf(route: Route, caller: CallerName, status: number): string {
 /** The cell's request as `caller`, on team `publicId` (`B` unless given). */
 export async function send(s: Scene, route: Route, caller: CallerName, publicId = s.w.B.publicId): Promise<Response> {
   const body = route.body?.(s);
+  const credential = credentialOf(s.w, caller);
+  if (route.withoutCookie) delete credential.Cookie;
   return s.w.app.request(route.path(publicId, s), {
     method: route.method,
     body: body === undefined ? undefined : JSON.stringify(body),
-    headers: { "Content-Type": "application/json", Origin: PUBLIC, ...credentialOf(s.w, caller) },
+    headers: { "Content-Type": "application/json", Origin: PUBLIC, ...credential },
   });
 }
 

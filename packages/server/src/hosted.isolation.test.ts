@@ -209,9 +209,9 @@ describe("GET /api/me", () => {
     machineA: null,
     machineB: null,
     memberA: (t) => ({ kind: "member", team: { id: t.A.publicId, name: t.A.name }, memberId: t.A.memberId }),
-    ann: (t) => ({ kind: "user", login: "ann", teams: [{ id: t.A.publicId, name: t.A.name, role: "owner", dashboardAccess: "members" }] }),
-    bob: (t) => ({ kind: "user", login: "bob", teams: [{ id: t.B.publicId, name: t.B.name, role: "owner", dashboardAccess: "admins" }] }),
-    eve: () => ({ kind: "user", login: "eve", teams: [] }),
+    ann: (t) => ({ kind: "user", githubId: 1, login: "ann", teams: [{ id: t.A.publicId, name: t.A.name, role: "owner", dashboardAccess: "members" }] }),
+    bob: (t) => ({ kind: "user", githubId: 2, login: "bob", teams: [{ id: t.B.publicId, name: t.B.name, role: "owner", dashboardAccess: "admins" }] }),
+    eve: () => ({ kind: "user", githubId: 3, login: "eve", teams: [] }),
   };
 
   test.each(CALLERS)("as %s", async (caller) => {
