@@ -70,6 +70,18 @@ test("a row at the edge is kept today and dropped tomorrow, and the count follow
   expect(datesOf(B)).toEqual([EDGE, TODAY]);
   expect(usageCounts(db, B, tomorrow).rows).toBe(2);
 });
+test("the second team's upload drops its own expired rows and takes them off its own count, whatever its member's id", () => {
+  const whoA = join(A);
+  keepsAll(A).registerMachine(reg("b".repeat(32), { email: "second@example.com" }));
+  const whoB = join(B);
+  expect([A, B, whoB.memberId]).toEqual([1, 2, 3]); // B's member has an id that is no team's id
+  for (const [teamId, who] of [[A, whoA], [B, whoB]] as const) keepsAll(teamId).upsertUsage(who, [rec({ date: PAST }), rec({ date: TODAY })]);
+  expect(team(B).upsertUsage(whoB, [rec({ date: TODAY, input: 11, total: 11 })])).toEqual({ stored: 1, kept: 0 });
+  expect(datesOf(B)).toEqual([TODAY]);
+  expect(usageCounts(db, B, TODAY).rows).toBe(1);
+  expect(datesOf(A)).toEqual([PAST, TODAY]);
+  expect(usageCounts(db, A, TODAY).rows).toBe(2);
+});
 
 test("at most `most` rows are dropped at a time, oldest dates first, and the rest at the following drops", () => {
   const who = join(A);

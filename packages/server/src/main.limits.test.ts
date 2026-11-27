@@ -7,7 +7,7 @@ import type { DiskSpace } from "./storage-guard.js";
 import { forTeam } from "./team-data.js";
 
 const full = () => ({ free: 10e9, total: 100e9 });
-/** The clock of every server here: rows dated in 2026 are inside the 730 days a hosted team keeps. */
+/** The clock of the servers here unless a test gives another: rows dated in 2026 are inside the 730 days a hosted team keeps. */
 const NOW = Date.parse("2026-11-26T12:00:00.000Z");
 const clock = () => NOW;
 
@@ -59,6 +59,34 @@ test("a hosted server lets one member register ten machines", async () => {
     for (let n = 2; n <= 10; n++) expect((await register(s, machine(n))).status).toBe(200);
     const res = await register(s, machine(11));
     expect([res.status, await res.json()]).toEqual([409, { error: "this member has reached the limit of 10 machines", limit: "machines" }]);
+  } finally {
+    s.close();
+  }
+});
+
+test("a hosted server lets a team's machines send 60,000 upload records a minute", async () => {
+  const { s, code, token } = await hostedMachine({ measureDisk: roomy });
+  try {
+    const second = await tokenOf(await register(s, goodReg({ inviteCode: code, machineId: MID2 })));
+    const third = await tokenOf(await register(s, goodReg({ inviteCode: code, machineId: "c".repeat(32) })));
+    const thousand = Array.from({ length: 1000 }, (_, i) => record({ model: `m${i}` }));
+    for (let i = 0; i < 30; i++) for (const machine of [token, second]) expect((await upload(s, machine, thousand)).status).toBe(200);
+    const res = await upload(s, third, [record()]);
+    expect([res.status, await res.json()]).toEqual([429, { error: "this team is sending too much at once; try again in a minute", limit: "team-uploads" }]);
+  } finally {
+    s.close();
+  }
+});
+
+test("a hosted server lets a team's statistics take 6,000 ms a minute", async () => {
+  const { s, token } = await hostedMachine({ measureDisk: roomy });
+  try {
+    let reading = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => (reading += 1000));
+    const stats = () => s.app.request("/api/stats?from=2026-11-01&to=2026-11-10&member=me", { headers: { Authorization: `Bearer ${token}` } }, conn);
+    for (let i = 0; i < 6; i++) expect((await stats()).status).toBe(200);
+    const res = await stats();
+    expect([res.status, await res.json()]).toMatchObject([429, { limit: "team-stats" }]);
   } finally {
     s.close();
   }
@@ -138,6 +166,17 @@ test("a self-hosted server drops nothing, however old", async () => {
     expect(await (await upload(s, token, [record({ date: "2024-01-02" })])).json()).toEqual({ stored: 1, kept: 0 });
     expect(await (await upload(s, token, [record({ date: "2026-11-25" })])).json()).toEqual({ stored: 1, kept: 0 });
     expect(s.db.prepare("select date from usage order by date").pluck().all()).toEqual(["2024-01-02", "2026-11-25"]);
+  } finally {
+    s.close();
+  }
+});
+
+test("a self-hosted server reads the clock it is given", async () => {
+  const s = buildServer(serverConfig(), { now: () => Date.parse("2025-01-01T12:00:00.000Z") });
+  try {
+    const token = await tokenOf(await register(s, goodReg({ inviteCode: s.inviteCode!() })));
+    // 2026-11-25 is beyond the "tomorrow" of a server whose clock is on 2025-01-01.
+    expect((await upload(s, token, [record({ date: "2026-11-25" })])).status).toBe(400);
   } finally {
     s.close();
   }
