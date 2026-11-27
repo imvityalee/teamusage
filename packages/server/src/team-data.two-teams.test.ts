@@ -98,4 +98,44 @@ describe("two teams", () => {
       created_at: "2026-11-24T12:00:00.000Z",
     });
   });
+  test("300 members registered in a mixed order each come back with their own three machines in creation order", () => {
+    let tick = 0;
+    const clock = () => new Date(Date.parse("2026-11-02T09:00:00.000Z") + tick++ * 1000).toISOString();
+    const timed = forTeam(db, B, { clock });
+    // The machine ids ascend against creation order, so a list ordered by id alone differs from one ordered by creation.
+    const machineId = (i: number, round: number) => (i * 3 + (2 - round)).toString(16).padStart(32, "0");
+    const emailOf = (i: number) => `member${i}@x.com`;
+    // Team A holds machines of the same ids, belonging to other members, registered among B's.
+    const other = forTeam(db, A);
+    const memberIds = new Map<string, number>();
+    for (let round = 0; round < 3; round++) {
+      for (let i = 0; i < 300; i++) {
+        const email = emailOf((i * 7) % 300); // a mixed order of the members within each round
+        const j = (i * 7) % 300;
+        memberIds.set(email, timed.registerMachine(reg(machineId(j, round), { name: `Member ${j}`, email, machineLabel: `box-${j}-${round}` })).memberId);
+        other.registerMachine(reg(machineId(j, round), { name: "Other", email: `other${j}@x.com`, machineLabel: `other-${j}-${round}` }));
+      }
+    }
+    const listed = timed.listMembers();
+    expect(listed).toHaveLength(300);
+    expect(listed.map((m) => m.id)).toEqual([...listed.map((m) => m.id)].sort((x, y) => x - y));
+    for (const m of listed) {
+      const j = Number(m.email.slice("member".length, -"@x.com".length));
+      expect(m.id).toBe(memberIds.get(m.email));
+      expect(m.name).toBe(`Member ${j}`);
+      expect(m.machines.map((x) => x.label)).toEqual([0, 1, 2].map((round) => `box-${j}-${round}`));
+      expect(m.machines.map((x) => x.id)).toEqual([0, 1, 2].map((round) => machineId(j, round)));
+    }
+    expect(a.listMembers().every((m) => m.machines.every((x) => x.label.startsWith("other-")))).toBe(true);
+  });
+  test("a member lists the time their first machine registered, which a later registration keeps", () => {
+    let at = "2026-11-02T09:00:00.000Z";
+    const timed = forTeam(db, B, { clock: () => at });
+    timed.registerMachine(reg(MID));
+    at = "2026-11-03T09:00:00.000Z";
+    timed.registerMachine(reg(MID2));
+    timed.removeMachine(MID);
+    timed.removeMachine(MID2);
+    expect(timed.listMembers()).toEqual([expect.objectContaining({ joinedAt: "2026-11-02T09:00:00.000Z", machines: [] })]);
+  });
 });

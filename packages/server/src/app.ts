@@ -10,6 +10,7 @@ import { authRoutes } from "./routes-auth.js";
 import { dashboardRoutes } from "./routes-dashboard.js";
 import { machineRoutes } from "./routes-machines.js";
 import { memberSignInRoutes } from "./routes-member-sign-in.js";
+import { teamMembersRoutes } from "./routes-team-members.js";
 import { teamSettingsRoutes } from "./routes-team-settings.js";
 import { teamRoutes } from "./routes-teams.js";
 import { findSession } from "./sessions.js";
@@ -86,6 +87,7 @@ export function createApp(db: Db, opts: AppOptions): Hono {
   authRoutes(app, ctx);
   teamRoutes(app, ctx);
   teamSettingsRoutes(app, ctx);
+  teamMembersRoutes(app, ctx);
 
   return app;
 }

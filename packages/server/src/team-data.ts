@@ -27,6 +27,8 @@ export interface TeamData {
     id: number;
     name: string;
     email: string;
+    /** When the member's first machine registered, an ISO time. */
+    joinedAt: string;
     machines: { id: string; label: string; lastSyncAt: string | null }[];
   }[];
   removeMember(email: string): boolean;
@@ -138,21 +140,24 @@ function refuseNewMachine(db: Db, teamId: number, memberId: number, limits: Team
   });
 }
 
-function listMembers(db: Db, teamId: number): ReturnType<TeamData["listMembers"]> {
-  const members = db.prepare("select id, name, email from members where team_id = ? order by id").all(teamId) as {
+type Listed = ReturnType<TeamData["listMembers"]>[number];
+type ListedMachine = Listed["machines"][number];
+
+/** The team's members by id, each with its machines by creation, then id; the machines are read once and grouped by member. */
+function listMembers(db: Db, teamId: number): Listed[] {
+  const rows = db.prepare("select id, name, email, created_at from members where team_id = ? order by id").all(teamId) as {
     id: number;
     name: string;
     email: string;
+    created_at: string;
   }[];
+  const members = rows.map((m): Listed => ({ id: m.id, name: m.name, email: m.email, joinedAt: m.created_at, machines: [] }));
+  const byId = new Map(members.map((m) => [m.id, m.machines]));
   const machines = db
     .prepare("select id, member_id, label, last_sync_at from machines where team_id = ? order by created_at, id")
     .all(teamId) as { id: string; member_id: number; label: string; last_sync_at: string | null }[];
-  return members.map((m) => ({
-    ...m,
-    machines: machines
-      .filter((x) => x.member_id === m.id)
-      .map((x) => ({ id: x.id, label: x.label, lastSyncAt: x.last_sync_at })),
-  }));
+  for (const x of machines) byId.get(x.member_id)?.push({ id: x.id, label: x.label, lastSyncAt: x.last_sync_at } satisfies ListedMachine);
+  return members;
 }
 
 function removeMember(db: Db, teamId: number, email: string): boolean {
