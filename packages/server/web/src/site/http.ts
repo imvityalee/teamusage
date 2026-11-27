@@ -3,24 +3,32 @@
 export type ApiResult<T> =
   | { kind: "ok"; value: T } // 2xx; `value` is undefined for 204
   | { kind: "unauthorized" } // 401
-  | { kind: "refused"; status: number; error: string; retryAfterSec?: number } // any other 4xx, 503 and 507; `error` is the server's text
-  | { kind: "failed" } // any other status, or a body that is not JSON
+  // any other 4xx, 503 and 507; `error` is the server's own text (at most MAX_ERROR_CHARS), or "" when the body is not
+  // a JSON object with a string `error` (a proxy's HTML page, a self-hosted 404 in plain text)
+  | { kind: "refused"; status: number; error: string; retryAfterSec?: number }
+  | { kind: "failed" } // any other status, or a 2xx whose body is not JSON
   | { kind: "network" };
+
+/** The longest refusal text a page may draw inside its own sentence; a longer one is cut and ends in "…". */
+export const MAX_ERROR_CHARS = 300;
 
 /** The statuses whose answer is the server's own refusal, to be shown in the page's words. */
 const isRefusal = (status: number): boolean => (status >= 400 && status < 500) || status === 503 || status === 507;
 
-/** The server's text of a refusal: `error` of a JSON body, otherwise the body as it is (a self-hosted 404 is plain text). */
+/** `text` cut to MAX_ERROR_CHARS characters, never through the middle of one. */
+function capped(text: string): string {
+  const chars = [...text];
+  return chars.length <= MAX_ERROR_CHARS ? text : `${chars.slice(0, MAX_ERROR_CHARS - 1).join("")}…`;
+}
+
+/** The server's text of a refusal: the string `error` of a JSON object; "" for any other body. */
 async function refusalText(res: Response): Promise<string> {
-  let text = "";
   try {
-    text = await res.text();
-    const body = JSON.parse(text) as { error?: unknown };
-    if (typeof body.error === "string") return body.error;
+    const error = ((await res.json()) as { error?: unknown } | null)?.error;
+    return typeof error === "string" ? capped(error) : "";
   } catch {
-    // Not JSON, or the body could not be read: the text read so far is the answer.
+    return ""; // not JSON, or the body could not be read
   }
-  return text.trim();
 }
 
 /** Seconds of a `Retry-After` that counts them; undefined otherwise. */

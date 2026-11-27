@@ -1,5 +1,7 @@
 import { isDisplayName, isEmail, MAX_DISPLAY_NAME_CHARS, MAX_EMAIL_CHARS, MAX_TEAM_NAME_CHARS } from "@teamusage/shared";
 import { describe, expect, test } from "vitest";
+// The server's own rule for a team name; a test only, so nothing of the server reaches a page's build.
+import { isTeamName } from "../../../src/hosted-teams.js";
 import { worstCase } from "./worst-case.fixture.js";
 
 /** GitHub's own rule for a login: letters, digits and single inner hyphens, at most 39 characters. */
@@ -17,9 +19,8 @@ describe("every worst-case value is one the server accepts", () => {
     expect(isEmail(email)).toBe(true);
   });
 
-  test("the team name is a display name within the team name's limit", () => {
-    expect(isDisplayName(worstCase.teamName)).toBe(true);
-    expect(worstCase.teamName.trim().length).toBeLessThanOrEqual(MAX_TEAM_NAME_CHARS);
+  test("the team name is one the server accepts for a team", () => {
+    expect(isTeamName(worstCase.teamName)).toBe(true);
   });
 
   test("the machine label is one /api/register accepts (a display name)", () => {

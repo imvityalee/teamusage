@@ -108,7 +108,7 @@ describe("opening a link", () => {
     expect(go).toHaveBeenCalledWith("/dashboard");
   });
 
-  test("a press while the link is being opened sends nothing more", async () => {
+  test("a pressed view stays, busy, until the answer, and a second press sends nothing", async () => {
     let answer: (r: Answer) => void = () => {};
     const spy = asRequest(vi.fn(() => new Promise<Answer>((r) => (answer = r))));
     const go = vi.fn();
@@ -116,20 +116,28 @@ describe("opening a link", () => {
     await settled(o);
     const first = o.open();
     const second = o.open();
-    expect(o.view).toBe("opening");
+    expect(o.view).toBe("confirm");
+    expect(o.busy).toBe(true);
     answer(ok);
     await Promise.all([first, second]);
     expect(spy).toHaveBeenCalledTimes(1);
     expect(go).toHaveBeenCalledTimes(1);
   });
 
-  test("each change of view is told to the listeners", async () => {
+  test("a refused press ends the busy state on the view the answer leads to", async () => {
     const o = opener({ token: TOKEN, me: async () => ({ kind: "me", me: BOB }), request: requests(refused(403, "x")), go: vi.fn() });
     const seen: string[] = [];
-    o.onChange(() => seen.push(o.view));
+    o.onChange(() => seen.push(o.busy ? `${o.view} (busy)` : o.view));
     await settled(o);
     await o.open();
-    expect(seen).toEqual(["confirm", "opening", "expired"]);
+    expect(seen).toEqual(["confirm", "confirm (busy)", "expired"]);
+  });
+
+  test("the automatic opening is the opening view, never busy", async () => {
+    const o = opener({ token: TOKEN, me: () => new Promise(() => {}), request: requests(), go: vi.fn() });
+    await settled(o);
+    expect(o.view).toBe("opening");
+    expect(o.busy).toBe(false);
   });
 });
 
@@ -143,7 +151,10 @@ describe("a session that could not be read", () => {
     expect(o.view).toBe("failed");
     expect(spy).not.toHaveBeenCalled();
 
-    await o.open();
+    const pressed = o.open();
+    expect(o.view).toBe("failed");
+    expect(o.busy).toBe(true);
+    await pressed;
     await settled(o);
     expect(me).toHaveBeenCalledTimes(2);
     expect(o.view).toBe("confirm");

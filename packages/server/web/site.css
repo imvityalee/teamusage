@@ -11,7 +11,7 @@ body.site { font-size: 16px; line-height: 1.5; }
 /* The narrow centred column */
 .page { max-width: 520px; margin: 0 auto; padding: 56px 24px 64px; min-width: 0; }
 .page h1 { margin: 0; font-size: 30px; line-height: 1.15; letter-spacing: -0.02em; font-weight: 700; overflow-wrap: anywhere; }
-.page .chip + h1 { margin-top: 16px; }
+.page .badge + h1 { margin-top: 16px; }
 .page .card { margin-top: 24px; }
 .lede { margin: 10px 0 0; color: var(--muted); }
 .lede + .actions { margin-top: 24px; }
@@ -32,11 +32,13 @@ body.site { font-size: 16px; line-height: 1.5; }
 .btn:active:not(:disabled), .site-head .seg button:active { transform: scale(0.97); }
 .site-head .seg button { transition: transform 160ms var(--ease-out); }
 @media (hover: hover) and (pointer: fine) { .btn.quiet:hover:not(:disabled) { background: var(--soft); } }
+/* Text-like controls dim while pressed. */
+.site-head .brand:active, .aside a:active { opacity: .6; }
 .actions { display: flex; flex-wrap: wrap; gap: 10px; }
 .actions .btn { flex: 1 1 200px; }
 
 /* Cards and what goes in them */
-.card { display: flex; flex-direction: column; gap: 18px; min-width: 0; padding: 22px;
+.card { display: flex; flex-direction: column; gap: 16px; min-width: 0; padding: 22px;
   background: var(--card); border: 1px solid var(--hairline); border-radius: 16px; }
 .card h2 { margin: 0; font-size: 14px; font-weight: 600; }
 .card > p { margin: 0; }
@@ -58,14 +60,14 @@ body.site { font-size: 16px; line-height: 1.5; }
   background: var(--card); color: var(--text); font: inherit; font-size: max(16px, 1em); }
 .field textarea { padding: 12px 14px; }
 
-/* Notices and chips */
+/* Notices and badges */
 .notice { display: flex; gap: 12px; align-items: flex-start; min-width: 0; padding: 14px; border-radius: 12px;
   background: var(--soft); color: var(--text); overflow-wrap: anywhere; }
 .notice > * { margin: 0; min-width: 0; }
-.chip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 6px 12px; border-radius: 999px;
+.badge { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 6px 12px; border-radius: 999px;
   background: var(--soft); color: var(--muted); font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
-.notice.warn, .chip.warn { background: var(--warn-bg); color: var(--warn-text); }
-.notice.good, .chip.good { background: var(--good-bg); color: var(--good-text); }
+.notice.warn, .badge.warn { background: var(--warn-bg); color: var(--warn-text); }
+.notice.good, .badge.good { background: var(--good-bg); color: var(--good-text); }
 
 @media (max-width: 520px) {
   .site-head { padding: 12px 16px; }

@@ -22,6 +22,9 @@ const ui = {
   initials: byId("initials"),
   githubLine: byId("gh-line"),
   codeLine: byId("code-line"),
+  openMember: byId("open-member") as HTMLButtonElement,
+  retry: byId("retry") as HTMLButtonElement,
+  stay: byId("stay") as HTMLButtonElement,
 };
 
 let lang: Lang = languageSwitch(document, (next) => {
@@ -65,6 +68,13 @@ function paint(): void {
   const login = state.login ?? "";
   ui.login.textContent = `@${login}`;
   ui.initials.textContent = initials(login.replace(/[-_]+/g, " "));
+  paintBusy();
+}
+
+/** While a press is answered its button stays where it was, disabled and busy, and "Stay" waits too. */
+function paintBusy(): void {
+  for (const b of [ui.openMember, ui.retry, ui.stay]) b.disabled = state.busy;
+  for (const b of [ui.openMember, ui.retry]) b.setAttribute("aria-busy", String(state.busy));
 }
 
 function onViewChange(): void {
@@ -73,8 +83,8 @@ function onViewChange(): void {
 }
 
 state.onChange(onViewChange);
-byId("open-member").addEventListener("click", () => void state.open());
-byId("retry").addEventListener("click", () => void state.open());
+ui.openMember.addEventListener("click", () => void state.open());
+ui.retry.addEventListener("click", () => void state.open());
 // The link is left to expire: nothing is sent.
-byId("stay").addEventListener("click", () => go("/teams"));
+ui.stay.addEventListener("click", () => go("/teams"));
 onViewChange();

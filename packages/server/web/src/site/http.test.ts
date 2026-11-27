@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { request } from "./http.js";
+import { MAX_ERROR_CHARS, request } from "./http.js";
 
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", ...headers } });
@@ -47,9 +47,35 @@ describe("request", () => {
     expect(await request("POST", "/api/login", {})).toEqual({ kind: "refused", status: 429, error: "too many attempts", retryAfterSec: 7 });
   });
 
-  test("a 404 in plain text, as a self-hosted server answers an unknown path, is refused with that text", async () => {
+  test("a 404 in plain text, as a self-hosted server answers an unknown path, is refused with no text", async () => {
     answer(new Response("not found", { status: 404, headers: { "Content-Type": "text/plain" } }));
-    expect(await request("GET", "/api/me")).toEqual({ kind: "refused", status: 404, error: "not found" });
+    expect(await request("GET", "/api/me")).toEqual({ kind: "refused", status: 404, error: "" });
+  });
+
+  test("a proxy's HTML page is refused with no text, so no markup reaches a page", async () => {
+    answer(new Response("<html><body><h1>413 Request Entity Too Large</h1></body></html>", { status: 413, headers: { "Content-Type": "text/html" } }));
+    expect(await request("POST", "/api/teams", {})).toEqual({ kind: "refused", status: 413, error: "" });
+  });
+
+  test.each([["an array", ["boom"]], ["a number", 7], ["null", null], ["an object without error", { message: "x" }], ["a non-string error", { error: 7 }]])(
+    "a refusal whose JSON is %s has no text",
+    async (_, body) => {
+      answer(json(body, 400));
+      expect(await request("GET", "/api/me")).toEqual({ kind: "refused", status: 400, error: "" });
+    },
+  );
+
+  test(`a refusal's text of ${MAX_ERROR_CHARS} characters is kept whole; a longer one is cut to that length, ending in …`, async () => {
+    expect(MAX_ERROR_CHARS).toBe(300);
+    const whole = "é".repeat(MAX_ERROR_CHARS);
+    answer(json({ error: whole }, 400));
+    expect(await request("GET", "/api/me")).toMatchObject({ error: whole });
+
+    answer(json({ error: `${"🦊".repeat(MAX_ERROR_CHARS)}tail` }, 400));
+    const cut = await request("GET", "/api/me");
+    const error = cut.kind === "refused" ? cut.error : "";
+    expect([...error]).toHaveLength(MAX_ERROR_CHARS);
+    expect(error).toBe(`${"🦊".repeat(MAX_ERROR_CHARS - 1)}…`);
   });
 
   test.each([503, 507])("a %i is refused", async (status) => {

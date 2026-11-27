@@ -47,7 +47,8 @@ input { font: inherit; color: var(--text); background: var(--soft); border: 0; b
 input::placeholder { color: var(--muted); opacity: 1; }
 
 /* The phone baseline */
-/* No grey flash on a tap (each control has its own :active state) and no font inflation in landscape. */
+/* No grey flash on a tap, so each page gives every control its own :active state (style.css, site.css; guarded by
+   src/press-states.test.ts), and no font inflation in landscape. */
 html { -webkit-tap-highlight-color: transparent; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 /* With viewport-fit=cover the page paints edge to edge; its content stays clear of the notch and the home bar. */
 body { padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px); }

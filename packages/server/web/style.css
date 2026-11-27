@@ -170,6 +170,13 @@ td.accts-cell { white-space: normal; min-width: 8em; max-width: 16em; }
 .login .msg { margin: 10px 0 0; }
 .note { color: var(--muted); font-size: 12px; margin: 0; }
 
+/* Press states: with the tap highlight off (base.css), each control answers a press itself. Buttons scale; text-like
+   controls and rows dim. */
+.seg button, .pill, .chip, .status button, .login button { transition: transform 160ms var(--ease-out); }
+.seg button:active, .pill:active, .chip:active, .status button:active, .login button:active:not(:disabled) { transform: scale(0.97); }
+a:active, .link:active { opacity: .6; }
+.pop-row:not(:has(input:disabled)):active { opacity: .6; }
+
 @media (max-width: 760px) { .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 520px) {
   .fb-range { margin-left: 0; flex-basis: 100%; }
@@ -177,4 +184,9 @@ td.accts-cell { white-space: normal; min-width: 8em; max-width: 16em; }
   .tile .v { font-size: 20px; }
   .panel { padding: 14px; }
 }
-@media (prefers-reduced-motion: reduce) { #stats { transition: none; } }
+@media (prefers-reduced-motion: reduce) {
+  #stats { transition: none; }
+  /* A press shows at once, without scaling. */
+  .seg button, .pill, .chip, .status button, .login button { transition: none; }
+  .seg button:active, .pill:active, .chip:active, .status button:active, .login button:active:not(:disabled) { transform: none; opacity: .8; }
+}

@@ -13,8 +13,18 @@ export function tokenOf(hash: string): string | null {
   return TOKEN.exec(hash)?.[1] ?? null;
 }
 
-/** `noAccounts`: the server has no GitHub sign-in (self-hosted), so the page offers the invite code instead. */
-export type Opener = { view: OpenView; login?: string; noAccounts: boolean; open(): Promise<void>; onChange(listener: () => void): void };
+/**
+ * `noAccounts`: the server has no GitHub sign-in (self-hosted), so the page offers the invite code instead.
+ * `busy`: a press of "Open as a member" or "Try again" is being answered; the view stays as it was meanwhile.
+ */
+export type Opener = {
+  view: OpenView;
+  login?: string;
+  noAccounts: boolean;
+  busy: boolean;
+  open(): Promise<void>;
+  onChange(listener: () => void): void;
+};
 
 type Deps = { token: string | null; me: typeof me; request: typeof request; go(path: "/" | "/dashboard" | "/teams"): void };
 
@@ -37,20 +47,28 @@ export function opener(deps: Deps): Opener {
   /** False until `me()` has answered who is signed in. */
   let sessionRead = false;
 
+  // With a token the page starts in "opening": the automatic opening, whose text is drawn after a delay (main.ts).
   const state: Opener = {
     view: token === null ? "how" : "opening",
     noAccounts: false,
+    busy: false,
     open,
     onChange: (listener) => void listeners.push(listener),
   };
 
-  function show(view: OpenView): void {
-    state.view = view;
+  function tell(): void {
     for (const listener of listeners) listener();
   }
 
+  /** Shows `view`; any press has been answered. */
+  function show(view: OpenView): void {
+    state.view = view;
+    state.busy = false;
+    tell();
+  }
+
+  /** Posts the token; on success the page navigates away, so a pressed button stays busy. */
   async function post(link: string): Promise<void> {
-    show("opening");
     const view = viewAfter(await deps.request("POST", OPEN_PATH, { token: link }));
     if (view === null) deps.go(state.noAccounts ? "/" : "/dashboard");
     else show(view);
@@ -72,12 +90,10 @@ export function opener(deps: Deps): Opener {
 
   /** "Open as a member" and "Try again": opens the link, or first reads the session when it could not be read. */
   async function open(): Promise<void> {
-    if (token === null || state.view === "opening") return;
-    if (!sessionRead) {
-      show("opening");
-      return start();
-    }
-    return post(token);
+    if (token === null || state.busy || state.view === "opening") return;
+    state.busy = true;
+    tell();
+    return sessionRead ? post(token) : start();
   }
 
   void start();

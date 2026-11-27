@@ -184,6 +184,34 @@ describe("a GitHub sign-in", () => {
     expect(replace).toHaveBeenCalledWith("/dashboard");
   });
 
+  test("a press keeps the question on screen, its buttons disabled and busy, and a double press sends one request", async () => {
+    await boot(`#${TOKEN}`, user("bob"), "pending");
+    const button = $<HTMLButtonElement>("#open-member");
+    press("#open-member");
+    press("#open-member");
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(calls.map((c) => c.url)).toEqual(["/api/me", "/api/dashboard-link/open"]);
+    expect(shownViews()).toEqual(["confirm"]);
+    expect(button.disabled).toBe(true);
+    expect(button.getAttribute("aria-busy")).toBe("true");
+    expect($<HTMLButtonElement>("#stay").disabled).toBe(true);
+    expect($('[data-view="opening"]').hidden).toBe(true);
+  });
+
+  test("a refused press gives the buttons back", async () => {
+    await boot(`#${TOKEN}`, user("bob"), new TypeError("Failed to fetch"), "pending");
+    press("#open-member");
+    await flush();
+    expect(shownViews()).toEqual(["failed"]);
+    const retry = $<HTMLButtonElement>("#retry");
+    expect(retry.disabled).toBe(false);
+    expect(retry.getAttribute("aria-busy")).toBe("false");
+    press("#retry");
+    await flush();
+    expect(shownViews()).toEqual(["failed"]);
+    expect(retry.disabled).toBe(true);
+  });
+
   test("Stay signed in with GitHub goes to the teams page and sends nothing", async () => {
     await boot(`#${TOKEN}`, user("bob"));
     press("#stay");
