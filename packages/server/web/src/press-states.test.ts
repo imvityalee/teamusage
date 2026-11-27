@@ -3,8 +3,8 @@ import { describe, expect, test } from "vitest";
 
 /**
  * base.css turns the tap highlight off on every page, so every control must answer a press itself (Global
- * Constraints, "On a phone" and "Motion"). The controls are listed from index.html, render.ts, filterbar.ts and the
- * new pages' HTML.
+ * Constraints, "On a phone" and "Motion"). The controls are listed from index.html, render.ts, filterbar.ts,
+ * src/dashboard/ and the new pages' HTML.
  */
 
 const css = (file: string) => readFileSync(new URL(`../${file}`, import.meta.url), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
@@ -36,6 +36,7 @@ const has = (text: string, selector: string, declaration: string) =>
 
 const PRESSED = {
   "style.css": { scale: [".seg button", ".pill", ".chip", ".status button", ".login button"], dim: ["a", ".link", ".pop-row"] },
+  "chrome.css": { scale: [".team-nav a", ".signed-out .btn"], dim: [".text-button", ".account a", ".sample a", ".signed-out .aside a"] },
   "teams.css": { scale: [], dim: [".option"] },
   "site.css": { scale: [".btn", ".site-head .seg button"], dim: [".site-head .brand", ".aside a", ".link-button"] },
 };

@@ -1,0 +1,50 @@
+/* The dashboard's header on a hosted server (team name, nav, account, the demo's chip) and the panel it shows
+   instead of the statistics (src/dashboard/). Colours come from base.css. */
+
+.head-main, .head-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; min-width: 0; }
+.head-main { flex: 1 1 auto; }
+.team-name { margin: 0; min-width: 0; font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
+.team-sep { color: var(--muted); font-weight: 400; margin-right: 14px; }
+
+/* "Dashboard | Team": a segmented control of links */
+.team-nav { display: inline-flex; flex-shrink: 0; background: var(--control); border-radius: 10px; padding: 2px; }
+.team-nav a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 14px; border-radius: 8px; color: var(--text);
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.team-nav a[aria-current="page"] { background: var(--thumb); color: var(--thumb-text); font-weight: 600; box-shadow: 0 1px 3px rgba(0, 0, 0, .14); }
+
+/* The demo's chip is a label, not a control: it is not the filter bar's button.chip. */
+.sample { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin: 0; font-size: 13px; }
+.sample-badge { padding: 4px 10px; border-radius: 999px; background: var(--control); color: var(--text); font-size: 12px; white-space: nowrap; }
+.sample a, .account a { display: inline-flex; align-items: center; min-height: 44px; }
+
+.account { display: flex; flex-wrap: wrap; align-items: center; gap: 0 12px; min-width: 0; font-size: 13px; }
+.account-text { min-width: 0; color: var(--muted); overflow-wrap: anywhere; }
+.text-button { min-height: 44px; padding: 0 2px; border: 0; border-radius: 4px; background: none; color: var(--link); font: inherit; cursor: pointer; }
+.text-button:disabled { color: var(--muted); cursor: default; }
+
+/* Signed out, or a team that is not theirs */
+.signed-out { max-width: 520px; width: 100%; margin: 24px auto; }
+.signed-out h2 { margin: 0 0 14px; font-size: 20px; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+.signed-out .actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 0 0 6px; }
+.signed-out .btn { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 18px; border-radius: 12px;
+  background: var(--link); color: var(--card); font-weight: 600; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.signed-out .aside { margin: 0; color: var(--muted); }
+/* The padding widens the tap target of a link inside a sentence without moving the lines. */
+.signed-out .aside a { padding: 12px 0; }
+
+@media (hover: hover) and (pointer: fine) {
+  .team-nav a:hover { color: var(--text); }
+  .text-button:not(:disabled):hover { color: var(--link-hover); }
+  .signed-out .btn:hover { background: var(--link-hover); color: var(--card); }
+}
+
+/* Press states (src/press-states.test.ts): the nav's links and the sign-in button scale; text-like controls dim. */
+.team-nav a, .signed-out .btn { transition: transform 160ms var(--ease-out); }
+/* Opacity 1: these scale instead of dimming like the other links of style.css. */
+.team-nav a:active, .signed-out .btn:active { transform: scale(0.97); opacity: 1; }
+.text-button:active:not(:disabled), .account a:active, .sample a:active, .signed-out .aside a:active { opacity: .6; }
+
+@media (prefers-reduced-motion: reduce) {
+  .team-nav a, .signed-out .btn { transition: none; }
+  .team-nav a:active, .signed-out .btn:active { transform: none; opacity: .8; }
+}

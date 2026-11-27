@@ -1,4 +1,5 @@
 import type { Stats } from "@teamusage/shared";
+import { statsUrl, type Source } from "./dashboard/source.js";
 import { cleanAvailable, NO_FILTERS, toQuery, type Filters } from "./filters.js";
 import { isMemberId } from "./route.js";
 
@@ -8,6 +9,8 @@ export type StatsResult =
   | { kind: "ok"; stats: Stats }
   | { kind: "unauthorized" }
   | { kind: "notFound" }
+  | { kind: "noTeam" } // a 404 "team not found": the team does not exist, or the session has no role in it
+  | { kind: "busy"; retryAfterSec: number } // a 429 whose body has "limit": "team-stats"
   | { kind: "error"; message: string }
   | { kind: "network" }
   | { kind: "aborted" };
@@ -15,11 +18,16 @@ export type StatsResult =
 export type LoginResult =
   | { kind: "ok" }
   | { kind: "wrong" }
+  | { kind: "wrongAddress" } // a 403 "cross-site request refused": the page is not at the address the server signs in from
   | { kind: "tooMany"; retryAfterSec: number }
   | { kind: "error" }
   | { kind: "network" };
 
 const DEFAULT_RETRY_AFTER_SEC = 60;
+/** The server's text of a 404 for a team that does not exist or that the session has no role in. */
+const TEAM_NOT_FOUND = "team not found";
+/** The server's text of a 403 for a request from another origin than its own. */
+const CROSS_SITE = "cross-site request refused";
 
 const isAbort = (err: unknown) => err instanceof DOMException && err.name === "AbortError";
 
@@ -53,19 +61,34 @@ function looksLikeStats(v: unknown, member?: number): v is Stats {
   );
 }
 
-async function errorMessage(res: Response): Promise<string> {
+/** The JSON body of a refusal, or an empty object when it is not JSON. */
+async function refusalBody(res: Response): Promise<{ error?: unknown; limit?: unknown }> {
   try {
-    const body = (await res.json()) as { error?: unknown };
-    if (typeof body.error === "string") return body.error;
+    const body = (await res.json()) as unknown;
+    return typeof body === "object" && body !== null ? body : {};
   } catch {
-    // Not JSON: fall through to the status.
+    return {};
   }
-  return `HTTP ${res.status}`;
+}
+
+/** Seconds of a `Retry-After` that counts them; DEFAULT_RETRY_AFTER_SEC otherwise. */
+function retryAfterSec(res: Response): number {
+  const header = res.headers.get("Retry-After") ?? "";
+  return /^\d+$/.test(header) ? Number(header) : DEFAULT_RETRY_AFTER_SEC;
+}
+
+/** What a refused statistics request means to the page. */
+async function statsRefusal(res: Response, member: number | undefined): Promise<StatsResult> {
+  const { error, limit } = await refusalBody(res);
+  if (res.status === 429 && limit === "team-stats") return { kind: "busy", retryAfterSec: retryAfterSec(res) };
+  if (res.status === 404 && error === TEAM_NOT_FOUND) return { kind: "noTeam" };
+  if (res.status === 404 && member !== undefined) return { kind: "notFound" };
+  return { kind: "error", message: typeof error === "string" ? error : `HTTP ${res.status}` };
 }
 
 /**
- * The team's stats for the range, or one member's when `member` is given, narrowed by the agent, model, account and plan filters.
- * Every value is encoded by URLSearchParams; the path is fixed.
+ * The team's stats for the range, or one member's when `member` is given, narrowed by the agent, model, account and plan filters,
+ * from `source` (a self-hosted server's when none is given). Every value is encoded by URLSearchParams; the path is fixed.
  */
 export async function fetchStats(
   from: string,
@@ -73,6 +96,7 @@ export async function fetchStats(
   signal?: AbortSignal,
   member?: number,
   filters: Filters = NO_FILTERS,
+  source: Source = { kind: "selfHosted" },
 ): Promise<StatsResult> {
   const query = new URLSearchParams({ from, to });
   if (member !== undefined) {
@@ -83,7 +107,7 @@ export async function fetchStats(
   for (const [key, value] of toQuery(filters)) query.append(key, value);
   let res: Response;
   try {
-    res = await fetch(`/api/stats?${query}`, {
+    res = await fetch(statsUrl(source, query), {
       credentials: "same-origin",
       headers: { Accept: "application/json" },
       signal,
@@ -93,8 +117,7 @@ export async function fetchStats(
   }
   try {
     if (res.status === 401) return { kind: "unauthorized" };
-    if (res.status === 404 && member !== undefined) return { kind: "notFound" };
-    if (!res.ok) return { kind: "error", message: await errorMessage(res) };
+    if (!res.ok) return await statsRefusal(res, member);
     const body: unknown = await res.json();
     if (!looksLikeStats(body, member)) return { kind: "error", message: "unexpected response" };
     // The filter lists drive the controls and `prune`: keep only well-formed entries.
@@ -119,11 +142,7 @@ export async function login(inviteCode: string): Promise<LoginResult> {
     return { kind: "network" };
   }
   if (res.ok) return { kind: "ok" };
-  if (res.status === 403) return { kind: "wrong" };
-  if (res.status === 429) {
-    const header = res.headers.get("Retry-After") ?? "";
-    const sec = /^\d+$/.test(header) ? Number(header) : DEFAULT_RETRY_AFTER_SEC;
-    return { kind: "tooMany", retryAfterSec: sec };
-  }
+  if (res.status === 403) return (await refusalBody(res)).error === CROSS_SITE ? { kind: "wrongAddress" } : { kind: "wrong" };
+  if (res.status === 429) return { kind: "tooMany", retryAfterSec: retryAfterSec(res) };
   return { kind: "error" };
 }

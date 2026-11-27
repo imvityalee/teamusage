@@ -12,11 +12,26 @@
 <body>
 <div class="wrap">
   <header>
-    <h1 class="brand">teamusage</h1>
-    <div class="seg" id="lang" role="group" data-i18n-label="language">
-      <button type="button" data-lang="en" lang="en" aria-pressed="true">EN</button><button type="button" data-lang="ru" lang="ru" aria-pressed="false">RU</button>
+    <div class="head-main">
+      <h1 class="brand">teamusage</h1>
+      <p class="team-name" id="team-name" hidden><span class="team-sep" aria-hidden="true">/</span><span id="team-name-text"></span></p>
+      <nav class="team-nav" id="team-nav" aria-label="Team" data-dash-label="navLabel" hidden>
+        <a id="nav-dashboard" aria-current="page" data-dash="navDashboard">Dashboard</a><a id="nav-team" data-dash="navTeam">Team</a>
+      </nav>
+    </div>
+    <div class="head-tools">
+      <p class="sample" id="sample" hidden><span class="sample-badge" data-dash="sample">Sample data</span><a href="/" data-dash="createTeam">Create a team</a></p>
+      <div class="account" id="account" hidden>
+        <span class="account-text" id="account-text"></span>
+        <a id="your-teams" href="/teams#all" data-dash="yourTeams">Your teams</a>
+        <button type="button" class="text-button" id="sign-out" data-dash="signOut">Sign out</button>
+      </div>
+      <div class="seg" id="lang" role="group" data-i18n-label="language">
+        <button type="button" data-lang="en" lang="en" aria-pressed="true">EN</button><button type="button" data-lang="ru" lang="ru" aria-pressed="false">RU</button>
+      </div>
     </div>
   </header>
+  <p id="signout-error" class="msg" role="alert" hidden></p>
   <div id="page-head"></div>
   <section id="filterbar" class="panel filterbar" data-i18n-label="filters">
     <div class="fb-row">
@@ -54,6 +69,8 @@
       <p id="login-msg" class="msg" role="alert" hidden></p>
     </form>
   </section>
+
+  <section id="signed-out" class="panel signed-out" hidden></section>
 
   <main id="stats" aria-busy="true">
     <p class="placeholder" data-i18n="loading"></p>

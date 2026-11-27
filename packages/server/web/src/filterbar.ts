@@ -245,3 +245,17 @@ export function renderChips(doc: Document, f: Filters, lang: Lang, on: FilterBar
     ),
   ];
 }
+
+/** Keeps the open popover of `controls` inside the viewport: it starts under its button and moves left when it would overflow. */
+export function fitPopover(controls: HTMLElement): void {
+  const pop = controls.querySelector<HTMLElement>(".popover");
+  if (!pop) return;
+  pop.style.removeProperty("left");
+  const r = pop.getBoundingClientRect();
+  const gutter = 8;
+  const right = controls.ownerDocument.documentElement.clientWidth - gutter;
+  let shift = 0;
+  if (r.right > right) shift = right - r.right;
+  if (r.left + shift < gutter) shift = gutter - r.left;
+  if (shift !== 0) pop.style.left = `${Math.round(shift)}px`;
+}

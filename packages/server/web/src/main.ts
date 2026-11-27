@@ -1,6 +1,11 @@
 import { checkRange, localIsoDate, MAX_RANGE_DAYS, presetRange, type Stats } from "@teamusage/shared";
-import { fetchStats, login } from "./api.js";
-import { FILTER_TEXT, renderChips, renderFilterControls, type FilterBarHandlers } from "./filterbar.js";
+import { fetchStats } from "./api.js";
+import { busyRetry } from "./dashboard/busy-retry.js";
+import { PLAIN, type Chrome, type Panel } from "./dashboard/chrome.js";
+import { dashboardFrame, type View } from "./dashboard/frame.js";
+import { startOf } from "./dashboard/session-start.js";
+import { sourceOf, type Source } from "./dashboard/source.js";
+import { FILTER_TEXT, fitPopover, renderChips, renderFilterControls, type FilterBarHandlers } from "./filterbar.js";
 import {
   anyFilterEmptied,
   availableTotal,
@@ -29,10 +34,12 @@ import {
 } from "./render.js";
 import { parseRoute, type Route } from "./route.js";
 
-/** Wires state and events. All drawing goes through `paint()`, so a language switch re-renders everything. */
+/** Wires state and events. The source is chosen once at start; all drawing goes through `paint()`, so a language switch re-renders everything. */
 
 type Preset = 30 | 90 | 180;
 type Message = { key: MessageKey; vars?: Record<string, string | number> };
+type Text = (lang: Lang) => string;
+const say = (key: MessageKey, vars?: Message["vars"]): Text => (lang) => t(lang, key, vars);
 /**
  * What `#stats` shows: the answer for the route and filters it was loaded for, which may lag the URL and the
  * filter bar while loading.
@@ -61,10 +68,6 @@ const ui = {
   status: byId("status"),
   statusText: byId("status-text"),
   retry: byId<HTMLButtonElement>("retry"),
-  login: byId("login"),
-  loginForm: byId<HTMLFormElement>("login-form"),
-  invite: byId<HTMLInputElement>("invite"),
-  loginMsg: byId("login-msg"),
   stats: byId("stats"),
   pageHead: byId("page-head"),
   filterbar: byId("filterbar"),
@@ -77,7 +80,10 @@ const state: {
   preset: Preset | null;
   from: string;
   to: string;
-  view: "stats" | "login";
+  view: View;
+  source: Source;
+  /** The header; null until the session is read. */
+  chrome: Chrome | null;
   route: Route;
   shown: Shown | null;
   /** The member search text. It lives only here and in the input: never sent, stored or put in the URL. */
@@ -91,15 +97,16 @@ const state: {
   /** The team's unfiltered total for the last team period loaded, for "N% of the team's tokens". */
   team: { from: string; to: string; tokens: number } | null;
   request: AbortController | null;
-  status: Message | null;
+  status: Text | null;
   rangeMsg: Message | null;
-  loginMsg: Message | null;
 } = {
   lang: pickLang(loadLang(), navigator.language),
   preset: null,
   from: "",
   to: "",
-  view: "stats",
+  view: "waiting",
+  source: sourceOf(location),
+  chrome: null,
   route: parseRoute(location.hash),
   shown: null,
   query: "",
@@ -111,7 +118,6 @@ const state: {
   request: null,
   status: null,
   rangeMsg: null,
-  loginMsg: null,
 };
 
 const today = () => localIsoDate(new Date());
@@ -161,20 +167,6 @@ function restoreFocus(memo: FocusMemo): void {
   if (memo.selection && target instanceof HTMLInputElement) target.setSelectionRange(memo.selection[0], memo.selection[1]);
 }
 
-/** Keeps the open popover inside the viewport: it starts under its button and moves left when it would overflow. */
-function fitPopover(): void {
-  const pop = ui.filterControls.querySelector<HTMLElement>(".popover");
-  if (!pop) return;
-  pop.style.removeProperty("left");
-  const r = pop.getBoundingClientRect();
-  const gutter = 8;
-  const right = document.documentElement.clientWidth - gutter;
-  let shift = 0;
-  if (r.right > right) shift = right - r.right;
-  if (r.left + shift < gutter) shift = gutter - r.left;
-  if (shift !== 0) pop.style.left = `${Math.round(shift)}px`;
-}
-
 function availableShown(): Stats["available"] {
   const { shown } = state;
   return shown === null || shown.kind === "notFound" ? NOTHING : shown.stats.available;
@@ -189,7 +181,7 @@ function paintFilters(): void {
   ui.chips.replaceChildren(...chips);
   ui.chips.hidden = chips.length === 0;
   restoreFocus(memo);
-  fitPopover();
+  fitPopover(ui.filterControls);
 }
 
 function teamTokensFor(stats: Stats): number | null {
@@ -208,13 +200,12 @@ function paint(): void {
   }
   ui.sub.textContent = state.from && state.to ? rangeText(state.from, state.to, lang === "ru" ? "ru-RU" : "en-GB") : "";
   showMessage(ui.rangeMsg, state.rangeMsg);
-  showMessage(ui.statusText, state.status);
+  ui.statusText.textContent = state.status?.(lang) ?? "";
   ui.status.hidden = state.status === null;
-  showMessage(ui.loginMsg, state.loginMsg);
-  ui.login.hidden = state.view !== "login";
-  ui.stats.hidden = state.view === "login";
-  ui.filterbar.hidden = state.view === "login";
-  ui.pageHead.hidden = state.view === "login";
+  frame.paint(state.view, state.chrome);
+  ui.stats.hidden = state.view !== "stats" && !(state.view === "waiting" && state.status === null);
+  ui.filterbar.hidden = state.view !== "stats";
+  ui.pageHead.hidden = state.view !== "stats";
   paintFilters();
   const { shown } = state;
   if (shown === null) return;
@@ -247,6 +238,31 @@ function paint(): void {
   }
 }
 
+/** Shows `panel` instead of the dashboard, with a header that names no team and no account. */
+function showPanel(panel: Panel): void {
+  state.view = panel;
+  state.chrome = PLAIN;
+  state.status = null;
+  paint();
+}
+
+/** Reads who is signed in where the source needs it, then draws the header and loads. */
+async function begin(): Promise<void> {
+  paint();
+  const start = await startOf(state.source);
+  if (start.kind === "failed") {
+    state.status = say("netError");
+    return paint();
+  }
+  if (start.kind === "panel") return showPanel(start.panel);
+  if (start.kind === "left") return;
+  state.source = start.source;
+  state.chrome = start.chrome;
+  state.view = "stats";
+  state.status = null;
+  selectPreset(90);
+}
+
 function setBusy(busy: boolean): void {
   ui.stats.classList.toggle("loading", busy);
   ui.stats.setAttribute("aria-busy", String(busy));
@@ -257,10 +273,11 @@ async function load(): Promise<void> {
   state.request?.abort();
   const request = new AbortController();
   state.request = request;
+  const isRetry = retryBusy.begin();
   setBusy(true);
   const route = state.route;
   const filters = state.filters;
-  const res = await fetchStats(state.from, state.to, request.signal, route.view === "member" ? route.id : undefined, filters);
+  const res = await fetchStats(state.from, state.to, request.signal, route.view === "member" ? route.id : undefined, filters, state.source);
   if (state.request !== request) return; // a newer request took over
   state.request = null;
   setBusy(false);
@@ -294,15 +311,23 @@ async function load(): Promise<void> {
       state.status = null;
       break;
     case "unauthorized":
+      // A hosted team's dashboard is never opened with a code.
+      if (state.source.kind === "hosted") return showPanel("signedOut");
       state.view = "login";
       state.status = null;
       break;
+    case "noTeam":
+      return showPanel("noTeam");
+    case "busy":
+      state.status = retryBusy.answer(res.retryAfterSec, isRetry);
+      keepFiltersOfShown();
+      break;
     case "network":
-      state.status = { key: "netError" };
+      state.status = say("netError");
       keepFiltersOfShown();
       break;
     case "error":
-      state.status = { key: "loadFailed", vars: { error: res.message } };
+      state.status = say("loadFailed", { error: res.message });
       keepFiltersOfShown();
       break;
     case "aborted":
@@ -405,41 +430,6 @@ function onCustomRange(): void {
   void load();
 }
 
-async function onLogin(event: Event): Promise<void> {
-  event.preventDefault();
-  // The code lives only in this local variable and the request body.
-  const code = ui.invite.value;
-  ui.invite.value = "";
-  if (code === "") return;
-  const submit = ui.loginForm.querySelector<HTMLButtonElement>("button[type=submit]");
-  if (submit) submit.disabled = true;
-  const res = await login(code);
-  if (submit) submit.disabled = false;
-  switch (res.kind) {
-    case "ok":
-      state.loginMsg = null;
-      paint();
-      await load();
-      return;
-    case "wrong":
-      state.loginMsg = { key: "loginWrong" };
-      break;
-    case "tooMany": {
-      const minutes = Math.max(1, Math.ceil(res.retryAfterSec / 60));
-      state.loginMsg = minutes === 1 ? { key: "loginTooMany1" } : { key: "loginTooMany", vars: { n: minutes } };
-      break;
-    }
-    case "network":
-      state.loginMsg = { key: "netError" };
-      break;
-    case "error":
-      state.loginMsg = { key: "loginFailed" };
-      break;
-  }
-  paint();
-  ui.invite.focus();
-}
-
 ui.range.addEventListener("click", (e) => {
   const button = (e.target as Element | null)?.closest<HTMLElement>("button[data-days]");
   const days = Number(button?.dataset.days);
@@ -454,7 +444,8 @@ ui.lang.addEventListener("click", (e) => {
   saveLang(value);
   paint();
 });
-ui.retry.addEventListener("click", () => void load());
+// Before the session is read, Retry asks for it again; after, it loads the statistics.
+ui.retry.addEventListener("click", () => void (state.chrome === null ? begin() : load()));
 // Filters the rows already on the page; no request.
 ui.stats.addEventListener("input", (e) => {
   const input = e.target as HTMLInputElement | null;
@@ -484,7 +475,7 @@ function closeIfOutside(e: Event): void {
 }
 document.addEventListener("click", closeIfOutside);
 document.addEventListener("focusin", closeIfOutside);
-window.addEventListener("resize", fitPopover);
+window.addEventListener("resize", () => fitPopover(ui.filterControls));
 
 // Member links, the back link and the browser's Back arrive here (a reload reads the fragment at start).
 // The fragment is parsed into a route, never used as is.
@@ -495,6 +486,7 @@ window.addEventListener("hashchange", () => {
   state.route = route;
   void load();
 });
-ui.loginForm.addEventListener("submit", (e) => void onLogin(e));
 
-selectPreset(90);
+const retryBusy = busyRetry(() => void load());
+const frame = dashboardFrame(document, { lang: () => state.lang, signedIn: load });
+void begin();
