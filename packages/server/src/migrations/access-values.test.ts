@@ -26,19 +26,24 @@ function insertHostedTeam(db: Db, name: string, access: string): number {
   return Number(lastInsertRowid);
 }
 
-/** A self-hosted server at version 5: its one team, on code and without a code hash, and a signed-in browser. */
+/** A self-hosted server at version 5: its invite code, its one team on code and without a code hash, and a browser signed in with the code. */
 function selfHostedAt5(): Db {
   const db = atVersion5();
   db.exec(`
+    insert into settings (key, value) values ('invite_code', '${"e".repeat(24)}');
     insert into teams (public_id, name, dashboard_access, created_at) values ('${"1".repeat(16)}', 'Team', 'code', '${T}');
     insert into sessions (id, kind, team_id, created_at) values ('${"s".repeat(64)}', 'team', 1, '${T}');
   `);
   return db;
 }
 
-/** A hosted server at version 5: team 1 on admins and team 2 on code, each with its owner; team 2's member 7 has a machine and a usage row. */
+/**
+ * A hosted server at version 5: marked as hosted, team 1 on admins and team 2 on code, each with its owner; team 2's member 7
+ * has a machine and a usage row.
+ */
 function hostedAt5(): Db {
   const db = atVersion5();
+  db.exec("insert into settings (key, value) values ('mode', 'hosted')");
   const admins = insertHostedTeam(db, "Aurora", "admins");
   const open = insertHostedTeam(db, "Borealis", "code");
   db.exec(`
@@ -64,7 +69,7 @@ function hostedAt6(): Db {
 }
 
 const TEAMS_BUT_ACCESS = "select id, public_id, name, created_at, code_hash, code_sealed from teams order by id";
-const OTHER_TABLES = ["users", "team_roles", "sessions", "members", "machines", "usage", "usage_counts"];
+const OTHER_TABLES = ["settings", "users", "team_roles", "sessions", "members", "machines", "usage", "usage_counts"];
 const everythingButAccess = (db: Db) => ({
   teams: db.prepare(TEAMS_BUT_ACCESS).all(),
   ...Object.fromEntries(OTHER_TABLES.map((t) => [t, db.prepare(`select * from ${t} order by rowid`).all()])),

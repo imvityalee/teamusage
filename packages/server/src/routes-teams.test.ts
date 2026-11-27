@@ -30,6 +30,15 @@ test("a signed-in user creates a team, owns it, and is given its code once", asy
   const me = (await (await app.request("/api/me", { headers: { Cookie: cookie } })).json()) as { teams: unknown[] };
   expect(me.teams).toEqual([{ id: body.team.id, name: "Acme", role: "owner", dashboardAccess: "members" }]);
 });
+test("a team created for its admins only says so in the answer and in /api/me", async () => {
+  const cookie = await signIn(app, "code-ann");
+  const res = await create(cookie, { name: "Acme", dashboardAccess: "admins" });
+  expect(res.status).toBe(201);
+  const { team } = (await res.json()) as { team: { id: string; dashboardAccess: string } };
+  expect(team.dashboardAccess).toBe("admins");
+  const me = (await (await app.request("/api/me", { headers: { Cookie: cookie } })).json()) as { teams: unknown[] };
+  expect(me.teams).toEqual([{ id: team.id, name: "Acme", role: "owner", dashboardAccess: "admins" }]);
+});
 test("the response carries the public id, never the internal one, and the code opens the team", async () => {
   const res = await create(await signIn(app, "code-ann"), good);
   const { team, code } = (await res.json()) as { team: { id: string }; code: string };
