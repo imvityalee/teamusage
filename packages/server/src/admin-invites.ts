@@ -74,6 +74,13 @@ function inviteOfToken(db: Db, token: string): InviteOfToken | undefined {
     .get(sha256(token)) as InviteOfToken | undefined;
 }
 
+/** What the invite with this token gives, while it can still be accepted; null when there is none or it has expired. Changes nothing. */
+export function previewInvite(db: Db, token: string, now: number): { teamName: string; role: InviteRole; expiresAt: string } | null {
+  const invite = inviteOfToken(db, token);
+  if (invite === undefined || iso(now) >= invite.expiresAt) return null;
+  return { teamName: invite.name, role: invite.role, expiresAt: invite.expiresAt };
+}
+
 /** Gives the user the invite's role in its team and uses the invite up, in one step; returns the team as the user now sees it. */
 export function acceptInvite(db: Db, token: string, user: { githubId: number; login: string }, now: number): UserTeam {
   // Immediate, so that of two accepts open together the second reads what the first wrote: the invite gone, a role more.

@@ -1,5 +1,5 @@
 import type { Context, Hono } from "hono";
-import { acceptInvite, cancelInvite, createInvite, InviteError, listInvites, MAX_PENDING_INVITES, type InviteRefusal, type InviteRole } from "./admin-invites.js";
+import { acceptInvite, cancelInvite, createInvite, InviteError, listInvites, MAX_PENDING_INVITES, previewInvite, type InviteRefusal, type InviteRole } from "./admin-invites.js";
 import type { RouteContext } from "./app-context.js";
 import { isPublicId, MAX_TEAMS_PER_USER } from "./hosted-teams.js";
 import { crossSite, fail, readObject } from "./http.js";
@@ -159,5 +159,18 @@ export function teamRolesRoutes(app: Hono, ctx: RouteContext): void {
     } catch (err) {
       return inviteRefused(c, err);
     }
+  });
+
+  app.post("/api/invites/preview", async (c) => {
+    c.header("Cache-Control", "no-store");
+    const refused = crossSite(c, hosted.publicUrl);
+    if (refused) return refused;
+    const body = await readObject(c);
+    if (body instanceof Response) return body;
+    if (typeof body.token !== "string" || !INVITE_TOKEN.test(body.token)) return fail(c, 400, "invalid token");
+    // Like an accept, an unknown token is not counted as a failed attempt. Holding the link is what shows the team's name and the role.
+    const preview = previewInvite(ctx.db, body.token, ctx.now());
+    if (preview === null) return inviteRefused(c, new InviteError("not-valid"));
+    return c.json({ team: { name: preview.teamName }, role: preview.role, expiresAt: preview.expiresAt });
   });
 }

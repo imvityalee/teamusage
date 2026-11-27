@@ -28,8 +28,8 @@ beforeAll(async () => {
 const inSuccessOrder = (route: string, caller: string) => SUCCESS_ORDER.some(([r, c]) => r === route && c === caller);
 const REFUSED = ROUTES.flatMap((r) => CALLERS.filter((caller) => !inSuccessOrder(r.name, caller)).map((caller) => ({ route: r.name, caller })));
 
-test("the table has 17 rows by 12 callers, a status for every caller in every row, and every cell that succeeds runs in the success order", () => {
-  expect([ROUTES.length, CALLERS.length]).toEqual([17, 12]);
+test("the table has 18 rows by 12 callers, a status for every caller in every row, and every cell that succeeds runs in the success order", () => {
+  expect([ROUTES.length, CALLERS.length]).toEqual([18, 12]);
   for (const r of ROUTES) expect(r.statuses, r.name).toHaveLength(CALLERS.length);
   for (const r of ROUTES) for (const caller of CALLERS) if (statusOf(r, caller) < 300) expect(inSuccessOrder(r.name, caller), `${r.name} as ${caller}`).toBe(true);
   expect(REFUSED.length + SUCCESS_ORDER.length).toBe(ROUTES.length * CALLERS.length);

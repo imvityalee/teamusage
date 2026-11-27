@@ -124,6 +124,9 @@ export const ROUTES: Route[] = [
   row("POST /api/teams/:team/code/rotate",        [401, 401, 401, 401, 401, 404, 404, 404, 403, 200, 200, 403], { path: team("/code/rotate") }),
   row("POST /api/teams/:team/invites",            [401, 401, 401, 401, 401, 404, 404, 404, 403, 403, 201, 403],
     { path: team("/invites"), body: () => ({ role: "viewer" }) }),
+  // The preview names B's team to everyone who holds the token, and changes nothing; it answers before the invite is accepted.
+  row("POST /api/invites/preview",                [200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 403],
+    { body: (s) => ({ token: s.acceptToken }) }),
   row("POST /api/invites/accept",                 [401, 401, 401, 401, 401, 404, 404, 200, 409, 409, 409, 403],
     { body: (s) => ({ token: s.acceptToken }), oneUse: true }),
   row("DELETE /api/teams/:team/invites/:id",      [401, 401, 401, 401, 401, 404, 404, 404, 403, 403, 204, 403],

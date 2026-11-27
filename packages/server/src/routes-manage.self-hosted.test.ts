@@ -20,6 +20,7 @@ const MANAGEMENT_ROUTES: [string, string, unknown][] = [
   ["GET", `${TEAM}/invites`, undefined],
   ["DELETE", `${TEAM}/invites/0123456789abcdef`, undefined],
   ["POST", "/api/invites/accept", { token: "f".repeat(64) }],
+  ["POST", "/api/invites/preview", { token: "f".repeat(64) }],
 ];
 
 test.each(MANAGEMENT_ROUTES)("a self-hosted server has no route %s %s", async (method, path, body) => {
