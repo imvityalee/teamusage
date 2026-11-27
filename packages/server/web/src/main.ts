@@ -1,10 +1,11 @@
 import { checkRange, localIsoDate, MAX_RANGE_DAYS, presetRange, type Stats } from "@teamusage/shared";
 import { fetchStats } from "./api.js";
 import { busyRetry } from "./dashboard/busy-retry.js";
-import { PLAIN, type Chrome, type Panel } from "./dashboard/chrome.js";
+import type { Chrome } from "./dashboard/chrome.js";
 import { dashboardFrame, type View } from "./dashboard/frame.js";
-import { startOf } from "./dashboard/session-start.js";
 import { sourceOf, type Source } from "./dashboard/source.js";
+import { dashboardStart } from "./dashboard/start.js";
+import type { Text } from "./dashboard/strings.js";
 import { FILTER_TEXT, fitPopover, renderChips, renderFilterControls, type FilterBarHandlers } from "./filterbar.js";
 import {
   anyFilterEmptied,
@@ -38,7 +39,6 @@ import { parseRoute, type Route } from "./route.js";
 
 type Preset = 30 | 90 | 180;
 type Message = { key: MessageKey; vars?: Record<string, string | number> };
-type Text = (lang: Lang) => string;
 const say = (key: MessageKey, vars?: Message["vars"]): Text => (lang) => t(lang, key, vars);
 /**
  * What `#stats` shows: the answer for the route and filters it was loaded for, which may lag the URL and the
@@ -67,7 +67,6 @@ const ui = {
   lang: byId("lang"),
   status: byId("status"),
   statusText: byId("status-text"),
-  retry: byId<HTMLButtonElement>("retry"),
   stats: byId("stats"),
   pageHead: byId("page-head"),
   filterbar: byId("filterbar"),
@@ -238,31 +237,6 @@ function paint(): void {
   }
 }
 
-/** Shows `panel` instead of the dashboard, with a header that names no team and no account. */
-function showPanel(panel: Panel): void {
-  state.view = panel;
-  state.chrome = PLAIN;
-  state.status = null;
-  paint();
-}
-
-/** Reads who is signed in where the source needs it, then draws the header and loads. */
-async function begin(): Promise<void> {
-  paint();
-  const start = await startOf(state.source);
-  if (start.kind === "failed") {
-    state.status = say("netError");
-    return paint();
-  }
-  if (start.kind === "panel") return showPanel(start.panel);
-  if (start.kind === "left") return;
-  state.source = start.source;
-  state.chrome = start.chrome;
-  state.view = "stats";
-  state.status = null;
-  selectPreset(90);
-}
-
 function setBusy(busy: boolean): void {
   ui.stats.classList.toggle("loading", busy);
   ui.stats.setAttribute("aria-busy", String(busy));
@@ -312,12 +286,12 @@ async function load(): Promise<void> {
       break;
     case "unauthorized":
       // A hosted team's dashboard is never opened with a code.
-      if (state.source.kind === "hosted") return showPanel("signedOut");
+      if (state.source.kind === "hosted") return start.showPanel("signedOut");
       state.view = "login";
       state.status = null;
       break;
     case "noTeam":
-      return showPanel("noTeam");
+      return start.showPanel("noTeam");
     case "busy":
       state.status = retryBusy.answer(res.retryAfterSec, isRetry);
       keepFiltersOfShown();
@@ -444,8 +418,6 @@ ui.lang.addEventListener("click", (e) => {
   saveLang(value);
   paint();
 });
-// Before the session is read, Retry asks for it again; after, it loads the statistics.
-ui.retry.addEventListener("click", () => void (state.chrome === null ? begin() : load()));
 // Filters the rows already on the page; no request.
 ui.stats.addEventListener("input", (e) => {
   const input = e.target as HTMLInputElement | null;
@@ -489,4 +461,5 @@ window.addEventListener("hashchange", () => {
 
 const retryBusy = busyRetry(() => void load());
 const frame = dashboardFrame(document, { lang: () => state.lang, signedIn: load });
-void begin();
+const start = dashboardStart(document, state, { paint, ready: () => selectPreset(90), load: () => void load() });
+void start.begin();

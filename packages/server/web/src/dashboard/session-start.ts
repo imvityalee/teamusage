@@ -1,7 +1,7 @@
 import { me } from "../site/session.js";
 import { dashboardPath } from "../site/team-param.js";
 import { chromeOf, type Chrome, type Panel } from "./chrome.js";
-import { sessionSource, type Source } from "./source.js";
+import type { Source } from "./source.js";
 
 /** How the dashboard opens: its header and the source of its statistics, a panel instead, the error with Retry, or another page. */
 export type Start =
@@ -29,6 +29,6 @@ export async function startOf(source: Source): Promise<Start> {
     return { kind: "left" };
   }
   if ("panel" in next) return { kind: "panel", panel: next.panel };
-  const read = session?.kind === "me" && source.kind === "hosted" ? adopt(sessionSource(source, session.me)) : source;
-  return { kind: "draw", chrome: next, source: read };
+  // The header decided the team; the statistics name the same one.
+  return { kind: "draw", chrome: next, source: source.kind === "hosted" ? adopt({ kind: "hosted", team: next.team }) : source };
 }

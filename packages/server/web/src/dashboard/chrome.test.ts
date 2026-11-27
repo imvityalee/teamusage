@@ -23,10 +23,10 @@ test.each<[string, Parameters<typeof chromeOf>, ReturnType<typeof chromeOf>]>([
   ["nobody", [hosted(T), { kind: "none" }], { panel: "signedOut" }],
   ["a member", [hosted(null), member], { ...PLAIN, teamName: "Acme", account: { login: null, teams: false, signOut: true } }],
   ["a member, with someone else's ?team=", [hosted(T), member], { ...PLAIN, teamName: "Acme", account: { login: null, teams: false, signOut: true } }],
-  ["an owner", [hosted(T), user(teamOf(T, "owner"))], { teamName: "Team 11", nav, account: userAccount, sample: false }],
-  ["an admin", [hosted(T), user(teamOf(OTHER, "owner"), teamOf(T, "admin"))], { teamName: "Team 11", nav, account: userAccount, sample: false }],
-  ["a viewer", [hosted(T), user(teamOf(T, "viewer"))], { teamName: "Team 11", nav: null, account: userAccount, sample: false }],
-  ["a user without ?team= and one team", [hosted(null), user(teamOf(T, "owner"))], { teamName: "Team 11", nav, account: userAccount, sample: false }],
+  ["an owner", [hosted(T), user(teamOf(T, "owner"))], { teamName: "Team 11", nav, account: userAccount, sample: false, team: T }],
+  ["an admin", [hosted(T), user(teamOf(OTHER, "owner"), teamOf(T, "admin"))], { teamName: "Team 11", nav, account: userAccount, sample: false, team: T }],
+  ["a viewer", [hosted(T), user(teamOf(T, "viewer"))], { teamName: "Team 11", nav: null, account: userAccount, sample: false, team: T }],
+  ["a user without ?team= and one team", [hosted(null), user(teamOf(T, "owner"))], { teamName: "Team 11", nav, account: userAccount, sample: false, team: T }],
   ["a user without ?team= and several teams", [hosted(null), user(teamOf(T, "owner"), teamOf(OTHER, "viewer"))], { go: "/teams#all" }],
   ["a user without ?team= and no team", [hosted(null), user()], { go: "/teams#all" }],
   ["a user whose one team is not the one ?team= names", [hosted(T), user(teamOf(OTHER, "owner"))], { panel: "noTeam" }],
@@ -69,7 +69,7 @@ test("the demo shows the sample chip and a link to create a team", () => {
 
 test("a worst-case team name and login are drawn whole, as text", () => {
   const doc = page();
-  const chrome: Chrome = { teamName: worstCase.teamName, nav, account: { login: worstCase.login, teams: true, signOut: true }, sample: false };
+  const chrome: Chrome = { teamName: worstCase.teamName, nav, account: { login: worstCase.login, teams: true, signOut: true }, sample: false, team: T };
   renderChrome(doc, chrome, "en");
   expect(visible(doc)).toEqual(["team-name", "team-nav", "account"]);
   expect(doc.getElementById("team-name-text")?.textContent).toBe(worstCase.teamName);
@@ -78,7 +78,7 @@ test("a worst-case team name and login are drawn whole, as text", () => {
 
 test("the nav links to this team's dashboard and team page, with the dashboard current", () => {
   const doc = page();
-  renderChrome(doc, { teamName: "Acme", nav, account: userAccount, sample: false }, "ru");
+  renderChrome(doc, { teamName: "Acme", nav, account: userAccount, sample: false, team: T }, "ru");
   const links = [...doc.querySelectorAll<HTMLAnchorElement>("#team-nav a")];
   expect(links.map((a) => [a.getAttribute("href"), a.textContent, a.getAttribute("aria-current")])).toEqual([
     [nav.dashboard, "Дашборд", "page"],

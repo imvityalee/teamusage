@@ -1,5 +1,4 @@
-import type { Lang } from "../lang.js";
-import { dt } from "./strings.js";
+import { dt, type Text } from "./strings.js";
 
 /** A hosted team's statistics that are busy are asked for once more after the wait the server names. */
 
@@ -23,7 +22,7 @@ export function busyRetry(ask: () => void) {
       return retry;
     },
     /** After a `busy` answer: asks again after `retryAfterSec` seconds (MAX_WAIT_SEC at most) unless the load was the retry; returns what the status says. */
-    answer(retryAfterSec: number, wasRetry: boolean): (lang: Lang) => string {
+    answer(retryAfterSec: number, wasRetry: boolean): Text {
       if (wasRetry) return (lang) => dt(lang, "stillBusy");
       const wait = Math.max(1, Math.min(retryAfterSec, MAX_WAIT_SEC));
       timer = setTimeout(() => {

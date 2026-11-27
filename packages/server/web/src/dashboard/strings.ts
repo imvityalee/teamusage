@@ -33,23 +33,27 @@ const ru: Record<DashKey, string> = {
   navTeam: "Команда",
   sample: "Пример данных",
   createTeam: "Создать команду",
-  fromAgent: "Вы вошли из своего агента",
+  fromAgent: "Вы вошли через своего агента",
   yourTeams: "Ваши команды",
   signOut: "Выйти",
   signOutFailed: "Не удалось выйти. Попробуйте ещё раз.",
   signedOutTitle: "Войдите, чтобы открыть этот дашборд",
   memberPrompt: "Вы участник команды?",
-  openFromAgent: "Откройте его из своего агента.",
+  openFromAgent: "Откройте дашборд из своего агента.",
   signInGithub: "Войти через GitHub",
-  noTeam: "Команда не найдена, или у вас больше нет роли в ней.",
-  busy: "Статистика команды сейчас занята. Повторим через {n} с.",
-  stillBusy: "Статистика команды всё ещё занята. Попробуйте ещё раз через минуту.",
-  wrongAddress: "Этот сервер принимает вход только со своего адреса. Попросите того, кто его запускает, проверить TEAMUSAGE_PUBLIC_URL.",
+  noTeam: "Команда не найдена, или у вас в ней больше нет роли.",
+  busy: "Статистику команды сейчас запрашивают слишком часто. Попробуем ещё раз через {n} с.",
+  stillBusy: "Статистику команды всё ещё запрашивают слишком часто. Попробуйте ещё раз через минуту.",
+  wrongAddress:
+    "Этот сервер разрешает вход только со своего адреса. Попросите того, кто им управляет, проверить настройку TEAMUSAGE_PUBLIC_URL.",
 };
 
 export const strings: Table<DashKey> = { en, ru };
 
 export const dt = translator(strings);
+
+/** A message drawn in whichever language the page is in when it paints. */
+export type Text = (lang: Lang) => string;
 
 const isKey = (k: string | null): k is DashKey => k !== null && Object.hasOwn(en, k);
 

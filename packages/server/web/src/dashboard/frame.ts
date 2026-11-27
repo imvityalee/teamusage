@@ -17,6 +17,8 @@ export function dashboardFrame(doc: Document, opts: { lang: () => Lang; signedIn
   const signOut = signOutButton(doc, opts.lang);
   const login = doc.getElementById("login") as HTMLElement;
   const panelBox = doc.getElementById("signed-out") as HTMLElement;
+  /** The panel on screen. A new one is drawn only when its kind changes: a drawn panel is announced. */
+  let drawn: Panel | null = null;
 
   return {
     /** Draws the parts of `view` and `chrome` (null: the session is not read yet). Call after the dashboard's own title is set. */
@@ -27,9 +29,11 @@ export function dashboardFrame(doc: Document, opts: { lang: () => Lang; signedIn
       signIn.paint();
       signOut.paint();
       login.hidden = view !== "login";
-      const panel = view === "signedOut" || view === "noTeam" ? renderSignedOut(doc, lang, view) : null;
+      const panel = view === "signedOut" || view === "noTeam" ? view : null;
       panelBox.hidden = panel === null;
-      panelBox.replaceChildren(...(panel === null ? [] : [panel]));
+      // The panel's texts follow the language through `renderChrome`'s `applyDashText`.
+      if (panel !== drawn) panelBox.replaceChildren(...(panel === null ? [] : [renderSignedOut(doc, lang, panel)]));
+      drawn = panel;
     },
   };
 }

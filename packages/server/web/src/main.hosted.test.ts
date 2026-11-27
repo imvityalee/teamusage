@@ -124,3 +124,28 @@ test("a sign-out that fails stays: the button is back with focus, and says so", 
   expect(page.$("#signout-error").textContent).toBe("Could not sign out. Try again.");
   expect(page.$("#signout-error").getAttribute("role")).toBe("alert");
 });
+
+test("a language switch rewrites the panel in place: the same element, so it is not announced again", async () => {
+  page = await bootDashboard("/dashboard", nobody());
+  const panel = page.$("#signed-out [role=alert]");
+  page.press('#lang button[data-lang="ru"]');
+  expect(page.$("#signed-out [role=alert]")).toBe(panel);
+  expect(panel.querySelector("h2")?.textContent).toBe("Войдите, чтобы открыть этот дашборд");
+  expect(panel.querySelector('a[href="/open"]')?.textContent).toBe("Откройте дашборд из своего агента.");
+  expect(panel.textContent).toContain("Вы участник команды?");
+});
+
+test.each([
+  ["/dashboard", nobody],
+  ["/demo", stats],
+])("on %s the brand is a link to /", async (url, reply) => {
+  page = await bootDashboard(url, reply());
+  const link = page.$("header .brand a");
+  expect(link.getAttribute("href")).toBe("/");
+  expect(link.textContent).toBe("teamusage");
+});
+
+test("on a self-hosted server the brand stays plain text, exactly as before", async () => {
+  page = await bootDashboard("/", stats());
+  expect(page.$("header .brand").outerHTML).toBe('<h1 class="brand">teamusage</h1>');
+});

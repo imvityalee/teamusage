@@ -1,11 +1,9 @@
 import { login, type LoginResult } from "../api.js";
 import { t } from "../i18n.js";
 import type { Lang } from "../lang.js";
-import { dt } from "./strings.js";
+import { dt, type Text } from "./strings.js";
 
 /** The code form of a self-hosted dashboard: sends the team code once and says why a sign-in failed. */
-
-type Text = (lang: Lang) => string;
 
 /** What the form says after a sign-in that did not open the dashboard. */
 function messageOf(res: Exclude<LoginResult, { kind: "ok" }>): Text {

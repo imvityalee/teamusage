@@ -41,8 +41,8 @@ test("each panel is announced from its wrapper, never from its heading", () => {
 test("in Russian", () => {
   const panel = renderSignedOut(newDoc(), "ru", "signedOut");
   expect(panel.querySelector("h2")?.textContent).toBe("Войдите, чтобы открыть этот дашборд");
-  expect(links(panel).map(([text]) => text)).toEqual(["Войти через GitHub", "Откройте его из своего агента."]);
+  expect(links(panel).map(([text]) => text)).toEqual(["Войти через GitHub", "Откройте дашборд из своего агента."]);
   expect(renderSignedOut(newDoc(), "ru", "noTeam").querySelector("h2")?.textContent).toBe(
-    "Команда не найдена, или у вас больше нет роли в ней.",
+    "Команда не найдена, или у вас в ней больше нет роли.",
   );
 });

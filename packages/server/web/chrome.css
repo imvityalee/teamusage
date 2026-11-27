@@ -5,6 +5,8 @@
 .head-main { flex: 1 1 auto; }
 .team-name { margin: 0; min-width: 0; font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
 .team-sep { color: var(--muted); font-weight: 400; margin-right: 14px; }
+/* On a hosted server and the demo the brand links home (dashboard/chrome.ts); it keeps the brand's colour. */
+.brand-link { color: inherit; }
 
 /* "Dashboard | Team": a segmented control of links */
 .team-nav { display: inline-flex; flex-shrink: 0; background: var(--control); border-radius: 10px; padding: 2px; }
@@ -33,7 +35,6 @@
 .signed-out .aside a { padding: 12px 0; }
 
 @media (hover: hover) and (pointer: fine) {
-  .team-nav a:hover { color: var(--text); }
   .text-button:not(:disabled):hover { color: var(--link-hover); }
   .signed-out .btn:hover { background: var(--link-hover); color: var(--card); }
 }
@@ -42,7 +43,7 @@
 .team-nav a, .signed-out .btn { transition: transform 160ms var(--ease-out); }
 /* Opacity 1: these scale instead of dimming like the other links of style.css. */
 .team-nav a:active, .signed-out .btn:active { transform: scale(0.97); opacity: 1; }
-.text-button:active:not(:disabled), .account a:active, .sample a:active, .signed-out .aside a:active { opacity: .6; }
+.brand-link:active, .text-button:active:not(:disabled), .account a:active, .sample a:active, .signed-out .aside a:active { opacity: .6; }
 
 @media (prefers-reduced-motion: reduce) {
   .team-nav a, .signed-out .btn { transition: none; }

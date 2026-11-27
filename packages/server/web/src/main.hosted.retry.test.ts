@@ -63,7 +63,7 @@ test("a wait longer than a minute is asked again after a minute", async () => {
 test("Russian says the seconds too", async () => {
   page = await bootDashboard("/dashboard", member("Acme"), busy(12));
   page.press('#lang button[data-lang="ru"]');
-  expect(page.$("#status-text").textContent).toBe("Статистика команды сейчас занята. Повторим через 12 с.");
+  expect(page.$("#status-text").textContent).toBe("Статистику команды сейчас запрашивают слишком часто. Попробуем ещё раз через 12 с.");
 });
 
 test("a load the person starts while a retry waits replaces it", async () => {
@@ -72,4 +72,21 @@ test("a load the person starts while a retry waits replaces it", async () => {
   await page.flush();
   await vi.advanceTimersByTimeAsync(60_000);
   expect(page.calls).toHaveLength(3);
+});
+
+test("Retry is disabled while /api/me is out: pressed twice, it asks once", async () => {
+  page = await bootDashboard("/dashboard", json({ error: "boom" }, 500), "pending");
+  page.press("#retry");
+  page.press("#retry");
+  expect(fetch).toHaveBeenCalledTimes(2);
+  expect(page.$<HTMLButtonElement>("#retry").disabled).toBe(true);
+});
+
+test("a Retry that fails again gives the button back, enabled and focused", async () => {
+  page = await bootDashboard("/dashboard", json({ error: "boom" }, 500), json({ error: "boom" }, 500));
+  page.press("#retry");
+  await page.flush();
+  expect(sent(page).map((c) => c.path)).toEqual(["/api/me", "/api/me"]);
+  expect(page.$<HTMLButtonElement>("#retry").disabled).toBe(false);
+  expect(page.doc.activeElement?.id).toBe("retry");
 });

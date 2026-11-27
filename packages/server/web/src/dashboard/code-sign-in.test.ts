@@ -46,7 +46,7 @@ test("a sign-in from another address names TEAMUSAGE_PUBLIC_URL, in both languag
   const ru = form(json({ error: "cross-site request refused" }, 403), "ru");
   await ru.submit("team-code-0123");
   expect(ru.message().textContent).toBe(
-    "Этот сервер принимает вход только со своего адреса. Попросите того, кто его запускает, проверить TEAMUSAGE_PUBLIC_URL.",
+    "Этот сервер разрешает вход только со своего адреса. Попросите того, кто им управляет, проверить настройку TEAMUSAGE_PUBLIC_URL.",
   );
 });
 

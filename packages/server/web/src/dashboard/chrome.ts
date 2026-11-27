@@ -1,7 +1,8 @@
+import { h } from "../dom.js";
 import type { Lang } from "../lang.js";
-import type { MeAnswer } from "../site/session.js";
-import { dashboardPath, teamPath } from "../site/team-param.js";
-import { userTeam, type Source } from "./source.js";
+import type { Me, MeAnswer } from "../site/session.js";
+import { dashboardPath, isTeamId, teamPath } from "../site/team-param.js";
+import type { Source } from "./source.js";
 import { applyDashText, dt } from "./strings.js";
 
 /** The dashboard's header for its source and session: the team's name, the nav, the account and the demo's chip. */
@@ -12,6 +13,8 @@ export type Chrome = {
   /** `login` is a GitHub user's; null is a member's session, which reads "Signed in from your agent". */
   account: { login: string | null; teams: boolean; signOut: boolean } | null;
   sample: boolean; // the demo
+  /** The team the statistics name: a GitHub user's team; null for a member's session (its own team), the demo and self-hosted. */
+  team: string | null;
 };
 
 export type Panel = "signedOut" | "noTeam";
@@ -20,12 +23,21 @@ export type Panel = "signedOut" | "noTeam";
 export type ReadSession = Extract<MeAnswer, { kind: "me" | "none" }>;
 
 /** The header of a self-hosted server, and of nobody. */
-export const PLAIN: Chrome = { teamName: null, nav: null, account: null, sample: false };
+export const PLAIN: Chrome = { teamName: null, nav: null, account: null, sample: false, team: null };
 
 /** Where a GitHub user picks a team: the list of their teams. */
 export const YOUR_TEAMS = "/teams#all";
 
-/** The header of this source and session, or what to do instead of drawing the dashboard. */
+type UserTeam = Extract<Me, { kind: "user" }>["teams"][number];
+
+/** The team of a GitHub user's session the dashboard shows: the one `?team=` names when it is theirs; without `?team=`, their only team. */
+function userTeam(team: string | null, teams: readonly UserTeam[]): UserTeam | undefined {
+  const usable = teams.filter((t) => isTeamId(t.id));
+  if (team !== null) return usable.find((t) => t.id === team);
+  return usable.length === 1 ? usable[0] : undefined;
+}
+
+/** The header of this source and session, or what to do instead of drawing the dashboard. The one place a hosted team is decided. */
 export function chromeOf(source: Source, session: ReadSession | null): Chrome | { go: string } | { panel: Panel } {
   if (source.kind === "selfHosted") return PLAIN;
   if (source.kind === "demo") return { ...PLAIN, sample: true };
@@ -40,6 +52,7 @@ export function chromeOf(source: Source, session: ReadSession | null): Chrome | 
     nav: manages ? { dashboard: dashboardPath(team.id), team: teamPath(team.id) } : null,
     account: { login: me.login, teams: true, signOut: true },
     sample: false,
+    team: team.id,
   };
 }
 
@@ -62,6 +75,12 @@ function renderAccount(doc: Document, account: Chrome["account"], lang: Lang): v
   byId(doc, "account-text").textContent = account === null ? "" : account.login === null ? dt(lang, "fromAgent") : `@${account.login}`;
   byId(doc, "your-teams").hidden = !account?.teams;
   byId(doc, "sign-out").hidden = !account?.signOut;
+}
+
+/** On a hosted server or the demo the brand links to `/`; a self-hosted dashboard keeps it as plain text. */
+export function linkBrand(doc: Document): void {
+  const brand = doc.querySelector("header .brand");
+  brand?.replaceChildren(h(doc, "a", { class: "brand-link", href: "/" }, brand.textContent ?? ""));
 }
 
 /** Draws `chrome` into the header; the team's name and the login go in as text. */
