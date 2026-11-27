@@ -1,12 +1,10 @@
 import type { Hono } from "hono";
 import { isDisplayName, MAX_TEAM_NAME_CHARS } from "@teamusage/shared";
 import type { RouteContext } from "./app-context.js";
-import { createHostedTeam, MAX_TEAMS_PER_USER, TeamLimitError, type DashboardAccess } from "./hosted-teams.js";
+import { createHostedTeam, isDashboardAccess, MAX_TEAMS_PER_USER, TeamLimitError } from "./hosted-teams.js";
 import { crossSite, fail, isObject, readJson } from "./http.js";
 
 const SIGN_UPS_PAUSED = "sign-ups are paused";
-
-const isDashboardAccess = (v: unknown): v is DashboardAccess => v === "code" || v === "admins";
 
 /** A team name is a display name that stays within MAX_TEAM_NAME_CHARS once trimmed. */
 const isTeamName = (v: unknown): v is string => isDisplayName(v) && v.trim().length <= MAX_TEAM_NAME_CHARS;

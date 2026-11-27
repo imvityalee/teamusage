@@ -6,7 +6,7 @@ import {
   createHostedTeam,
   hostedTeamCodes,
   MAX_TEAMS_PER_USER,
-  opensWithCode,
+  membersSeeTeam,
   roleIn,
   TeamLimitError,
   teamById,
@@ -26,7 +26,7 @@ beforeEach(() => {
 });
 
 const make = (over = {}) =>
-  createHostedTeam(db, { name: "Acme", dashboardAccess: "code", owner: ann, codeKey: KEY, maxTeams: 200, ...over });
+  createHostedTeam(db, { name: "Acme", dashboardAccess: "members", owner: ann, codeKey: KEY, maxTeams: 200, ...over });
 const count = (table: string) => (db.prepare(`select count(*) as n from ${table}`).get() as { n: number }).n;
 const refusal = (act: () => unknown): TeamLimitError => {
   try { act(); } catch (e) { return e as TeamLimitError; }
@@ -35,7 +35,7 @@ const refusal = (act: () => unknown): TeamLimitError => {
 
 test("a new team has an owner, a code that opens it, and stores the code only hashed and sealed", () => {
   const { team, code } = make();
-  expect(team).toMatchObject({ name: "Acme", dashboardAccess: "code" });
+  expect(team).toMatchObject({ name: "Acme", dashboardAccess: "members" });
   expect(team.publicId).toMatch(/^[a-f0-9]{16}$/);
   expect(code).toMatch(/^[a-f0-9]{24}$/);
   expect(hostedTeamCodes(db)(code)).toBe(team.id);
@@ -72,7 +72,7 @@ test("roles and teams are seen only by their own user", () => {
   const a = make();
   expect(roleIn(db, a.team.id, 2)).toBeNull();
   expect(teamsOf(db, 2)).toEqual([]);
-  expect(teamsOf(db, 1)).toEqual([{ id: a.team.publicId, name: "Acme", role: "owner", dashboardAccess: "code" }]);
+  expect(teamsOf(db, 1)).toEqual([{ id: a.team.publicId, name: "Acme", role: "owner", dashboardAccess: "members" }]);
   expect(teamByPublicId(db, a.team.publicId)).toEqual(a.team);
   expect(teamByPublicId(db, "0".repeat(16))).toBeNull();
 });
@@ -126,10 +126,10 @@ test("a team keeps its dashboard access", () => {
   expect(team.dashboardAccess).toBe("admins");
   expect(teamByPublicId(db, team.publicId)).toEqual(team);
 });
-test("opensWithCode is true only for a team that exists and opens its dashboard with its code", () => {
-  const open = make({ dashboardAccess: "code" }).team;
+test("membersSeeTeam is true only for a team that exists and whose members see its numbers", () => {
+  const open = make({ dashboardAccess: "members" }).team;
   const admins = make({ dashboardAccess: "admins" }).team;
-  expect([opensWithCode(db, open.id), opensWithCode(db, admins.id), opensWithCode(db, admins.id + 1)]).toEqual([true, false, false]);
+  expect([membersSeeTeam(db, open.id), membersSeeTeam(db, admins.id), membersSeeTeam(db, admins.id + 1)]).toEqual([true, false, false]);
 });
 test("teamsOf lists the user's teams with each role, by name and then public id", () => {
   const [z, a1, a2] = [make({ name: "Zeta" }), make({ name: "Alpha" }), make({ name: "Alpha" })];

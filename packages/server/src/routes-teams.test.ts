@@ -16,19 +16,19 @@ const create = (cookie: string, body: unknown, origin = PUBLIC, a = app) =>
     body: JSON.stringify(body),
     headers: { "Content-Type": "application/json", Cookie: cookie, Origin: origin },
   });
-const good = { name: "Acme", dashboardAccess: "code" };
+const good = { name: "Acme", dashboardAccess: "members" };
 const teamCount = () => db.prepare("select count(*) as n from teams").get();
 
 test("a signed-in user creates a team, owns it, and is given its code once", async () => {
   const cookie = await signIn(app, "code-ann");
-  const res = await create(cookie, { name: "  Acme  ", dashboardAccess: "admins" });
+  const res = await create(cookie, { name: "  Acme  ", dashboardAccess: "members" });
   expect(res.status).toBe(201);
   expect(res.headers.get("cache-control")).toBe("no-store");
   const body = (await res.json()) as { team: { id: string; name: string; role: string; dashboardAccess: string }; code: string };
-  expect(body.team).toMatchObject({ name: "Acme", role: "owner", dashboardAccess: "admins" });
+  expect(body.team).toMatchObject({ name: "Acme", role: "owner", dashboardAccess: "members" });
   expect(body.code).toMatch(/^[a-f0-9]{24}$/);
   const me = (await (await app.request("/api/me", { headers: { Cookie: cookie } })).json()) as { teams: unknown[] };
-  expect(me.teams).toEqual([{ id: body.team.id, name: "Acme", role: "owner", dashboardAccess: "admins" }]);
+  expect(me.teams).toEqual([{ id: body.team.id, name: "Acme", role: "owner", dashboardAccess: "members" }]);
 });
 test("the response carries the public id, never the internal one, and the code opens the team", async () => {
   const res = await create(await signIn(app, "code-ann"), good);
@@ -40,18 +40,19 @@ test("the response carries the public id, never the internal one, and the code o
   expect(login.status).toBe(204);
 });
 test("a name of 60 characters once trimmed is accepted", async () => {
-  const res = await create(await signIn(app, "code-ann"), { name: ` ${"x".repeat(60)} `, dashboardAccess: "code" });
+  const res = await create(await signIn(app, "code-ann"), { name: ` ${"x".repeat(60)} `, dashboardAccess: "members" });
   expect(res.status).toBe(201);
 });
 test.each([
-  [{ dashboardAccess: "code" }, "invalid name"],
-  [{ name: "", dashboardAccess: "code" }, "invalid name"],
-  [{ name: "   ", dashboardAccess: "code" }, "invalid name"],
-  [{ name: 7, dashboardAccess: "code" }, "invalid name"],
-  [{ name: "x".repeat(61), dashboardAccess: "code" }, "invalid name"],
-  [{ name: "A\nB", dashboardAccess: "code" }, "invalid name"],
+  [{ dashboardAccess: "members" }, "invalid name"],
+  [{ name: "", dashboardAccess: "members" }, "invalid name"],
+  [{ name: "   ", dashboardAccess: "members" }, "invalid name"],
+  [{ name: 7, dashboardAccess: "members" }, "invalid name"],
+  [{ name: "x".repeat(61), dashboardAccess: "members" }, "invalid name"],
+  [{ name: "A\nB", dashboardAccess: "members" }, "invalid name"],
   [{ name: "Acme" }, "invalid dashboardAccess"],
   [{ name: "Acme", dashboardAccess: "everyone" }, "invalid dashboardAccess"],
+  [{ name: "Acme", dashboardAccess: "code" }, "invalid dashboardAccess"],
 ])("a bad body %j is refused and creates nothing", async (body, error) => {
   const res = await create(await signIn(app, "code-ann"), body);
   expect(res.status).toBe(400);
@@ -85,7 +86,7 @@ test("an expired user session is 401", async () => {
   expect(teamCount()).toEqual({ n: 0 });
 });
 test("a team session is 401", async () => {
-  const { code } = createHostedTeam(db, { name: "Old", dashboardAccess: "code", owner: { githubId: 9, login: "zed" }, codeKey: KEY, maxTeams: 200 });
+  const { code } = createHostedTeam(db, { name: "Old", dashboardAccess: "members", owner: { githubId: 9, login: "zed" }, codeKey: KEY, maxTeams: 200 });
   const login = await codeLogin(app, code);
   const res = await create(login.headers.get("set-cookie")!.split(";")[0]!, good);
   expect(res.status).toBe(401);
@@ -100,7 +101,7 @@ test("where two refusals overlap, the origin comes before the session, and the s
 });
 test("a sixth team is refused with 409, a full server with 503", async () => {
   const cookie = await signIn(app, "code-ann");
-  for (let i = 1; i <= 5; i++) expect((await create(cookie, { name: `T${i}`, dashboardAccess: "code" })).status).toBe(201);
+  for (let i = 1; i <= 5; i++) expect((await create(cookie, { name: `T${i}`, dashboardAccess: "members" })).status).toBe(201);
   const sixth = await create(cookie, good);
   expect(sixth.status).toBe(409);
   expect(sixth.headers.get("cache-control")).toBe("no-store");

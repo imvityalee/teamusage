@@ -30,7 +30,7 @@ const access = (over: Partial<Parameters<typeof statsAccess>[1]> = {}) =>
 
 beforeEach(() => {
   db = openDb(":memory:");
-  a = hostedTeam(db, ann, "code").team;
+  a = hostedTeam(db, ann, "members").team;
   b = hostedTeam(db, bob, "admins").team;
   machineA = machineOf(a.id);
   machineB = machineOf(b.id);

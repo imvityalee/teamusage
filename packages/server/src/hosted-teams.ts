@@ -4,7 +4,7 @@ import { now, type Db } from "./db.js";
 import { ensureUser } from "./users.js";
 
 export type Role = "owner" | "admin" | "viewer";
-export type DashboardAccess = "code" | "admins";
+export type DashboardAccess = "members" | "admins";
 export type TeamInfo = { id: number; publicId: string; name: string; dashboardAccess: DashboardAccess };
 /** A team as its user sees it in a list: `id` is the public id. */
 export type UserTeam = { id: string; name: string; role: Role; dashboardAccess: DashboardAccess };
@@ -30,6 +30,9 @@ export const newPublicId = (): string => randomBytes(8).toString("hex");
 
 /** True for a string in the format of newPublicId. */
 export const isPublicId = (v: unknown): v is string => typeof v === "string" && PUBLIC_ID.test(v);
+
+/** True for a value of DashboardAccess. */
+export const isDashboardAccess = (v: unknown): v is DashboardAccess => v === "members" || v === "admins";
 
 const countOf = (db: Db, sql: string, ...params: unknown[]): number => (db.prepare(sql).get(...params) as { n: number }).n;
 
@@ -86,9 +89,9 @@ export function teamById(db: Db, teamId: number): TeamInfo | null {
   return (db.prepare(`select ${TEAM_COLUMNS} from teams where id = ?`).get(teamId) as TeamInfo | undefined) ?? null;
 }
 
-/** True exactly when the team exists and its dashboard opens with its code; an admins-only or missing team is false. */
-export function opensWithCode(db: Db, teamId: number): boolean {
-  return teamById(db, teamId)?.dashboardAccess === "code";
+/** True exactly when the team exists and its members may see the team's numbers; an admins-only or missing team is false. */
+export function membersSeeTeam(db: Db, teamId: number): boolean {
+  return teamById(db, teamId)?.dashboardAccess === "members";
 }
 
 export function roleIn(db: Db, teamId: number, githubId: number): Role | null {

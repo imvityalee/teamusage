@@ -13,7 +13,7 @@ let a: { team: TeamInfo; code: string }, b: { team: TeamInfo; code: string };
 
 beforeEach(() => {
   ({ db, app } = hostedApp());
-  a = hostedTeam(db, { githubId: 1, login: "ann" }, "code");
+  a = hostedTeam(db, { githubId: 1, login: "ann" }, "members");
   b = hostedTeam(db, { githubId: 2, login: "bob" }, "admins");
 });
 

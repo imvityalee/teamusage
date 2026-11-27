@@ -20,7 +20,7 @@ const REFUSED = { error: "this team is sending too much at once; try again in a 
 
 async function server(team: Partial<TeamLimits> = {}, uploadsPerMinute = 20): Promise<void> {
   ({ db, app } = hostedApp({ limits: testLimits(testCaps(team), { uploadsPerMinute, teamUploadRecordsPerMinute: 10 }), now: () => clock.t }));
-  code = hostedTeam(db, { githubId: 1, login: "ann" }, "code").code;
+  code = hostedTeam(db, { githubId: 1, login: "ann" }, "members").code;
   one = await join({ machineId: machineIdOf(1) });
   two = await join({ machineId: machineIdOf(2) });
 }
@@ -93,7 +93,7 @@ describe("what counts for the team", () => {
 
 test("another team with the same machine id uploads while the first team is refused, and the refusal names nothing of it", async () => {
   await upload(one, recordsOf(10));
-  const bob = hostedTeam(db, { githubId: 2, login: "bob" }, "code");
+  const bob = hostedTeam(db, { githubId: 2, login: "bob" }, "members");
   const bobs = machineClient(() => app, () => bob.code);
   const bobsToken = await bobs.join({ machineId: machineIdOf(1), email: "bob@example.com", name: "Quillfeather Bobby" });
   const refused = await upload(two, recordsOf(1, 10));

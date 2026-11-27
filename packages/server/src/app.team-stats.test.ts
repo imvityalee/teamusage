@@ -37,7 +37,7 @@ const answer = async (res: Response) => [res.status, await res.json()];
 
 /** Creates a team of `owner` whose dashboard opens with its code, registers one machine and signs in with the code. */
 async function setUpTeam(owner: Owner, machine: number) {
-  const { team, code } = hostedTeam(db, owner, "code");
+  const { team, code } = hostedTeam(db, owner, "members");
   const joined = await machineClient(() => app, () => code).register({ machineId: machineIdOf(machine), email: `${owner.login}@example.com` });
   const { token, memberId } = (await joined.json()) as { token: string; memberId: number };
   const session = cookieOf(await codeLogin(app, code), "tu_session");

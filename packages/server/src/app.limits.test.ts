@@ -19,7 +19,7 @@ const caps = (over: Partial<TeamLimits> = {}): TeamLimits => ({
 });
 function server(over: Partial<TeamLimits> = {}): void {
   ({ db, app } = hostedApp({ limits: testLimits(caps(over)), now: () => clock.t }));
-  code = hostedTeam(db, { githubId: 1, login: "ann" }, "code").code;
+  code = hostedTeam(db, { githubId: 1, login: "ann" }, "members").code;
 }
 beforeEach(() => {
   clock.t = Date.parse("2026-11-25T10:30:00.000Z");
@@ -173,7 +173,7 @@ describe("the minute of uploads", () => {
   test("the same laptop in two teams has two allowances", async () => {
     const token = await join();
     for (let i = 0; i < 3; i++) await upload(token, recordsOf(1, i));
-    const bob = hostedTeam(db, { githubId: 2, login: "bob" }, "code");
+    const bob = hostedTeam(db, { githubId: 2, login: "bob" }, "members");
     const joined = await register({ inviteCode: bob.code, email: "bob@example.com" });
     const { token: bobsToken } = (await joined.json()) as { token: string };
     expect((await upload(bobsToken, recordsOf(1))).status).toBe(200);
@@ -208,7 +208,7 @@ describe("sign-ups on a nearly full volume", () => {
   test("are paused with the server's own answer, and no team is created", async () => {
     const cookie = await signIn(app, "code-bob");
     low = true;
-    const res = await createTeam(cookie, { name: "Bobs", dashboardAccess: "code" });
+    const res = await createTeam(cookie, { name: "Bobs", dashboardAccess: "members" });
     expect(res.status).toBe(503);
     expect(await res.json()).toEqual({ error: "sign-ups are paused" });
     expect(teamCount()).toEqual({ n: 1 });
@@ -216,12 +216,12 @@ describe("sign-ups on a nearly full volume", () => {
   test("a bad name is still 400", async () => {
     const cookie = await signIn(app, "code-bob");
     low = true;
-    const res = await createTeam(cookie, { name: "", dashboardAccess: "code" });
+    const res = await createTeam(cookie, { name: "", dashboardAccess: "members" });
     expect([res.status, await res.json()]).toEqual([400, { error: "invalid name" }]);
   });
   test("a team is created while the volume has room", async () => {
     const cookie = await signIn(app, "code-bob");
-    expect((await createTeam(cookie, { name: "Bobs", dashboardAccess: "code" })).status).toBe(201);
+    expect((await createTeam(cookie, { name: "Bobs", dashboardAccess: "members" })).status).toBe(201);
   });
 });
 

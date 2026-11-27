@@ -19,7 +19,7 @@ const UPLOAD_DAY = "2026-11-03";
 
 /** Team A opens its dashboard with its code (owner ann); team B only to its admins (owner bob). */
 const SPEC = {
-  A: { owner: "ann", teamName: "Aurora Quillfeather Collective", access: "code", memberName: "Ottoline Quaxley", machineLabel: "quaxley-aardvark-laptop", total: 10, costUsd: 0.25 },
+  A: { owner: "ann", teamName: "Aurora Quillfeather Collective", access: "members", memberName: "Ottoline Quaxley", machineLabel: "quaxley-aardvark-laptop", total: 10, costUsd: 0.25 },
   B: { owner: "bob", teamName: "Borealis Zephyrine Guild", access: "admins", memberName: "Zebulon Vexworth", machineLabel: "vexworth-zebra-workstation", total: 700, costUsd: 7.5 },
 } as const;
 

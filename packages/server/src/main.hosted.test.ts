@@ -35,7 +35,7 @@ async function hostedServerWithTeam(dir: string): Promise<string> {
   try {
     const res = await first.app.request("/api/teams", {
       method: "POST",
-      body: JSON.stringify({ name: "Acme", dashboardAccess: "code" }),
+      body: JSON.stringify({ name: "Acme", dashboardAccess: "members" }),
       headers: { "Content-Type": "application/json", Origin: PUBLIC_URL, Cookie: await signIn(first.app, "code-ann") },
     }, conn);
     expect(res.status).toBe(201);
@@ -152,7 +152,7 @@ describe("a hosted buildServer counts wrong codes per address", () => {
   /** A hosted server with one team; `register(code, address, headers)` sends a registration from that address. */
   function serverWithTeam(over: Partial<ServerConfig> = {}) {
     const s = buildServer({ ...hosted(tempDataDir()), ...over }, { github: github(), measureDisk: roomy });
-    const { code } = hostedTeam(s.db, { githubId: 1, login: "ann" }, "code");
+    const { code } = hostedTeam(s.db, { githubId: 1, login: "ann" }, "members");
     const register = (inviteCode: string, address: string, headers: Record<string, string> = {}) =>
       s.app.request("/api/register", { method: "POST", body: JSON.stringify(goodReg({ inviteCode })), headers }, from(address));
     return { s, code, register };

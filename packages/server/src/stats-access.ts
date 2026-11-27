@@ -1,5 +1,5 @@
 import type { Db } from "./db.js";
-import { isPublicId, opensWithCode, roleIn, teamByPublicId } from "./hosted-teams.js";
+import { isPublicId, membersSeeTeam, roleIn, teamByPublicId } from "./hosted-teams.js";
 import type { Session } from "./sessions.js";
 import type { MachineIdentity } from "./team-data.js";
 
@@ -37,11 +37,11 @@ export function statsAccess(
   // A presented bearer token must be valid; it wins over a cookie, but a bad one is never rescued by a cookie.
   if (a.token !== undefined) {
     if (a.who === null) return UNAUTHORIZED;
-    return { ok: true, teamId: a.who.teamId, member: a.who, teamNumbers: opensWithCode(db, a.who.teamId) };
+    return { ok: true, teamId: a.who.teamId, member: a.who, teamNumbers: membersSeeTeam(db, a.who.teamId) };
   }
   const { session } = a;
   if (session?.kind === "team") {
-    return opensWithCode(db, session.teamId) ? { ok: true, teamId: session.teamId, member: null, teamNumbers: true } : UNAUTHORIZED;
+    return membersSeeTeam(db, session.teamId) ? { ok: true, teamId: session.teamId, member: null, teamNumbers: true } : UNAUTHORIZED;
   }
   if (session?.kind === "user") return userAccess(db, session.githubId, a.teamParam);
   return UNAUTHORIZED;

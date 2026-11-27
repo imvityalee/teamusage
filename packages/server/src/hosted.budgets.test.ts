@@ -85,7 +85,7 @@ test("an upload to A drops A's expired rows and leaves B's rows and count as the
 
 test("with the real values, each of a team's 600 machines uploads 11 records within one minute", async () => {
   const { db, app } = hostedApp({ limits: (appDb) => hostedLimits({ dataDir: "/data", db: appDb, measure: roomy }), now: () => NOW });
-  const { code } = hostedTeam(db, { githubId: 1, login: "ann" }, "code");
+  const { code } = hostedTeam(db, { githubId: 1, login: "ann" }, "members");
   const { register, upload } = machineClient(() => app, () => code);
   const tokens: string[] = [];
   for (let member = 0; member < 60; member++) {

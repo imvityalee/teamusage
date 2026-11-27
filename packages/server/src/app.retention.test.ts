@@ -9,7 +9,7 @@ const BATCH = [record({ date: "2024-06-01" }), record({ date: "2026-11-25", mode
 
 test("a hosted team's upload stores the current record and counts the old one as kept", async () => {
   const { db, app } = hostedApp({ limits: testLimits(testCaps(), { usageDaysKept: 730 }), now: () => NOW });
-  const { code } = hostedTeam(db, { githubId: 1, login: "ann" }, "code");
+  const { code } = hostedTeam(db, { githubId: 1, login: "ann" }, "members");
   const { join, upload } = machineClient(() => app, () => code);
   const res = await upload(await join({ machineId: machineIdOf(1) }), BATCH);
   expect(res.status).toBe(200);

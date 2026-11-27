@@ -216,7 +216,7 @@ describe("GET /api/me", () => {
     machineA: null,
     machineB: null,
     codeA: (t) => ({ kind: "team", team: { id: t.A.publicId, name: t.A.name } }),
-    ann: (t) => ({ kind: "user", login: "ann", teams: [{ id: t.A.publicId, name: t.A.name, role: "owner", dashboardAccess: "code" }] }),
+    ann: (t) => ({ kind: "user", login: "ann", teams: [{ id: t.A.publicId, name: t.A.name, role: "owner", dashboardAccess: "members" }] }),
     bob: (t) => ({ kind: "user", login: "bob", teams: [{ id: t.B.publicId, name: t.B.name, role: "owner", dashboardAccess: "admins" }] }),
     eve: () => ({ kind: "user", login: "eve", teams: [] }),
   };
@@ -236,7 +236,7 @@ describe("POST /api/teams", () => {
 
   test.each(CALLERS)("as %s", async (caller) => {
     const teams = count("teams");
-    const res = await post(caller, "/api/teams", { name: `Fresh team of ${caller}`, dashboardAccess: "code" });
+    const res = await post(caller, "/api/teams", { name: `Fresh team of ${caller}`, dashboardAccess: "members" });
     expect(res.headers.get("cache-control")).toBe("no-store");
     if (!CREATES.includes(caller)) {
       await expectError(res, 401, "unauthorized");

@@ -27,7 +27,7 @@ let B: ReturnType<typeof hostedTeam>;
 
 beforeEach(() => {
   ({ db, app } = hostedApp({ limits: testLimits(caps()), now: () => NOW }));
-  A = hostedTeam(db, { githubId: 1, login: "ann" }, "code", "Aurora Quillfeather Collective");
+  A = hostedTeam(db, { githubId: 1, login: "ann" }, "members", "Aurora Quillfeather Collective");
   B = hostedTeam(db, { githubId: 2, login: "bob" }, "admins", "Borealis Zephyrine Guild");
 });
 

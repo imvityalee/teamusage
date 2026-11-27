@@ -31,7 +31,7 @@ const HOSTED_REFUSAL = "this database belongs to a hosted server; teamusage-admi
 function makeHosted(db: Db, withTeam: boolean): void {
   markHostedDatabase(db);
   if (!withTeam) return;
-  const { team } = hostedTeam(db, { githubId: 1, login: "ann" }, "code", "Acme");
+  const { team } = hostedTeam(db, { githubId: 1, login: "ann" }, "members", "Acme");
   forTeam(db, team.id).registerMachine({ name: "Ann", email: "ann@x.com", machineId: M1, machineLabel: "mbp" });
   createTeamSession(db, team.id);
 }

@@ -33,7 +33,7 @@ async function hostedMachine(opts: { measureDisk?: (dir: string) => DiskSpace; n
   const config = hosted(tempDataDir());
   const s = buildServer(config, { github: github(), now: clock, ...opts });
   const ann = await signIn(s.app, "code-ann");
-  const created = await createTeamAs(s, ann, { name: "Acme", dashboardAccess: "code" });
+  const created = await createTeamAs(s, ann, { name: "Acme", dashboardAccess: "members" });
   const { code } = (await created.json()) as { code: string };
   const token = await tokenOf(await register(s, goodReg({ inviteCode: code })));
   return { s, ann, code, token, dataDir: config.dataDir };
@@ -102,7 +102,7 @@ test("a hosted server on a nearly full volume takes no new machine, row or team,
     space = full();
     expect((await register(s, goodReg({ inviteCode: code, email: "new@example.com", machineId: MID2 }))).status).toBe(507);
     expect((await upload(s, token, [record({ model: "new" })])).status).toBe(507);
-    const team = await createTeamAs(s, ann, { name: "Second", dashboardAccess: "code" });
+    const team = await createTeamAs(s, ann, { name: "Second", dashboardAccess: "members" });
     expect([team.status, await team.json()]).toEqual([503, { error: "sign-ups are paused" }]);
     expect(await (await upload(s, token, [record({ input: 91, total: 100 })])).json()).toEqual({ stored: 1, kept: 0 });
     expect((await s.app.request("/api/health")).status).toBe(200);
@@ -206,7 +206,7 @@ test("a hosted server without a test's measurement measures the real volume, and
   const errors = captureErrors();
   const s = buildServer(hosted(tempDataDir()), { github: github(), now: clock });
   try {
-    const { code } = hostedTeam(s.db, { githubId: 1, login: "ann" }, "code");
+    const { code } = hostedTeam(s.db, { githubId: 1, login: "ann" }, "members");
     // The real volume may or may not be nearly full; either answer is right, a failure is not.
     expect([200, 507]).toContain((await register(s, goodReg({ inviteCode: code }))).status);
     expect(errors.mock.calls.flat().join("\n")).not.toContain("could not measure");

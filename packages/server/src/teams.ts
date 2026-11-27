@@ -2,10 +2,10 @@ import { randomBytes } from "node:crypto";
 import { now, safeEqual, storeInviteCode, type Db } from "./db.js";
 import { endTeamSessions } from "./sessions.js";
 
-/** Adds a team whose dashboard opens with the invite code; returns its id. */
+/** Adds a team whose members see the team's numbers; returns its id. */
 export function createTeam(db: Db, name: string): number {
   const { lastInsertRowid } = db
-    .prepare("insert into teams (public_id, name, dashboard_access, created_at) values (?, ?, 'code', ?)")
+    .prepare("insert into teams (public_id, name, dashboard_access, created_at) values (?, ?, 'members', ?)")
     .run(randomBytes(8).toString("hex"), name, now());
   return Number(lastInsertRowid);
 }
