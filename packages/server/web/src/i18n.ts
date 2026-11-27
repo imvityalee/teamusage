@@ -1,8 +1,10 @@
 /** UI strings in English and Russian, and the stored language choice. */
 
 import type { Lang } from "./lang.js";
+import { pluralForm } from "./plural.js";
 
 export { LANG_KEY, loadLang, pickLang, saveLang, type Lang } from "./lang.js";
+export { pluralForm, type PluralForm } from "./plural.js";
 
 const en = {
   title: "teamusage — team usage",
@@ -343,20 +345,6 @@ export function t(lang: Lang, key: MessageKey, vars: Record<string, string | num
 export function matchCount(lang: Lang, n: number, m: number): string {
   const one = lang === "ru" ? m % 10 === 1 && m % 100 !== 11 : m === 1;
   return t(lang, one ? "matchCount1" : "matchCount", { n, m });
-}
-
-export type PluralForm = "one" | "few" | "many" | "other";
-
-/** The plural category of a count: English one/other; Russian one/few/many, with 11–14 always many. */
-export function pluralForm(lang: Lang, n: number): PluralForm {
-  const abs = Math.abs(Math.trunc(n));
-  if (lang === "en") return abs === 1 ? "one" : "other";
-  const last = abs % 10;
-  const lastTwo = abs % 100;
-  if (lastTwo >= 11 && lastTwo <= 14) return "many";
-  if (last === 1) return "one";
-  if (last >= 2 && last <= 4) return "few";
-  return "many";
 }
 
 export type CountedNoun = "agents" | "models" | "accounts" | "plans" | "machines" | "daysAgo" | "syncedDaysAgo" | "noSyncDays";

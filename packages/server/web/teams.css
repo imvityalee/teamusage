@@ -1,0 +1,30 @@
+/* `/teams`: the list of a person's teams and the "Name your team" form. Loads after site.css. */
+
+.page.teams { max-width: 560px; }
+.page.teams .create { max-width: 480px; }
+.page.teams h1 + .actions { margin-top: 24px; }
+.page.teams .small + h1 { margin-top: 6px; }
+
+/* The list: one row for each team, a name and role on the left, its links on the right */
+.team-list { list-style: none; margin: 24px 0 0; padding: 0; background: var(--card); border: 1px solid var(--hairline); border-radius: 16px; overflow: hidden; }
+.team-row { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; justify-content: space-between; padding: 14px 18px; }
+.team-row + .team-row { border-top: 1px solid var(--hairline); }
+.team-main { flex: 1 1 200px; min-width: 0; }
+.team-name { font-weight: 600; overflow-wrap: anywhere; }
+.team-main .badge { margin-top: 2px; padding: 3px 8px; border-radius: 8px; }
+.team-links { display: flex; flex-wrap: wrap; gap: 8px; flex-shrink: 0; }
+.team-links .btn { min-height: 44px; padding: 0 14px; font-size: 14px; }
+.list-foot { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between; margin-top: 18px; }
+.list-foot .btn { min-height: 44px; padding: 0 16px; font-size: 14px; }
+
+/* The form: field errors sit under their field */
+.field-error { color: var(--danger); overflow-wrap: anywhere; }
+.field input[aria-invalid="true"] { border-color: var(--danger); }
+.options { display: flex; flex-direction: column; gap: 8px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.options legend { padding: 0; margin: 0 0 6px; font-size: 14px; font-weight: 600; }
+.option { display: flex; gap: 12px; align-items: flex-start; min-width: 0; padding: 12px 14px; border: 1px solid var(--axis); border-radius: 12px; cursor: pointer; }
+.option input { flex-shrink: 0; width: 18px; height: 18px; margin: 3px 0 0; accent-color: var(--text); }
+.option-text { display: flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }
+.option-title { font-weight: 600; }
+.option:has(input:checked) { border-color: var(--text); }
+.option:active { opacity: .6; }

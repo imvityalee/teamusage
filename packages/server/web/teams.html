@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#f5f5f7">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#000000">
+<title>Your teams · teamusage</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="./site.css">
+<link rel="stylesheet" href="./teams.css">
+<script type="module" src="./src/teams/main.ts"></script>
+</head>
+<body class="site">
+<header class="site-head">
+  <a class="brand" href="/">teamusage</a>
+  <div class="head-tools">
+    <div class="account" id="account" hidden>
+      <span class="identity-mark" id="initials" aria-hidden="true"></span>
+      <span class="account-login" id="login"></span>
+      <button type="button" class="link-button" id="sign-out" data-i18n="signOut">Sign out</button>
+    </div>
+    <div class="seg" id="lang" role="group" aria-label="Language" data-i18n-label="language">
+      <button type="button" data-lang="en" lang="en" aria-pressed="true">EN</button><button type="button" data-lang="ru" lang="ru" aria-pressed="false">RU</button>
+    </div>
+  </div>
+</header>
+<main class="page teams">
+  <p data-view="loading" class="lede" role="status" data-i18n="loading">Checking your sign-in…</p>
+
+  <section data-view="failed" hidden>
+    <h1 role="alert" id="failed-text" data-i18n="failedText">The server could not be reached.</h1>
+    <div class="actions">
+      <button type="button" class="btn primary" id="retry" data-i18n="tryAgain">Try again</button>
+    </div>
+  </section>
+
+  <section data-view="signedOut" hidden>
+    <h1 data-i18n="signedOutTitle">Sign in to manage a team</h1>
+    <p class="lede" data-i18n="signedOutText">Create a team, or open the teams you own or administer. Team members do not need an account.</p>
+    <p class="notice warn" id="signin-notice" role="alert" data-i18n="signinFailed" hidden>Sign-in did not finish. Try again.</p>
+    <div class="actions">
+      <a class="btn primary" id="sign-in" href="/auth/github/start" data-i18n="signInGithub">Sign in with GitHub</a>
+    </div>
+    <p class="aside"><span data-i18n="memberPrompt">Team member?</span> <a href="/open" data-i18n="howToOpen">Open the dashboard from your coding agent</a></p>
+  </section>
+
+  <section data-view="member" hidden>
+    <h1 id="member-text"></h1>
+    <div class="actions">
+      <a class="btn primary" id="member-dashboard" href="/dashboard" data-i18n="openDashboard">Open the dashboard</a>
+      <a class="btn quiet" id="member-sign-in" href="/auth/github/start" data-i18n="signInGithub">Sign in with GitHub</a>
+    </div>
+  </section>
+
+  <section data-view="list" hidden>
+    <p class="small" data-i18n="signedInWith">Signed in with GitHub</p>
+    <h1 data-i18n="listTitle">Your teams</h1>
+    <ul class="team-list" id="team-list"></ul>
+    <div class="list-foot">
+      <a class="btn quiet compact" id="create-link" href="#new" data-i18n="createTeamLink">Create a team</a>
+      <span class="small" id="owned-line"></span>
+    </div>
+    <p class="aside" data-i18n="listNote">A team you joined as a member is not listed here. Open its dashboard from your coding agent.</p>
+  </section>
+
+  <section data-view="create" class="create" hidden>
+    <p class="small" data-i18n="signedInWith">Signed in with GitHub</p>
+    <h1 data-i18n="createTitle">Name your team</h1>
+    <p class="lede" data-i18n="createLede">On the next page you get a team code to send to your team.</p>
+    <form class="card" id="create-form" novalidate>
+      <div class="field">
+        <label for="team-name" data-i18n="nameLabel">Team name</label>
+        <input id="team-name" type="text" maxlength="60" autocomplete="organization" aria-describedby="name-hint name-error">
+        <p class="small" id="name-hint" data-i18n="nameHint">Members see this name on the dashboard. You can change it later.</p>
+        <p class="small field-error" id="name-error" role="alert" data-i18n="nameError" hidden>Use 1 to 60 characters, with no line breaks.</p>
+      </div>
+      <fieldset class="options" aria-describedby="access-hint access-error">
+        <legend data-i18n="accessLegend">Who can open the dashboard?</legend>
+        <label class="option">
+          <input type="radio" name="dashboard-access" value="members">
+          <span class="option-text"><span class="option-title" data-i18n="optMembers">Every member</span><span class="small" data-i18n="optMembersNote">Members open the dashboard from their coding agent.</span></span>
+        </label>
+        <label class="option">
+          <input type="radio" name="dashboard-access" value="admins">
+          <span class="option-text"><span class="option-title" data-i18n="optAdmins">Admins only</span><span class="small" data-i18n="optAdminsNote">Only you and the admins and viewers you add. Members still see their own numbers in their agent.</span></span>
+        </label>
+        <p class="small" id="access-hint" data-i18n="accessHint">Choose one. You can change it later on the team page.</p>
+        <p class="small field-error" id="access-error" role="alert" data-i18n="accessError" hidden>Choose who can open the dashboard.</p>
+      </fieldset>
+      <p class="notice warn" id="form-notice" role="alert" hidden></p>
+      <button type="submit" class="btn primary" id="create" data-i18n="create">Create team</button>
+      <p class="small"><span data-i18n="agreePre">By creating a team you agree to the</span> <a href="/terms" data-i18n="termsLink">Terms</a> <span data-i18n="agreeAnd">and the</span> <a href="/privacy" data-i18n="privacyLink">Privacy policy</a>.</p>
+    </form>
+    <p class="aside" data-i18n="githubNote">Signing in with GitHub gives teamusage no access to your repositories or your email. Members never need an account.</p>
+    <p class="aside"><a href="#all" id="back-to-teams" data-i18n="backToTeams" hidden>Back to your teams</a></p>
+  </section>
+</main>
+</body>
+</html>

@@ -36,7 +36,7 @@ const has = (text: string, selector: string, declaration: string) =>
 
 const PRESSED = {
   "style.css": { scale: [".seg button", ".pill", ".chip", ".status button", ".login button"], dim: ["a", ".link", ".pop-row"] },
-  "site.css": { scale: [".btn", ".site-head .seg button"], dim: [".site-head .brand", ".aside a"] },
+  "site.css": { scale: [".btn", ".site-head .seg button"], dim: [".site-head .brand", ".aside a", ".link-button"] },
 };
 
 test("base.css turns the tap highlight off, which is why every control needs its own press state", () => {
