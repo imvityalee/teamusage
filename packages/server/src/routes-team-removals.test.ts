@@ -1,6 +1,6 @@
 import { beforeEach, expect, test } from "vitest";
 import { goodReg, record } from "./app.fixture.js";
-import { heldRequest, machineIdOf, postFromPage, PUBLIC, settle } from "./hosted.fixture.js";
+import { heldUpload, machineIdOf, postFromPage, PUBLIC, settle } from "./hosted.fixture.js";
 import { rowsOf } from "./hosted.two-teams.fixture.js";
 import {
   asUser,
@@ -67,7 +67,7 @@ test("the colleague who was laid off: removed with a new code, he is out everywh
   expect((await stats(w.B.tia.session)).status).toBe(200);            // a colleague's browser
   expect((await upload(w.B.tia.one.token, [record()])).status).toBe(200);
   expect((await registerAs(newcomer, body.code)).status).toBe(200);
-  expect(usageCounts(w.db, w.B.id, TODAY).rows).toBe(usageRows(w.B.id));
+  countIsRight();
   expect(rowsOf(w.db, w.A.id)).toEqual(rowsA);
 });
 test("without a new code the answer carries none and the code still joins", async () => {
@@ -87,7 +87,7 @@ test("a new code is given whatever was removed, also when nothing the request na
 test("a removal of more rows than a slice pauses between slices, with the count right and other teams answered at each pause", async () => {
   const seen: number[] = [];                                           // sam holds 7 rows: slices of 3, 3, 1
   atPause = async () => {
-    expect(usageCounts(w.db, w.B.id, TODAY).rows).toBe(usageRows(w.B.id));
+    countIsRight();
     seen.push((await upload(w.A.members[0]!.one.token, [record({ model: `during-${seen.length}` })])).status);
   };
   expect((await removals("bob", w.B, { members: [w.B.sam.memberId], machines: [], rotateCode: false })).status).toBe(200);
@@ -109,7 +109,7 @@ test("an admin whose role goes while their removal pauses removes nothing more",
   expect(res.status).toBe(404);
   expect(memberIds(w.B.id)).toContain(w.B.sam.memberId);
   expect(usageRowsOfMember(w.B.id, w.B.sam.memberId)).toBe(4);        // one slice of 3 ran
-  expect(usageCounts(w.db, w.B.id, TODAY).rows).toBe(usageRows(w.B.id));
+  countIsRight();
   expect(codeRow(w.db, w.B.id)).toEqual(codeBefore);                  // not rotated; read before the request
 });
 
@@ -203,12 +203,7 @@ test("no credential, a machine token and a member's session get 401; without the
 });
 
 test("an upload held while its machine's member is removed is refused when its body arrives, and the count is right", async () => {
-  const held = heldRequest(w.app, "/api/usage", {
-    method: "POST",
-    text: JSON.stringify({ records: [record({ model: "late" })] }),
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${w.B.sam.one.token}` },
-  });
-  await settle();                                                     // the upload now waits for its body
+  const held = await heldUpload(w.app, w.B.sam.one.token, [record({ model: "late" })]);
   expect((await removals("bob", w.B, { members: [w.B.sam.memberId], machines: [], rotateCode: false })).status).toBe(200);
   held.finish();
   const res = await held.answer;

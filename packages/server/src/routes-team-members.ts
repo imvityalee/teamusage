@@ -10,15 +10,14 @@ import { rotateTeamCode } from "./team-settings.js";
 /** Most members, and most machines, one removal names. */
 export const MAX_REMOVAL_IDS = 500;
 
-/** What a removal asks for: the members and machines, each named once, and whether the team gets a new code. */
+/** What a removal asks for: the members and machines, and whether the team gets a new code. */
 type RemovalRequest = { what: Removal; rotateCode: boolean };
 
 const isMemberId = (v: unknown): v is number => Number.isSafeInteger(v) && (v as number) > 0;
 
-/** `v` as a list of at most MAX_REMOVAL_IDS ids, counted as sent, each of which `isId` accepts, named once; otherwise null. */
+/** `v` when it is a list of at most MAX_REMOVAL_IDS ids, each of which `isId` accepts; otherwise null. */
 function idList<T>(v: unknown, isId: (id: unknown) => id is T): T[] | null {
-  if (!Array.isArray(v) || v.length > MAX_REMOVAL_IDS || !v.every(isId)) return null;
-  return [...new Set<T>(v)];
+  return Array.isArray(v) && v.length <= MAX_REMOVAL_IDS && v.every(isId) ? v : null;
 }
 
 /** The removal the body asks for; otherwise the text of the 400 that refuses it. */

@@ -7,10 +7,9 @@ import { isHostedDatabase } from "./db-mode.js";
 import { isMain } from "./entry.js";
 import { NewerSchemaError, UpgradeFailedError } from "./migrate.js";
 import { openFailureMessage } from "./open-failure.js";
-import { forTeam } from "./team-data.js";
+import { forTeam, isMachineId } from "./team-data.js";
 import { ensureSingleTeam, rotateInviteCode } from "./teams.js";
 
-const MACHINE_ID = /^[a-f0-9]{32}$/;
 const CONTROL = /[\x00-\x1f\x7f]/g;
 const USAGE = [
   "usage: teamusage-admin <command>",
@@ -71,7 +70,7 @@ export function runAdmin(
       return 0;
     }
     case "remove-machine": {
-      if (arg === undefined || rest.length > 0 || !MACHINE_ID.test(arg)) return usage();
+      if (arg === undefined || rest.length > 0 || !isMachineId(arg)) return usage();
       if (!team().removeMachine(arg)) {
         out("no such machine");
         return 1;

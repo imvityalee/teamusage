@@ -153,6 +153,13 @@ export function heldRequest(
 /** Lets every handler that is running reach its next wait. */
 export const settle = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
 
+/** Sends an upload of `records` as the machine `token` and holds it while the handler waits for its body. */
+export async function heldUpload(app: Hono, token: string, records: unknown[]): Promise<ReturnType<typeof heldRequest>> {
+  const held = heldRequest(app, "/api/usage", { method: "POST", text: JSON.stringify({ records }), headers: { Authorization: `Bearer ${token}` } });
+  await settle();                                                     // the handler now waits for the body
+  return held;
+}
+
 /** Caps for a test's team, each a value of its own, with room on the volume unless `over` says otherwise. */
 export const testCaps = (over: Partial<TeamLimits> = {}): TeamLimits => ({
   membersPerTeam: 5, machinesPerMember: 6, rowsPerMachine: 1000, rowsPerTeam: 1001, rowsAddedPerDay: 1002, storageLow: () => false, ...over,

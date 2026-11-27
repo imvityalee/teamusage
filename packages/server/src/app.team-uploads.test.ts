@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, test } from "vitest";
 import type { Hono } from "hono";
 import * as selfHosted from "./app.harness.js";
 import type { Db } from "./db.js";
-import { heldRequest, hostedApp, hostedTeam, machineClient, machineIdOf, recordsOf, settle, testCaps, testLimits } from "./hosted.fixture.js";
+import { heldUpload, hostedApp, hostedTeam, machineClient, machineIdOf, recordsOf, testCaps, testLimits } from "./hosted.fixture.js";
 import { forTeam } from "./team-data.js";
 import { TEAM_UPLOAD_RECORDS_PER_MINUTE, type TeamLimits } from "./team-limits.js";
 
@@ -59,15 +59,8 @@ test("uploads of a team that are open together: only those up to the crossing ar
 });
 test("the agreed value", () => expect(TEAM_UPLOAD_RECORDS_PER_MINUTE).toBe(60000));
 
-/** Sends an upload of `records` as the machine `token` and holds it while the handler waits for its body. */
-async function heldUpload(token: string, records: unknown[]) {
-  const held = heldRequest(app, "/api/usage", { method: "POST", text: JSON.stringify({ records }), headers: { Authorization: `Bearer ${token}` } });
-  await settle();                                                     // the handler now waits for the body
-  return held;
-}
-
 test("an upload whose machine is removed while its body is read is refused, stores nothing and logs no error", async () => {
-  const held = await heldUpload(two, recordsOf(2));
+  const held = await heldUpload(app, two, recordsOf(2));
   forTeam(db, teamId).removeMachine(machineIdOfTwo);
   held.finish();
   const res = await held.answer;
@@ -77,14 +70,14 @@ test("an upload whose machine is removed while its body is read is refused, stor
   expect(logged).toEqual([]);                                         // today: a 500 and "SqliteError SQLITE_CONSTRAINT_FOREIGNKEY"
 });
 test("an upload refused because its machine went while its body was read counts nothing against the team's budget", async () => {
-  const held = await heldUpload(two, recordsOf(10));
+  const held = await heldUpload(app, two, recordsOf(10));
   forTeam(db, teamId).removeMachine(machineIdOfTwo);
   held.finish();
   expect((await held.answer).status).toBe(401);
   expect(await (await upload(one, recordsOf(10))).json()).toEqual({ stored: 10, kept: 0 }); // the whole budget is still there
 });
 test("an upload whose machine registered again while its body was read is refused: its token is no longer the machine's", async () => {
-  const held = await heldUpload(two, recordsOf(2));
+  const held = await heldUpload(app, two, recordsOf(2));
   const fresh = await join({ machineId: machineIdOfTwo });
   held.finish();
   expect((await held.answer).status).toBe(401);
