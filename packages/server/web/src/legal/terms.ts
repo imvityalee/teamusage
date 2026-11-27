@@ -1,4 +1,4 @@
-import type { Lang } from "../i18n.js";
+import type { Lang } from "../lang.js";
 import { placeholder, type LegalSection } from "./section.js";
 
 export type { LegalSection };

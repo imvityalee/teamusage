@@ -1,6 +1,8 @@
 /** UI strings in English and Russian, and the stored language choice. */
 
-export type Lang = "en" | "ru";
+import type { Lang } from "./lang.js";
+
+export { LANG_KEY, loadLang, pickLang, saveLang, type Lang } from "./lang.js";
 
 const en = {
   title: "teamusage — team usage",
@@ -374,32 +376,6 @@ const FORMS = {
 export function count(lang: Lang, noun: CountedNoun, n: number): string {
   const form = pluralForm(lang, n);
   return t(lang, FORMS[noun][form === "other" ? "many" : form], { n });
-}
-
-/** A stored choice wins; otherwise Russian for a Russian browser, English for everything else. */
-export function pickLang(stored: string | null, navigatorLang: string): Lang {
-  if (stored === "en" || stored === "ru") return stored;
-  return navigatorLang.toLowerCase().startsWith("ru") ? "ru" : "en";
-}
-
-export const LANG_KEY = "teamusage.lang";
-
-/** The stored language, or null when there is none or storage is blocked. */
-export function loadLang(): string | null {
-  try {
-    return localStorage.getItem(LANG_KEY);
-  } catch {
-    return null;
-  }
-}
-
-/** Remembers the language. The only thing this page ever stores. */
-export function saveLang(lang: Lang): void {
-  try {
-    localStorage.setItem(LANG_KEY, lang);
-  } catch {
-    // Storage blocked or full: the choice simply lasts for this visit.
-  }
 }
 
 export function locale(lang: Lang): string {

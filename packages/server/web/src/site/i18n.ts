@@ -1,4 +1,4 @@
-import { loadLang, pickLang, saveLang, type Lang } from "../i18n.js";
+import { loadLang, pickLang, saveLang, type Lang } from "../lang.js";
 
 /** A page's strings: one message for each key, in English and in Russian. */
 export type Table<K extends string> = { en: Record<K, string>; ru: Record<K, string> };

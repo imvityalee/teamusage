@@ -59,7 +59,7 @@
 .points.no .mark { stroke: var(--danger); }
 .card.data-card { flex-direction: row; flex-wrap: wrap; gap: 16px 32px; align-items: center; justify-content: space-between; }
 .data-text { flex: 1 1 420px; min-width: 0; }
-.data-text h3 { margin-bottom: 6px; }
+.block .data-title { margin-bottom: 6px; font-size: 18px; line-height: 1.5; letter-spacing: 0; font-weight: 600; }
 .data-text p { margin: 0; font-size: 15px; color: var(--muted); }
 .data-card .btn { flex-shrink: 0; }
 

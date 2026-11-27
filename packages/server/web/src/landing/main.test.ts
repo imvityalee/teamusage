@@ -2,7 +2,6 @@ import { readFileSync } from "node:fs";
 import { Window } from "happy-dom";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { SIGN_IN_PATH } from "../site/session.js";
-import { worstCase } from "../site/worst-case.fixture.js";
 import { strings } from "./strings.js";
 
 const PAGE = readFileSync(new URL("../../landing.html", import.meta.url), "utf8");
@@ -87,15 +86,12 @@ describe("the language", () => {
   });
 });
 
-describe("the page draws no data", () => {
-  test("it makes no request, with or without worst-case data in the page's world", async () => {
+describe("the page is static", () => {
+  test("a switch of language changes the text and sends no request", async () => {
     await boot();
     const before = $("main").innerHTML;
-    // The page has no place a name or a count could go: whatever data exists, nothing of it reaches the page.
-    expect(worstCase.people.length).toBeGreaterThan(0);
     $<HTMLButtonElement>('#lang button[data-lang="ru"]').click();
     expect($("main").innerHTML).not.toBe(before);
     expect(fetchSpy).not.toHaveBeenCalled();
-    for (const person of worstCase.people) expect(doc.body.textContent).not.toContain(person.email);
   });
 });

@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { Window } from "happy-dom";
 import { describe, expect, test } from "vitest";
 import type { Lang } from "../i18n.js";
 import { expectComplete, expectEnglishInHtml } from "../site/i18n.fixture.js";
@@ -69,6 +70,28 @@ describe.each(PAGES)("%s", (_name, page) => {
   });
 });
 
+/** The sections written in a page's HTML, read as `main.js` finds them before it runs. */
+function staticSections(html: string): { heading: string | undefined; paragraphs: (string | null)[]; placeholder: boolean }[] {
+  const win = new Window();
+  try {
+    const doc = win.document as unknown as Document;
+    doc.body.innerHTML = /<body[^>]*>([\s\S]*)<\/body>/.exec(html)?.[1] ?? "";
+    return Array.from(doc.querySelectorAll("#sections > section")).map((s) => ({
+      heading: s.querySelector("h2")?.textContent,
+      paragraphs: Array.from(s.querySelectorAll("p")).map((p) => p.textContent),
+      placeholder: s.classList.contains("placeholder"),
+    }));
+  } finally {
+    void win.happyDOM.close();
+  }
+}
+
+describe("the HTML before the script runs", () => {
+  test.each(PAGES)("%s.html holds the English sections, so it reads without script", (_name, page, html) => {
+    expect(staticSections(html)).toEqual(page.en.map((s) => ({ heading: s.heading, paragraphs: s.paragraphs, placeholder: s.placeholder })));
+  });
+});
+
 describe("the facts of the privacy page", () => {
   test.each(LANGS)("hold the exact %s phrases", (lang) => {
     const facts = PRIVACY[lang].filter((s) => !s.placeholder);
@@ -76,7 +99,7 @@ describe("the facts of the privacy page", () => {
     for (const phrase of FACT_PHRASES[lang]) expect(text, phrase).toContain(phrase);
   });
 
-  test("are the six sections of the brief and the placeholders are the six it names", () => {
+  test("are seven sections of facts, then the six placeholders the brief names", () => {
     expect(PRIVACY.en.filter((s) => !s.placeholder).map((s) => s.heading)).toEqual([
       "What is sent",
       "What is never sent",

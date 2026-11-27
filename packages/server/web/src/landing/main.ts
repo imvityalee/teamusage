@@ -1,4 +1,4 @@
-import type { Lang } from "../i18n.js";
+import type { Lang } from "../lang.js";
 import { applyText, languageSwitch } from "../site/i18n.js";
 import { strings } from "./strings.js";
 

@@ -1,4 +1,4 @@
-import type { Lang } from "../i18n.js";
+import type { Lang } from "../lang.js";
 
 /** One part of a legal page: a heading and its paragraphs. A placeholder is a part the service's owner has yet to write. */
 export type LegalSection = { heading: string; paragraphs: string[]; placeholder: boolean };

@@ -1,5 +1,5 @@
 import { initials } from "../format.js";
-import type { Lang } from "../i18n.js";
+import type { Lang } from "../lang.js";
 import { request } from "../site/http.js";
 import { applyText, languageSwitch } from "../site/i18n.js";
 import { me } from "../site/session.js";

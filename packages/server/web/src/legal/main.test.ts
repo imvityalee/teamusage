@@ -13,6 +13,8 @@ const PAGES = {
 let win: Window;
 let doc: Document;
 let fetchSpy: ReturnType<typeof vi.fn>;
+/** The sections as the HTML wrote them, taken before the script ran. */
+let staticSections: string[];
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => doc.querySelector(sel) as T;
 
@@ -27,6 +29,7 @@ async function boot(page: keyof typeof PAGES, language = "en-US"): Promise<void>
   doc.body.innerHTML = (body?.[2] ?? "").replace(/<script[\s\S]*?<\/script>/g, "");
   const kind = /data-legal="(\w+)"/.exec(body?.[1] ?? "")?.[1];
   if (kind !== undefined) doc.body.setAttribute("data-legal", kind);
+  staticSections = Array.from(doc.querySelectorAll("#sections > section")).map((s) => s.outerHTML);
   fetchSpy = vi.fn();
   vi.stubGlobal("window", win);
   vi.stubGlobal("document", doc);
@@ -66,6 +69,12 @@ describe.each(Object.keys(PAGES) as (keyof typeof PAGES)[])("the %s page", (page
     expect(drawn()).toEqual(expected("ru"));
     expect(doc.documentElement.lang).toBe("ru");
     expect(doc.title).toBe(strings.ru[PAGES[page].docTitle]);
+  });
+
+  test("redraws English exactly as the HTML wrote it, so the page does not shift when the script runs", async () => {
+    await boot(page);
+    expect(staticSections).toHaveLength(PAGES[page].sections.en.length);
+    expect(Array.from(doc.querySelectorAll("#sections > section")).map((s) => s.outerHTML)).toEqual(staticSections);
   });
 
   test("a Russian browser starts in Russian and makes no request", async () => {
