@@ -34,14 +34,16 @@ function callbackOf(c: Context): { code: string; verifier: string } | null {
   return safeEqual(state, pending.state) ? { code, verifier: pending.verifier } : null;
 }
 
-/** What `/api/me` tells of a session; null when its team is gone, and for a member's while the team's members do not see it. */
+/**
+ * What `/api/me` tells of a session; null for a session opened with a team's code, which a hosted server does not
+ * honour, and for a member's while the team's members do not see it or when the team is gone.
+ */
 function meOf(db: Db, session: Session) {
   if (session.kind === "user") return { kind: "user", login: session.login, teams: teamsOf(db, session.githubId) };
-  if (session.kind === "member" && !membersSeeTeam(db, session.teamId)) return null;
+  if (session.kind === "team" || !membersSeeTeam(db, session.teamId)) return null;
   const team = teamById(db, session.teamId);
   if (team === null) return null;
-  const named = { id: team.publicId, name: team.name };
-  return session.kind === "team" ? { kind: "team", team: named } : { kind: "member", team: named, memberId: session.memberId };
+  return { kind: "member", team: { id: team.publicId, name: team.name }, memberId: session.memberId };
 }
 
 /** Signing in with GitHub, signing out, and who the session is. Mounted only on a hosted server. */

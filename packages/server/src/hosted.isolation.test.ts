@@ -3,10 +3,9 @@ import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
 import type { Stats } from "@teamusage/shared";
 import { MID, record } from "./app.fixture.js";
 import { sha256 } from "./db.js";
-import { cookieOf } from "./hosted.fixture.js";
 import { CALLERS, requestAs, rowsOf, SAME_EMAIL, STATS_RANGE, twoTeams } from "./hosted.two-teams.fixture.js";
 import type { CallerName, Team, TeamKey, TeamRows, World } from "./hosted.two-teams.fixture.js";
-import { DASHBOARD_LIMITED } from "./stats-access.js";
+import { CODE_OPENS_NO_DASHBOARD, DASHBOARD_LIMITED } from "./stats-access.js";
 
 // Every route called as every kind of caller against one pair of teams. The tests run in order and share the
 // teams: reads first, then the requests that add rows, then signing out, then the check of every team's rows.
@@ -105,7 +104,7 @@ describe("GET /api/stats", () => {
     nobody: Array(13).fill("401"),
     machineA: ["A", "A member", "A member", NM, "A", "A", "A member", "A member", "A member", NM, "A member", NM, "A"],
     machineB: [L, "B member", L, L, L, L, "B member", "B member", L, L, L, L, L],
-    codeA: ["A", M, "A member", NM, "A", "A", M, M, "A member", NM, "A member", NM, "A"],
+    memberA: ["A", "A member", "A member", NM, "A", "A", "A member", "A member", "A member", NM, "A member", NM, "A"],
     ann: [Q, Q, Q, Q, "A", NT, M, NT, "A member", NM, NT, NT, NT],
     bob: [Q, Q, Q, Q, NT, "B", NT, M, NT, NT, NM, "B member", NT],
     eve: [Q, Q, Q, Q, NT, NT, NT, NT, NT, NT, NT, NT, NT],
@@ -197,15 +196,9 @@ describe("codes", () => {
     const sessions = count("sessions");
     const res = await post(caller, "/api/login", { inviteCode: codeOf(code) });
     expect(res.headers.get("cache-control")).toBe("no-store");
-    if (code === "A") {
-      expect(res.status).toBe(204);
-      const me = await w.app.request("/api/me", { headers: { Cookie: cookieOf(res, "tu_session") } });
-      expect(await me.json()).toEqual({ kind: "team", team: { id: w.teams.A.publicId, name: w.teams.A.name } });
-    } else {
-      await expectError(res, 403, code === "B" ? DASHBOARD_LIMITED : "invalid invite code");
-      expect(cookieOf(res, "tu_session")).toBe("");
-      expect(count("sessions")).toBe(sessions);
-    }
+    await expectError(res, 403, CODE_OPENS_NO_DASHBOARD);
+    expect(res.headers.get("set-cookie") ?? "").not.toContain("tu_session=");
+    expect(count("sessions")).toBe(sessions);
     expectRowsAsExpected();
   });
 });
@@ -215,7 +208,7 @@ describe("GET /api/me", () => {
     nobody: null,
     machineA: null,
     machineB: null,
-    codeA: (t) => ({ kind: "team", team: { id: t.A.publicId, name: t.A.name } }),
+    memberA: (t) => ({ kind: "member", team: { id: t.A.publicId, name: t.A.name }, memberId: t.A.memberId }),
     ann: (t) => ({ kind: "user", login: "ann", teams: [{ id: t.A.publicId, name: t.A.name, role: "owner", dashboardAccess: "members" }] }),
     bob: (t) => ({ kind: "user", login: "bob", teams: [{ id: t.B.publicId, name: t.B.name, role: "owner", dashboardAccess: "admins" }] }),
     eve: () => ({ kind: "user", login: "eve", teams: [] }),
@@ -254,9 +247,9 @@ describe("POST /api/teams", () => {
 });
 
 describe("POST /api/logout", () => {
-  /** Ann signs out before codeA and bob, so her logout is seen to leave them signed in. */
-  const ORDER: CallerName[] = ["nobody", "machineA", "machineB", "ann", "codeA", "bob", "eve"];
-  const signedIn = new Set<CallerName>(["codeA", "ann", "bob", "eve"]);
+  /** Ann signs out before memberA and bob, so her logout is seen to leave them signed in. */
+  const ORDER: CallerName[] = ["nobody", "machineA", "machineB", "ann", "memberA", "bob", "eve"];
+  const signedIn = new Set<CallerName>(["memberA", "ann", "bob", "eve"]);
 
   test.each(ORDER)("as %s ends that caller's session alone", async (caller) => {
     const sessions = count("sessions");

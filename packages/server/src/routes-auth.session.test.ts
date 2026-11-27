@@ -1,8 +1,7 @@
 import { beforeEach, expect, test } from "vitest";
 import { createApp } from "./app.js";
 import { openDb, type Db } from "./db.js";
-import { cookieOf, hostedApp, hostedTeam, PUBLIC, signIn } from "./hosted.fixture.js";
-import { createTeamSession } from "./sessions.js";
+import { cookieOf, hostedApp, hostedTeam, machineClient, memberSignIn, PUBLIC, signIn } from "./hosted.fixture.js";
 
 let db: Db;
 let app: ReturnType<typeof hostedApp>["app"];
@@ -13,6 +12,11 @@ beforeEach(() => {
 const me = (cookie: string) => app.request("/api/me", { headers: { Cookie: cookie } });
 const logout = (headers: Record<string, string>) => app.request("/api/logout", { method: "POST", headers });
 const acme = () => hostedTeam(db, { githubId: 1, login: "ann" }, "admins", "Acme").team;
+/** Signs in the member of a team whose members see it, from the member's machine; returns the session cookie. */
+async function memberOfTeam(): Promise<string> {
+  const { code } = hostedTeam(db, { githubId: 2, login: "bob" }, "members", "Bobcat");
+  return memberSignIn(app, await machineClient(() => app, () => code).join());
+}
 
 test("logout needs the server's own origin and ends the session", async () => {
   const cookie = await signIn(app, "code-ann");
@@ -30,8 +34,8 @@ test("a cross-site logout is refused before the session is touched", async () =>
   expect(res.headers.get("set-cookie")).toBeNull();
   expect((await me(cookie)).status).toBe(200);
 });
-test("logout ends a team's session too and expires the cookie", async () => {
-  const cookie = `tu_session=${createTeamSession(db, acme().id)}`;
+test("logout ends a member's session too and expires the cookie", async () => {
+  const cookie = await memberOfTeam();
   expect((await me(cookie)).status).toBe(200);
   const res = await logout({ Cookie: cookie, Origin: PUBLIC });
   expect(res.status).toBe(204);
@@ -58,13 +62,8 @@ test("me lists the teams a signed-in user has a role in", async () => {
     teams: [{ id: team.publicId, name: "Acme", role: "owner", dashboardAccess: "admins" }],
   });
 });
-test("me names the team of a team's session by its public id", async () => {
-  const team = acme();
-  const res = await me(`tu_session=${createTeamSession(db, team.id)}`);
-  expect(await res.json()).toEqual({ kind: "team", team: { id: team.publicId, name: "Acme" } });
-});
-test("a team's session whose team is gone is 401", async () => {
-  const cookie = `tu_session=${createTeamSession(db, acme().id)}`;
+test("a member's session whose team is gone is 401", async () => {
+  const cookie = await memberOfTeam();
   // Without the cascade the session row outlives its team, as it would if a deletion missed it.
   db.pragma("foreign_keys = OFF");
   db.prepare("delete from teams").run();

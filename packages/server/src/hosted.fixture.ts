@@ -84,9 +84,6 @@ export const postFromPage = async (app: Hono, path: string, body: unknown, heade
     headers: { "Content-Type": "application/json", Origin: PUBLIC, ...headers },
   });
 
-/** Signs in with a team's code from the server's own pages, as the dashboard does. */
-export const codeLogin = (app: Hono, code: string): Promise<Response> => postFromPage(app, "/api/login", { inviteCode: code });
-
 /** The `name=value` pair of the cookie `name` that the response sets; "" when it sets none. */
 export const cookieOf = (res: Response, name: string): string =>
   new RegExp(`${name}=[^;]*`).exec(res.headers.get("set-cookie") ?? "")?.[0] ?? "";

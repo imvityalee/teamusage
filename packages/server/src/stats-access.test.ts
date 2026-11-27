@@ -13,7 +13,7 @@ const bob = { githubId: 2, login: "bob" };
 const eve: Session = { kind: "user", githubId: 3, login: "eve" };
 
 let db: Db;
-/** Team A opens its dashboard with its code; team B only to its admins. */
+/** Team A's members see its numbers; team B's numbers are for its admins only. */
 let a: TeamInfo, b: TeamInfo;
 let machineA: { token: string; who: MachineIdentity }, machineB: { token: string; who: MachineIdentity };
 
@@ -24,9 +24,9 @@ const machineOf = (teamId: number) => {
 const userSession = (u: { githubId: number; login: string }): Session => ({ kind: "user", ...u });
 const teamSession = (teamId: number): Session => ({ kind: "team", teamId });
 
-/** statsAccess with no demo team, no token and no session, unless `over` gives one. */
+/** statsAccess on a hosted server (no code sessions) with no demo team, no token and no session, unless `over` gives one. */
 const access = (over: Partial<Parameters<typeof statsAccess>[1]> = {}) =>
-  statsAccess(db, { demoTeamId: undefined, token: undefined, who: null, session: null, teamParam: undefined, ...over });
+  statsAccess(db, { demoTeamId: undefined, token: undefined, who: null, session: null, teamParam: undefined, codeSessions: false, ...over });
 
 beforeEach(() => {
   db = openDb(":memory:");
@@ -50,10 +50,10 @@ describe("a presented token", () => {
   test("that is invalid is 401, and no session rescues it", () => {
     const unauthorized = { ok: false, status: 401, error: "unauthorized" };
     expect(access({ token: "bad" })).toEqual(unauthorized);
-    expect(access({ token: "bad", session: teamSession(a.id) })).toEqual(unauthorized);
+    expect(access({ token: "bad", session: teamSession(a.id), codeSessions: true })).toEqual(unauthorized);
     expect(access({ token: "bad", session: userSession(ann), teamParam: a.publicId })).toEqual(unauthorized);
   });
-  test("of a team that opens its dashboard with its code reads that team, as its member, with the team's numbers", () => {
+  test("of a team whose members see it reads that team, as its member, with the team's numbers", () => {
     expect(access(machineA)).toEqual({ ok: true, teamId: a.id, member: machineA.who, teamNumbers: true });
   });
   test("of an admins-only team reads that team as its member, without the team's numbers", () => {
@@ -66,28 +66,38 @@ describe("a presented token", () => {
 });
 
 describe("a team session", () => {
-  test("of a team that opens its dashboard with its code reads that team, with no member, and ignores the query's team", () => {
+  const unauthorized = { ok: false, status: 401, error: "unauthorized" };
+  test("where code sessions are honoured, of a team whose members see it reads that team, with no member, and ignores the query's team", () => {
     const open = { ok: true, teamId: a.id, member: null, teamNumbers: true };
-    expect(access({ session: teamSession(a.id) })).toEqual(open);
-    expect(access({ session: teamSession(a.id), teamParam: b.publicId })).toEqual(open);
+    expect(access({ session: teamSession(a.id), codeSessions: true })).toEqual(open);
+    expect(access({ session: teamSession(a.id), teamParam: b.publicId, codeSessions: true })).toEqual(open);
   });
-  test("of an admins-only team is 401", () => {
-    expect(access({ session: teamSession(b.id) })).toEqual({ ok: false, status: 401, error: "unauthorized" });
+  test("where code sessions are honoured, of an admins-only team is 401", () => {
+    expect(access({ session: teamSession(b.id), codeSessions: true })).toEqual(unauthorized);
+  });
+  test("where code sessions are not honoured is 401, whatever its team and the query's team", () => {
+    expect(access({ session: teamSession(a.id) })).toEqual(unauthorized);
+    expect(access({ session: teamSession(a.id), teamParam: a.publicId })).toEqual(unauthorized);
+    expect(access({ session: teamSession(b.id) })).toEqual(unauthorized);
   });
 });
 
 describe("a member's session", () => {
-  /** A session of team A's second member, whose id (3) is neither team's id. */
+  /** A session of team `teamId`'s member cy. */
   const memberSession = (teamId: number): Session => {
     const { token } = forTeam(db, teamId).registerMachine(reg("c".repeat(32), { email: "cy@example.com" }));
-    const who = authenticate(db, token)!;
-    return { kind: "member", ...who };
+    return { kind: "member", ...authenticate(db, token)! };
   };
   test("of a team whose members see it reads that team as its member, with the team's numbers, and ignores the query's team", () => {
-    const session = memberSession(a.id);
-    const reads = { ok: true, teamId: a.id, member: { memberId: 3 }, teamNumbers: true };
+    // A team created after A and B, where cy is the second member: the team's id is not 1 and the member's is no team's.
+    const c = hostedTeam(db, { githubId: 5, login: "cat" }, "members").team;
+    forTeam(db, c.id).registerMachine(reg("d".repeat(32), { email: "dee@example.com" }));
+    const session = memberSession(c.id);
+    const reads = { ok: true, teamId: 3, member: { memberId: 4 }, teamNumbers: true };
+    expect(c.id).toBe(3);
     expect(access({ session })).toEqual(reads);
     expect(access({ session, teamParam: b.publicId })).toEqual(reads);
+    expect(access({ session, codeSessions: true })).toEqual(reads);
   });
   test("of an admins-only team is 401", () => {
     expect(access({ session: memberSession(b.id) })).toEqual({ ok: false, status: 401, error: "unauthorized" });

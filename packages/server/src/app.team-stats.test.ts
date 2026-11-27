@@ -4,7 +4,7 @@ import { goodReg, INVITE } from "./app.fixture.js";
 import { createApp } from "./app.js";
 import type { AppOptions } from "./app-context.js";
 import { openDb, type Db } from "./db.js";
-import { codeLogin, cookieOf, hostedApp, hostedTeam, machineClient, machineIdOf, signIn, testCaps, testLimits } from "./hosted.fixture.js";
+import { hostedApp, hostedTeam, machineClient, machineIdOf, memberSignIn, signIn, testCaps, testLimits } from "./hosted.fixture.js";
 import { storeTooManyModels } from "./stats.fixture.js";
 import { ensureSingleTeam, singleTeamCodes } from "./teams.js";
 
@@ -35,12 +35,12 @@ let sessionB: Headers;
 const stats = (headers: Headers, query = RANGE) => app.request(`/api/stats?${query}`, { headers });
 const answer = async (res: Response) => [res.status, await res.json()];
 
-/** Creates a team of `owner` whose dashboard opens with its code, registers one machine and signs in with the code. */
+/** Creates a team of `owner` whose members see its numbers, registers one machine and signs its member in from it. */
 async function setUpTeam(owner: Owner, machine: number) {
   const { team, code } = hostedTeam(db, owner, "members");
   const joined = await machineClient(() => app, () => code).register({ machineId: machineIdOf(machine), email: `${owner.login}@example.com` });
   const { token, memberId } = (await joined.json()) as { token: string; memberId: number };
-  const session = cookieOf(await codeLogin(app, code), "tu_session");
+  const session = await memberSignIn(app, token);
   return { team: { ...team, memberId }, token: { Authorization: `Bearer ${token}` }, session: { Cookie: session } };
 }
 
@@ -103,7 +103,7 @@ describe("while A is busy, a request it would refuse anyway gets today's answer"
     await useUpA();
     expect(await asksForA()).toEqual(notBusy);
   });
-  test("a code session of A after A's dashboard is limited to its admins: 401", async () => {
+  test("a member's session of A after A's dashboard is limited to its admins: 401", async () => {
     await useUpA();
     db.prepare("update teams set dashboard_access = 'admins' where id = ?").run(a.id);
     expect(await answer(await stats(sessionA))).toEqual([401, { error: "unauthorized" }]);

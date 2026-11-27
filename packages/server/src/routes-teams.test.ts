@@ -1,8 +1,11 @@
 import { beforeEach, expect, test } from "vitest";
+import { goodReg } from "./app.fixture.js";
 import { createApp } from "./app.js";
 import { openDb, type Db } from "./db.js";
 import { createHostedTeam } from "./hosted-teams.js";
-import { codeLogin, hostedApp, KEY, PUBLIC, signIn } from "./hosted.fixture.js";
+import { hostedApp, KEY, postFromPage, PUBLIC, signIn } from "./hosted.fixture.js";
+import { createTeamSession } from "./sessions.js";
+import { authenticate } from "./team-data.js";
 
 let db: Db;
 let app: ReturnType<typeof hostedApp>["app"];
@@ -39,14 +42,15 @@ test("a team created for its admins only says so in the answer and in /api/me", 
   const me = (await (await app.request("/api/me", { headers: { Cookie: cookie } })).json()) as { teams: unknown[] };
   expect(me.teams).toEqual([{ id: team.id, name: "Acme", role: "owner", dashboardAccess: "admins" }]);
 });
-test("the response carries the public id, never the internal one, and the code opens the team", async () => {
+test("the response carries the public id, never the internal one, and the code joins the team", async () => {
   const res = await create(await signIn(app, "code-ann"), good);
   const { team, code } = (await res.json()) as { team: { id: string }; code: string };
   const row = db.prepare("select id, public_id as publicId from teams").get() as { id: number; publicId: string };
   expect(team.id).toBe(row.publicId);
   expect(Object.keys(team).sort()).toEqual(["dashboardAccess", "id", "name", "role"]);
-  const login = await codeLogin(app, code);
-  expect(login.status).toBe(204);
+  const joined = await postFromPage(app, "/api/register", goodReg({ inviteCode: code }));
+  expect(joined.status).toBe(200);
+  expect(authenticate(db, ((await joined.json()) as { token: string }).token)?.teamId).toBe(row.id);
 });
 test("a name of 60 characters once trimmed is accepted", async () => {
   const res = await create(await signIn(app, "code-ann"), { name: ` ${"x".repeat(60)} `, dashboardAccess: "members" });
@@ -94,10 +98,9 @@ test("an expired user session is 401", async () => {
   expect((await create(cookie, good)).status).toBe(401);
   expect(teamCount()).toEqual({ n: 0 });
 });
-test("a team session is 401", async () => {
-  const { code } = createHostedTeam(db, { name: "Old", dashboardAccess: "members", owner: { githubId: 9, login: "zed" }, codeKey: KEY, maxTeams: 200 });
-  const login = await codeLogin(app, code);
-  const res = await create(login.headers.get("set-cookie")!.split(";")[0]!, good);
+test("a code session from before this server refused them is 401", async () => {
+  const { team } = createHostedTeam(db, { name: "Old", dashboardAccess: "members", owner: { githubId: 9, login: "zed" }, codeKey: KEY, maxTeams: 200 });
+  const res = await create(`tu_session=${createTeamSession(db, team.id)}`, good);
   expect(res.status).toBe(401);
   expect(await res.json()).toEqual({ error: "unauthorized" });
   expect(teamCount()).toEqual({ n: 1 });

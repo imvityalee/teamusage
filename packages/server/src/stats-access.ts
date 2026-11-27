@@ -5,6 +5,7 @@ import type { MachineIdentity } from "./team-data.js";
 
 export const DASHBOARD_LIMITED = "this team's dashboard is limited to its admins; update teamusage to see your own numbers here";
 export const DASHBOARD_ADMINS_ONLY = "this team's dashboard is limited to its admins";
+export const CODE_OPENS_NO_DASHBOARD = "on this server the team code does not open the dashboard; open it from your coding agent, or run: teamusage dashboard";
 
 export type StatsAccess =
   | { ok: true; teamId: number; member: { memberId: number } | null; teamNumbers: boolean }
@@ -32,6 +33,8 @@ export function statsAccess(
     who: MachineIdentity | null;
     session: Session | null;
     teamParam: string | undefined;
+    /** Whether a session opened with the team's code is honoured: only on a server without `hosted`. */
+    codeSessions: boolean;
   },
 ): StatsAccess {
   if (a.demoTeamId !== undefined) return { ok: true, teamId: a.demoTeamId, member: null, teamNumbers: true };
@@ -41,8 +44,8 @@ export function statsAccess(
     return { ok: true, teamId: a.who.teamId, member: a.who, teamNumbers: membersSeeTeam(db, a.who.teamId) };
   }
   const { session } = a;
-  // A session opened with the team's code or by its member reads only its own team, while its members see the team.
-  if (session?.kind === "team" || session?.kind === "member") {
+  // A member's session, or a code session where those are honoured, reads only its own team while its members see it.
+  if (session?.kind === "member" || (session?.kind === "team" && a.codeSessions)) {
     if (!membersSeeTeam(db, session.teamId)) return UNAUTHORIZED;
     const member = session.kind === "member" ? { memberId: session.memberId } : null;
     return { ok: true, teamId: session.teamId, member, teamNumbers: true };

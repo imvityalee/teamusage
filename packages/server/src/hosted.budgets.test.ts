@@ -28,10 +28,10 @@ const answer = async (res: Response) => ({ status: res.status, retryAfter: res.h
 /** Uses up A's upload records (1 at set-up, then 9) and its statistics time (2 requests of 60 ms); returns A's refusals. */
 async function useUpA(w: World): Promise<Response[]> {
   expect((await uploadAs(w, "machineA", recordsOf(9))).status).toBe(200);
-  for (let i = 0; i < 2; i++) expect((await statsAs(w, "codeA")).status).toBe(200);
+  for (let i = 0; i < 2; i++) expect((await statsAs(w, "memberA")).status).toBe(200);
   const refusals = [
     await uploadAs(w, "machineA", recordsOf(1, 9)),
-    await statsAs(w, "codeA"),
+    await statsAs(w, "memberA"),
     await statsAs(w, "machineA", "&member=me"),
     await statsAs(w, "ann", `&team=${w.teams.A.publicId}`),
   ];

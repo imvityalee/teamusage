@@ -2,12 +2,12 @@ import type { Hono } from "hono";
 import { goodReg, MID, record } from "./app.fixture.js";
 import type { Db } from "./db.js";
 import { teamByPublicId } from "./hosted-teams.js";
-import { cookieOf, hostedApp, PUBLIC, signIn, type HostedAppOptions } from "./hosted.fixture.js";
+import { hostedApp, memberSignIn, PUBLIC, signIn, type HostedAppOptions } from "./hosted.fixture.js";
 
 /** Names the caller of a request; the two teams' app limits failed attempts per caller, as if each had its own address. */
 const CALLER_HEADER = "x-test-caller";
 
-export const CALLERS = ["nobody", "machineA", "machineB", "codeA", "ann", "bob", "eve"] as const;
+export const CALLERS = ["nobody", "machineA", "machineB", "memberA", "ann", "bob", "eve"] as const;
 export type CallerName = (typeof CALLERS)[number];
 export type TeamKey = "A" | "B";
 
@@ -17,7 +17,7 @@ export const SAME_EMAIL = "same.person@example.com";
 export const STATS_RANGE = "from=2026-11-01&to=2026-11-10";
 const UPLOAD_DAY = "2026-11-03";
 
-/** Team A opens its dashboard with its code (owner ann); team B only to its admins (owner bob). */
+/** Team A's members see its numbers (owner ann); team B's numbers are for its admins only (owner bob). */
 const SPEC = {
   A: { owner: "ann", teamName: "Aurora Quillfeather Collective", access: "members", memberName: "Ottoline Quaxley", machineLabel: "quaxley-aardvark-laptop", total: 10, costUsd: 0.25 },
   B: { owner: "bob", teamName: "Borealis Zephyrine Guild", access: "admins", memberName: "Zebulon Vexworth", machineLabel: "vexworth-zebra-workstation", total: 700, costUsd: 7.5 },
@@ -75,23 +75,22 @@ async function setUpTeam(world: Pick<World, "db" | "app">, ownerCookie: string, 
 
 /**
  * Two hosted teams on one server, each with a member of the same email and machine id and one upload, and the
- * callers of the isolation suite: no credential, each team's machine token, a session opened with A's code, the
- * GitHub sessions of both owners, and a GitHub session with no team. `o` gives the app its limits and clocks.
+ * callers of the isolation suite: no credential, each team's machine token, the session of A's member signed in from
+ * its machine, the GitHub sessions of both owners, and a GitHub session with no team. `o` gives the app its limits and
+ * clocks.
  */
 export async function twoTeams(o: Omit<HostedAppOptions, "clientKey"> = {}): Promise<World> {
   const { db, app } = hostedApp({ ...o, clientKey: (c) => c.req.header(CALLER_HEADER) ?? "" });
   const [ann, bob, eve] = [await signIn(app, "code-ann"), await signIn(app, "code-bob"), await signIn(app, "code-eve")];
   const a = await setUpTeam({ db, app }, ann, "A");
   const b = await setUpTeam({ db, app }, bob, "B");
-  const login = await requestAs(app, { name: "codeA", headers: {} }, "/api/login", { method: "POST", body: { inviteCode: a.team.code } });
-  const codeA = cookieOf(login, "tu_session");
-  if (!codeA) throw new Error("signing in with A's code failed");
+  const memberA = await memberSignIn(app, a.token);
   const caller = (name: CallerName, headers: Record<string, string> = {}): Caller => ({ name, headers });
   const callers: Record<CallerName, Caller> = {
     nobody: caller("nobody"),
     machineA: caller("machineA", { Authorization: `Bearer ${a.token}` }),
     machineB: caller("machineB", { Authorization: `Bearer ${b.token}` }),
-    codeA: caller("codeA", { Cookie: codeA }),
+    memberA: caller("memberA", { Cookie: memberA }),
     ann: caller("ann", { Cookie: ann }),
     bob: caller("bob", { Cookie: bob }),
     eve: caller("eve", { Cookie: eve }),

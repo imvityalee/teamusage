@@ -13,10 +13,10 @@ import {
 } from "@teamusage/shared";
 import type { RouteContext } from "./app-context.js";
 import { membersSeeTeam } from "./hosted-teams.js";
-import { bearerToken, crossSite, fail, setSessionCookie } from "./http.js";
+import { bearerToken, fail, setSessionCookie } from "./http.js";
 import { statsTooLargeAnswer, teamStatsBusyAnswer } from "./limit-answers.js";
 import { createTeamSession } from "./sessions.js";
-import { DASHBOARD_LIMITED, statsAccess, type StatsAccess } from "./stats-access.js";
+import { CODE_OPENS_NO_DASHBOARD, DASHBOARD_LIMITED, statsAccess, type StatsAccess } from "./stats-access.js";
 import { createStatsBudget } from "./stats-budget.js";
 import { StatsTooLargeError } from "./stats-bounds.js";
 import { getStats } from "./stats.js";
@@ -91,7 +91,7 @@ function askedMember(
   return memberId;
 }
 
-/** The routes the dashboard uses: signing in with an invite code and reading a team's stats. */
+/** The routes the dashboard uses: signing in with an invite code, on a self-hosted server only, and reading a team's stats. */
 export function dashboardRoutes(app: Hono, ctx: RouteContext): void {
   const { db, opts, team, teamOfInvite, session: sessionOf } = ctx;
   const statsBudget = opts.limits && createStatsBudget({ msPerMinute: opts.limits.teamStatsMsPerMinute, now: ctx.now });
@@ -115,9 +115,8 @@ export function dashboardRoutes(app: Hono, ctx: RouteContext): void {
 
   app.post("/api/login", async (c) => {
     c.header("Cache-Control", "no-store");
-    // A hosted server signs a browser in only from its own pages; a self-hosted one has no public URL to compare.
-    const refused = opts.hosted ? crossSite(c, opts.hosted.publicUrl) : null;
-    if (refused) return refused;
+    // On a hosted server the code only joins a team. The refusal reads no body and counts no attempt, so it tests no code.
+    if (opts.hosted) return fail(c, 403, CODE_OPENS_NO_DASHBOARD);
     const entry = await teamOfInvite(c);
     if (entry instanceof Response) return entry;
     if (!membersSeeTeam(db, entry.teamId)) return fail(c, 403, DASHBOARD_LIMITED);
@@ -136,6 +135,7 @@ export function dashboardRoutes(app: Hono, ctx: RouteContext): void {
       session: sessionOf(c),
       // A repeated `team` is ambiguous, so it names no team rather than the first one given.
       teamParam: teams.length === 1 ? teams[0] : undefined,
+      codeSessions: !opts.hosted,
     });
     if (!access.ok) return fail(c, access.status, access.error);
     const range = parseRange(c);
