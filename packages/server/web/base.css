@@ -40,6 +40,14 @@ header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify
 .seg button { min-height: 40px; padding: 0 14px; border: 0; border-radius: 8px; background: transparent; color: var(--text); font: inherit; cursor: pointer; }
 .seg button[aria-pressed="true"] { background: var(--thumb); color: var(--thumb-text); font-weight: 600; box-shadow: 0 1px 3px rgba(0, 0, 0, .14); }
 
+/* "Dashboard | Team": a segmented control of links in the header of the dashboard and of the team page */
+.team-nav { display: inline-flex; flex-shrink: 0; background: var(--control); border-radius: 10px; padding: 2px; }
+.team-nav a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 14px; border-radius: 8px; color: var(--text);
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; transition: transform 160ms var(--ease-out); }
+.team-nav a[aria-current="page"] { background: var(--thumb); color: var(--thumb-text); font-weight: 600; box-shadow: 0 1px 3px rgba(0, 0, 0, .14); }
+/* Opacity 1: the nav's links scale instead of dimming like the dashboard's other links (style.css). */
+.team-nav a:active { transform: scale(0.97); opacity: 1; }
+
 button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
 a { color: var(--link); text-decoration: none; border-radius: 2px; }
 @media (hover: hover) and (pointer: fine) { a:hover { color: var(--link-hover); } }
@@ -62,8 +70,8 @@ input::placeholder { color: var(--muted); opacity: 1; }
 @media (hover: hover) and (pointer: fine) { .pager button:not(:disabled):hover, .pager select:hover { background: var(--control); } }
 @media (prefers-reduced-motion: reduce) {
   /* A press shows at once, without scaling. */
-  .pager button { transition: none; }
-  .pager button:active:not(:disabled) { transform: none; opacity: .8; }
+  .pager button, .team-nav a { transition: none; }
+  .pager button:active:not(:disabled), .team-nav a:active { transform: none; opacity: .8; }
 }
 
 /* The phone baseline */

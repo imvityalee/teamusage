@@ -1,7 +1,8 @@
 import { h } from "../dom.js";
 import type { Lang } from "../lang.js";
 import type { Me, MeAnswer } from "../site/session.js";
-import { dashboardPath, isTeamId, teamPath } from "../site/team-param.js";
+import { renderTeamNav, teamNav, type TeamNav } from "../site/team-nav.js";
+import { isTeamId } from "../site/team-param.js";
 import type { Source } from "./source.js";
 import { applyDashText, dt } from "./strings.js";
 
@@ -9,7 +10,7 @@ import { applyDashText, dt } from "./strings.js";
 
 export type Chrome = {
   teamName: string | null;
-  nav: { dashboard: string; team: string } | null; // for an owner or admin
+  nav: TeamNav | null; // for an owner or admin
   /** `login` is a GitHub user's; null is a member's session, which reads "Signed in from your agent". */
   account: { login: string | null; teams: boolean; signOut: boolean } | null;
   sample: boolean; // the demo
@@ -49,7 +50,7 @@ export function chromeOf(source: Source, session: ReadSession | null): Chrome | 
   const manages = team.role === "owner" || team.role === "admin";
   return {
     teamName: team.name,
-    nav: manages ? { dashboard: dashboardPath(team.id), team: teamPath(team.id) } : null,
+    nav: manages ? teamNav(team.id) : null,
     account: { login: me.login, teams: true, signOut: true },
     sample: false,
     team: team.id,
@@ -57,18 +58,6 @@ export function chromeOf(source: Source, session: ReadSession | null): Chrome | 
 }
 
 const byId = (doc: Document, id: string) => doc.getElementById(id) as HTMLElement;
-
-/** A link to `href`, or no link at all. */
-function link(a: HTMLElement, href: string | undefined): void {
-  if (href === undefined) a.removeAttribute("href");
-  else a.setAttribute("href", href);
-}
-
-function renderNav(doc: Document, nav: Chrome["nav"]): void {
-  byId(doc, "team-nav").hidden = nav === null;
-  link(byId(doc, "nav-dashboard"), nav?.dashboard);
-  link(byId(doc, "nav-team"), nav?.team);
-}
 
 function renderAccount(doc: Document, account: Chrome["account"], lang: Lang): void {
   byId(doc, "account").hidden = account === null;
@@ -88,7 +77,7 @@ export function renderChrome(doc: Document, chrome: Chrome, lang: Lang): void {
   applyDashText(doc, lang);
   byId(doc, "team-name").hidden = chrome.teamName === null;
   byId(doc, "team-name-text").textContent = chrome.teamName ?? "";
-  renderNav(doc, chrome.nav);
+  renderTeamNav(doc, chrome.nav);
   renderAccount(doc, chrome.account, lang);
   byId(doc, "sample").hidden = !chrome.sample;
 }

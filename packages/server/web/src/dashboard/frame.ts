@@ -1,7 +1,7 @@
 import type { Lang } from "../lang.js";
+import { signOutButton } from "../site/sign-out.js";
 import { PLAIN, renderChrome, type Chrome, type Panel } from "./chrome.js";
 import { codeSignIn } from "./code-sign-in.js";
-import { signOutButton } from "./sign-out.js";
 import { renderSignedOut } from "./signed-out.js";
 import { dt } from "./strings.js";
 
@@ -14,7 +14,7 @@ export type View = "waiting" | "stats" | "login" | Panel;
  */
 export function dashboardFrame(doc: Document, opts: { lang: () => Lang; signedIn: () => Promise<void> }) {
   const signIn = codeSignIn(doc, opts);
-  const signOut = signOutButton(doc, opts.lang);
+  const signOut = signOutButton(doc, () => dt(opts.lang(), "signOutFailed"));
   const login = doc.getElementById("login") as HTMLElement;
   const panelBox = doc.getElementById("signed-out") as HTMLElement;
   /** The panel on screen. A new one is drawn only when its kind changes: a drawn panel is announced. */

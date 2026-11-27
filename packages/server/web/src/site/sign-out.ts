@@ -1,12 +1,10 @@
-import type { Lang } from "../lang.js";
-import { signOut } from "../site/session.js";
-import { dt } from "./strings.js";
+import { signOut } from "./session.js";
 
 /**
- * The header's sign-out button: one request at a time, then `/`. If the session may still be there the person stays,
- * with the button back, focused, and a sentence saying so.
+ * The header's sign-out button (`#sign-out`) of the dashboard and the team page: one request at a time, then `/`. If
+ * the session may still be there the person stays, with the button back, focused, and `failedText` in `#signout-error`.
  */
-export function signOutButton(doc: Document, lang: () => Lang): { paint(): void } {
+export function signOutButton(doc: Document, failedText: () => string): { paint(): void } {
   const button = doc.getElementById("sign-out") as HTMLButtonElement;
   const error = doc.getElementById("signout-error") as HTMLElement;
   let busy = false;
@@ -16,7 +14,7 @@ export function signOutButton(doc: Document, lang: () => Lang): { paint(): void 
     button.disabled = busy;
     button.setAttribute("aria-busy", String(busy));
     error.hidden = !failed;
-    error.textContent = failed ? dt(lang(), "signOutFailed") : "";
+    error.textContent = failed ? failedText() : "";
   }
 
   async function leave(): Promise<void> {

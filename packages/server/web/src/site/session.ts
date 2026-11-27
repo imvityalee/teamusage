@@ -5,7 +5,7 @@ export type Me =
       kind: "user";
       githubId: number;
       login: string;
-      teams: { id: string; name: string; role: "owner" | "admin" | "viewer"; dashboardAccess: "members" | "admins" }[];
+      teams: UserTeam[];
     }
   | { kind: "member"; team: { id: string; name: string }; memberId: number };
 
@@ -20,7 +20,11 @@ const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "obj
 const ROLES: readonly unknown[] = ["owner", "admin", "viewer"];
 const ACCESS: readonly unknown[] = ["members", "admins"];
 
-const isTeam = (t: unknown): boolean =>
+/** A team of a GitHub user, as `/api/me` and `/api/teams/:team` name it. */
+export type UserTeam = { id: string; name: string; role: "owner" | "admin" | "viewer"; dashboardAccess: "members" | "admins" };
+
+/** Enough of a team's shape to draw it; its id is still checked before an address is built from it. */
+export const isTeam = (t: unknown): t is UserTeam =>
   isRecord(t) && typeof t.id === "string" && typeof t.name === "string" && ROLES.includes(t.role) && ACCESS.includes(t.dashboardAccess);
 
 /** Enough of the shape that a page can draw it without throwing; the values are still drawn as text. */

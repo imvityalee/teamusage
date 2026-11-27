@@ -7,8 +7,8 @@ import { removeInSlices } from "./sliced-removal.js";
 import { ANY_ROLE, githubSession, MANAGERS, OWNER_ONLY, teamAccess, userTeam } from "./team-access.js";
 import { renameTeam, rotateTeamCode, setDashboardAccess, teamCode } from "./team-settings.js";
 
-const CODE_NOT_SHOWN = "this code can no longer be shown; rotate it";
-const NAME_DOES_NOT_MATCH = "the name does not match";
+export const CODE_NOT_SHOWN = "this code can no longer be shown; rotate it";
+export const NAME_DOES_NOT_MATCH = "the name does not match";
 
 /** What a PATCH of a team asks to change; only the fields it names. */
 type Changes = { name?: string; dashboardAccess?: DashboardAccess };

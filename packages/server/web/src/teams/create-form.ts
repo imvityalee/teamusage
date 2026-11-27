@@ -1,5 +1,5 @@
-import { MAX_TEAM_NAME_CHARS, NAME_CONTROL_CHARS } from "@teamusage/shared";
 import type { ApiResult } from "../site/http.js";
+import { isTeamNameInput } from "../site/team-name.js";
 import { isTeamId } from "../site/team-param.js";
 import { MAX_OWNED } from "./teams.js";
 
@@ -12,8 +12,7 @@ const INVALID_NAME = "invalid name";
 
 /** What is wrong with the form before it is sent: the name (empty or over the server's limit once trimmed), the choice (none made), or nothing. */
 export function checkForm(name: string, access: string | null): "name" | "access" | null {
-  const length = name.trim().length;
-  if (length < 1 || length > MAX_TEAM_NAME_CHARS || NAME_CONTROL_CHARS.test(name)) return "name";
+  if (!isTeamNameInput(name)) return "name";
   return access === "members" || access === "admins" ? null : "access";
 }
 

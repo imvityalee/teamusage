@@ -4,7 +4,7 @@ import { describe, expect, test } from "vitest";
 /**
  * base.css turns the tap highlight off on every page, so every control must answer a press itself (Global
  * Constraints, "On a phone" and "Motion"). The controls are listed from index.html, render.ts, filterbar.ts,
- * src/dashboard/ and the new pages' HTML.
+ * src/dashboard/, the new pages' HTML and the team page's cards and dialogs (src/team/, src/site/dialog.ts).
  */
 
 const css = (file: string) => readFileSync(new URL(`../${file}`, import.meta.url), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
@@ -36,10 +36,9 @@ const has = (text: string, selector: string, declaration: string) =>
 
 const PRESSED = {
   "style.css": { scale: [".seg button", ".pill", ".chip", ".status button", ".login button"], dim: ["a", ".link", ".pop-row", ".sort-btn"] },
-  "base.css": { scale: [".pager button"], dim: [".pager select"] },
-  "chrome.css": { scale: [".team-nav a", ".signed-out .btn"], dim: [".brand-link", ".text-button", ".account a", ".sample a", ".signed-out .aside a"] },
-  "teams.css": { scale: [], dim: [".option"] },
-  "site.css": { scale: [".btn", ".site-head .seg button"], dim: [".site-head .brand", ".aside a", ".link-button"] },
+  "base.css": { scale: [".pager button", ".team-nav a"], dim: [".pager select"] },
+  "chrome.css": { scale: [".signed-out .btn"], dim: [".brand-link", ".text-button", ".account a", ".sample a", ".signed-out .aside a"] },
+  "site.css": { scale: [".btn", ".site-head .seg button", ".card .seg button"], dim: [".site-head .brand", ".aside a", ".link-button", ".account a", ".option"] },
 };
 
 test("base.css turns the tap highlight off, which is why every control needs its own press state", () => {

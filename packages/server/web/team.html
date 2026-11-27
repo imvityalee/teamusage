@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#f5f5f7">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#000000">
+<title>Team · teamusage</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="./site.css">
+<link rel="stylesheet" href="./team.css">
+<script type="module" src="./src/team/main.ts"></script>
+</head>
+<body class="site">
+<noscript><p class="notice warn" data-i18n="noscript">This page needs JavaScript to show your team.</p></noscript>
+<header class="site-head">
+  <div class="head-main">
+    <a class="brand" href="/">teamusage</a>
+    <nav class="team-nav" id="team-nav" aria-label="Team" data-i18n-label="navLabel" hidden>
+      <a id="nav-dashboard" data-i18n="navDashboard">Dashboard</a><a id="nav-team" aria-current="page" data-i18n="navTeam">Team</a>
+    </nav>
+  </div>
+  <div class="head-tools">
+    <div class="account" id="account" hidden>
+      <span class="identity-mark" id="initials" aria-hidden="true"></span>
+      <span class="account-login" id="login"></span>
+      <a href="/teams#all" data-i18n="yourTeams">Your teams</a>
+      <button type="button" class="link-button" id="sign-out" data-i18n="signOut">Sign out</button>
+    </div>
+    <div class="seg" id="lang" role="group" aria-label="Language" data-i18n-label="language">
+      <button type="button" data-lang="en" lang="en" aria-pressed="true">EN</button><button type="button" data-lang="ru" lang="ru" aria-pressed="false">RU</button>
+    </div>
+  </div>
+</header>
+<main class="page team-page">
+  <p class="notice warn" id="signout-error" role="alert" hidden></p>
+  <p data-view="loading" class="lede" role="status" data-i18n="loading">Opening the team…</p>
+
+  <section data-view="failed" class="panel" role="alert" hidden>
+    <h1 data-i18n="failedTitle">Could not open the team</h1>
+    <p class="lede" id="failed-text">The server could not be reached.</p>
+    <div class="actions">
+      <button type="button" class="btn primary" id="retry" data-i18n="tryAgain">Try again</button>
+    </div>
+  </section>
+
+  <section data-view="signedOut" class="panel" role="alert" hidden>
+    <h1 data-i18n="signedOutTitle">Sign in to manage this team</h1>
+    <p class="lede" data-i18n="signedOutText">The team page is for the team's owner and admins.</p>
+    <div class="actions">
+      <a class="btn primary" id="sign-in" data-focus href="/auth/github/start?to=teams" data-i18n="signInGithub">Sign in with GitHub</a>
+    </div>
+    <p class="aside"><span data-i18n="memberPrompt">Team member?</span> <a href="/open" data-i18n="howToOpen">Open the dashboard from your coding agent</a></p>
+  </section>
+
+  <section data-view="notFound" class="panel" role="alert" hidden>
+    <h1 data-i18n="notFoundTitle">This team was not found, or you no longer have a role in it.</h1>
+    <div class="actions">
+      <a class="btn primary" href="/teams#all" data-i18n="yourTeams">Your teams</a>
+    </div>
+  </section>
+
+  <section data-view="viewer" class="panel" role="alert" hidden>
+    <h1 data-i18n="viewerTitle">Viewers open the dashboard only.</h1>
+    <div class="actions">
+      <a class="btn primary" id="viewer-dashboard" data-i18n="openDashboard">Open the dashboard</a>
+    </div>
+  </section>
+
+  <div data-view="page" class="cards" id="cards" hidden></div>
+</main>
+</body>
+</html>

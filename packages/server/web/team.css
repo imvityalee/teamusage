@@ -1,0 +1,40 @@
+/* `/team`: the team page's wide column of cards (board 3) and its panels. Loads after site.css. */
+
+.site-head .head-main { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 20px; min-width: 0; }
+
+.page.team-page { max-width: 1120px; padding-top: 18px; }
+/* The panels shown instead of the cards keep the narrow column of the other pages. */
+.team-page > .panel { max-width: 520px; margin: 32px auto 0; }
+.team-page > .notice { margin-bottom: 14px; }
+
+.cards { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.cards .card { margin-top: 0; padding: 18px; gap: 12px; }
+.cards .card h2 { font-size: 16px; overflow-wrap: anywhere; }
+
+/* The heading: the team's name and "Rename team", which moves under a long name */
+.team-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; min-width: 0; padding: 10px 2px 0; }
+.team-head h1 { flex: 1 1 280px; min-width: 0; font-size: 28px; }
+.team-head .btn { flex-shrink: 0; }
+
+/* A card's heading and sentence on the left, its control on the right; the control moves under them when narrow */
+.card-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 24px; min-width: 0; }
+.card-text { flex: 1 1 420px; min-width: 0; }
+.card-head > .btn, .card-head > .seg { flex-shrink: 0; }
+.card-note { margin: 4px 0 0; color: var(--muted); overflow-wrap: anywhere; }
+.title-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.title-line .badge { padding: 3px 8px; border-radius: 8px; color: var(--text); }
+
+/* The team code: the dots or the code, then its three buttons, which wrap under it on a phone */
+.code-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; min-width: 0; }
+.team-code { flex: 1 1 280px; min-width: 0; min-height: 48px; display: flex; align-items: center; font-size: 15px; letter-spacing: .04em;
+  font-variant-numeric: tabular-nums; }
+.code-row .btn { min-height: 48px; flex-shrink: 0; }
+
+/* The invite message, as it will be pasted */
+.message { margin: 0; min-width: 0; padding: 14px 16px; border-radius: 12px; background: var(--soft);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+@media (max-width: 520px) {
+  .team-head h1 { font-size: 24px; }
+  .code-row .btn { flex: 1 1 auto; }
+}

@@ -69,6 +69,8 @@ body.site { font-size: 16px; line-height: 1.5; }
 .link-button { min-height: 44px; padding: 0 4px; border: 0; background: none; color: var(--link); font: inherit; cursor: pointer; }
 .link-button:active { opacity: .6; }
 .link-button:disabled { opacity: .5; cursor: default; }
+.account a { display: inline-flex; align-items: center; min-height: 44px; }
+.account a:active { opacity: .6; }
 
 /* Fields */
 .field { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
@@ -76,6 +78,24 @@ body.site { font-size: 16px; line-height: 1.5; }
 .field input, .field select, .field textarea { width: 100%; min-height: 48px; padding: 0 14px; border: 1px solid var(--axis); border-radius: 12px;
   background: var(--card); color: var(--text); font: inherit; font-size: max(16px, 1em); }
 .field textarea { padding: 12px 14px; }
+.field input[aria-invalid="true"] { border-color: var(--danger); }
+
+/* Choices: a radio button with its title and lines, the whole row a target */
+.options { display: flex; flex-direction: column; gap: 8px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.options legend { padding: 0; margin: 0 0 6px; font-size: 14px; font-weight: 600; }
+.option { -webkit-user-select: none; user-select: none; display: flex; gap: 12px; align-items: flex-start; min-width: 0; padding: 12px 14px; border: 1px solid var(--axis); border-radius: 12px; cursor: pointer; }
+.option input { flex-shrink: 0; width: 18px; height: 18px; margin: 3px 0 0; accent-color: var(--text); }
+.option-text { display: flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }
+.option-title { font-weight: 600; }
+.option:has(input:checked) { border-color: var(--text); }
+.option:active { opacity: .6; }
+
+/* A segmented control inside a card (the invite message's EN/RU) */
+.card .seg button { min-height: 44px; transition: transform 160ms var(--ease-out); }
+.card .seg button:active { transform: scale(0.97); }
+
+/* Text for a screen reader only */
+.sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 
 /* Notices and badges */
 .notice { display: flex; gap: 12px; align-items: flex-start; min-width: 0; padding: 14px; border-radius: 12px;
@@ -93,10 +113,38 @@ body.site { font-size: 16px; line-height: 1.5; }
   .card { padding: 18px; }
 }
 
-/* Reduced motion: a press shows at once, without scaling. */
+/* The dialog (src/site/dialog.ts). It enters with opacity and a scale from 0.96 in 200 ms and leaves in 150 ms, its
+   backdrop fading with it, centred: a modal is not anchored to its button. Only transform and opacity move; display and
+   overlay are discrete, kept for the length of the leave. A browser without @starting-style or allow-discrete drops
+   this transition and opens and closes the dialog at once. */
+.dialog { width: min(440px, calc(100% - 32px)); max-height: calc(100dvh - 32px); margin: auto; padding: 0; overflow: auto;
+  overscroll-behavior: contain; border: 1px solid var(--hairline); border-radius: 16px; background: var(--card); color: var(--text);
+  box-shadow: var(--shadow); opacity: 1; transform: scale(1); transform-origin: center;
+  transition: opacity 200ms var(--ease-out), transform 200ms var(--ease-out), overlay 200ms var(--ease-out) allow-discrete,
+    display 200ms var(--ease-out) allow-discrete; }
+.dialog:not([open]) { opacity: 0; transform: scale(0.96); transition-duration: 150ms; }
+.dialog::backdrop { background: rgba(0, 0, 0, .4); opacity: 1;
+  transition: opacity 200ms var(--ease-out), overlay 200ms var(--ease-out) allow-discrete, display 200ms var(--ease-out) allow-discrete; }
+.dialog:not([open])::backdrop { opacity: 0; transition-duration: 150ms; }
+@starting-style {
+  .dialog[open] { opacity: 0; transform: scale(0.96); }
+  .dialog[open]::backdrop { opacity: 0; }
+}
+/* The page behind a dialog does not scroll. */
+body:has(.dialog[open]) { overflow: hidden; }
+.dialog-body { display: flex; flex-direction: column; gap: 16px; padding: 22px; min-width: 0; }
+.dialog-body h2 { margin: 0; font-size: 18px; line-height: 1.3; letter-spacing: -0.01em; font-weight: 600; overflow-wrap: anywhere; }
+.dialog-body p { margin: 0; overflow-wrap: anywhere; }
+.dialog-form { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.dialog-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; }
+.dialog-actions .btn { flex: 1 1 140px; }
+
+/* Reduced motion: a press shows at once, without scaling, and a dialog only fades. */
 @media (prefers-reduced-motion: reduce) {
-  .btn, .site-head .seg button { transition: none; }
-  .btn:active:not(:disabled), .site-head .seg button:active { transform: none; opacity: .8; }
+  .btn, .site-head .seg button, .card .seg button { transition: none; }
+  .btn:active:not(:disabled), .site-head .seg button:active, .card .seg button:active { transform: none; opacity: .8; }
+  .dialog, .dialog:not([open]) { transform: none; }
+  @starting-style { .dialog[open] { transform: none; } }
 }
 
 /* The legal pages: a wider column of sections, the placeholders in muted type */

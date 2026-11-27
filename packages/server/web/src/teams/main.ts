@@ -1,5 +1,5 @@
-import { initials } from "../format.js";
 import type { Lang } from "../lang.js";
+import { paintAccount } from "../site/account.js";
 import { request } from "../site/http.js";
 import { applyText, languageSwitch, translator } from "../site/i18n.js";
 import { me, signInDidNotFinish, signOut, type MeAnswer } from "../site/session.js";
@@ -15,9 +15,6 @@ const t = translator(strings);
 const byId = <E extends HTMLElement>(id: string) => document.getElementById(id) as E;
 const ui = {
   views: Array.from(document.querySelectorAll<HTMLElement>("[data-view]")),
-  account: byId("account"),
-  login: byId("login"),
-  initials: byId("initials"),
   signInNotice: byId("signin-notice"),
   memberText: byId("member-text"),
   teamList: byId("team-list"),
@@ -60,13 +57,6 @@ function teamsOf(answer: MeAnswer | null) {
   return answer?.kind === "me" && answer.me.kind === "user" ? answer.me.teams : [];
 }
 
-function paintAccount(): void {
-  const user = session?.kind === "me" && session.me.kind === "user" ? session.me : null;
-  ui.account.hidden = user === null;
-  ui.login.textContent = user === null ? "" : `@${user.login}`;
-  ui.initials.textContent = user === null ? "" : initials(user.login.replace(/[-_]+/g, " "));
-}
-
 function paint(): void {
   applyText(document, strings, lang, "title");
   showView(ui.views, view);
@@ -77,7 +67,7 @@ function paint(): void {
   drawTeams(ui.teamList, teams, t, lang);
   paintOwned(ui.ownedLine, ui.createLink, teams.filter((team) => team.role === "owner").length, t, lang);
   ui.backToTeams.hidden = teams.length === 0;
-  paintAccount();
+  paintAccount(document, session?.kind === "me" && session.me.kind === "user" ? session.me.login : null);
   ui.signOut.disabled = signingOut;
   ui.signOut.setAttribute("aria-busy", String(signingOut));
   ui.signOutError.hidden = !signOutFailed;

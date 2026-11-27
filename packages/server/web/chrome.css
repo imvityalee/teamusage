@@ -8,11 +8,7 @@
 /* On a hosted server and the demo the brand links home (dashboard/chrome.ts); it keeps the brand's colour. */
 .brand-link { color: inherit; }
 
-/* "Dashboard | Team": a segmented control of links */
-.team-nav { display: inline-flex; flex-shrink: 0; background: var(--control); border-radius: 10px; padding: 2px; }
-.team-nav a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 14px; border-radius: 8px; color: var(--text);
-  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
-.team-nav a[aria-current="page"] { background: var(--thumb); color: var(--thumb-text); font-weight: 600; box-shadow: 0 1px 3px rgba(0, 0, 0, .14); }
+/* "Dashboard | Team" (.team-nav) is in base.css: the team page draws it too. */
 
 /* The demo's chip is a label, not a control: it is not the filter bar's button.chip. */
 .sample { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin: 0; font-size: 13px; }
@@ -39,13 +35,13 @@
   .signed-out .btn:hover { background: var(--link-hover); color: var(--card); }
 }
 
-/* Press states (src/press-states.test.ts): the nav's links and the sign-in button scale; text-like controls dim. */
-.team-nav a, .signed-out .btn { transition: transform 160ms var(--ease-out); }
-/* Opacity 1: these scale instead of dimming like the other links of style.css. */
-.team-nav a:active, .signed-out .btn:active { transform: scale(0.97); opacity: 1; }
+/* Press states (src/press-states.test.ts): the sign-in button scales; text-like controls dim. */
+.signed-out .btn { transition: transform 160ms var(--ease-out); }
+/* Opacity 1: it scales instead of dimming like the other links of style.css. */
+.signed-out .btn:active { transform: scale(0.97); opacity: 1; }
 .brand-link:active, .text-button:active:not(:disabled), .account a:active, .sample a:active, .signed-out .aside a:active { opacity: .6; }
 
 @media (prefers-reduced-motion: reduce) {
-  .team-nav a, .signed-out .btn { transition: none; }
-  .team-nav a:active, .signed-out .btn:active { transform: none; opacity: .8; }
+  .signed-out .btn { transition: none; }
+  .signed-out .btn:active { transform: none; opacity: .8; }
 }
