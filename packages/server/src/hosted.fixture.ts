@@ -55,18 +55,20 @@ export function grantRole(db: Db, teamId: number, user: Person, role: Role): voi
 }
 
 /**
- * What a test may give a hosted app; `limits` may be made from the database the app opens, and `users` replaces the
- * GitHub users its fake GitHub knows.
+ * What a test may give a hosted app; `limits` may be made from the database the app opens, `users` replaces the
+ * GitHub users its fake GitHub knows, `db` is an existing database to open the app on and `codeKey` replaces the code key.
  */
 export type HostedAppOptions = Pick<AppOptions, "clientKey" | "logError" | "now" | "stopwatch"> & {
   limits?: AppOptions["limits"] | ((db: Db) => AppOptions["limits"]);
   maxTeams?: number;
   users?: Record<string, GithubUser>;
+  db?: Db;
+  codeKey?: Buffer;
 };
 
-/** A hosted app on a fresh in-memory database, with the fake GitHub it signs users in with. */
+/** A hosted app on `o.db` or a fresh in-memory database, with the fake GitHub it signs users in with. */
 export function hostedApp(o: HostedAppOptions = {}) {
-  const db = openDb(":memory:");
+  const db = o.db ?? openDb(":memory:");
   const github = fakeGithub(o.users ?? USERS);
   const app = createApp(db, {
     teamForCode: hostedTeamCodes(db),
@@ -75,7 +77,7 @@ export function hostedApp(o: HostedAppOptions = {}) {
     limits: typeof o.limits === "function" ? o.limits(db) : o.limits,
     now: o.now,
     stopwatch: o.stopwatch,
-    hosted: { github, publicUrl: PUBLIC, codeKey: KEY, maxTeams: o.maxTeams ?? 200 },
+    hosted: { github, publicUrl: PUBLIC, codeKey: o.codeKey ?? KEY, maxTeams: o.maxTeams ?? 200 },
   });
   return { db, app, github };
 }

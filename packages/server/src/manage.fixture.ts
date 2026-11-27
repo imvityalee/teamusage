@@ -112,6 +112,13 @@ async function teamB(db: Db, app: Hono): Promise<ManageWorld["B"]> {
   };
 }
 
+/** Signs each of the world's GitHub users in on `app`; returns their `tu_session` cookies. */
+async function signInAll(app: Hono): Promise<Record<Who, string>> {
+  const cookies = {} as Record<Who, string>;
+  for (const who of Object.keys(PEOPLE) as Who[]) cookies[who] = await signIn(app, `code-${who}`);
+  return cookies;
+}
+
 /**
  * The world of the management tests: a hosted app whose clock stands at `T0` until the test moves it; the six GitHub
  * users of `PEOPLE`, each signed in; team `A` (owner ann, viewer zoe, five members) and then team `B` (owner bob, admin
@@ -120,20 +127,32 @@ async function teamB(db: Db, app: Hono): Promise<ManageWorld["B"]> {
 export async function manageWorld(o: Omit<HostedAppOptions, "now" | "users"> = {}): Promise<ManageWorld> {
   const clock = { t: Date.parse(T0) };
   const { db, app } = hostedApp({ ...o, now: () => clock.t, users: githubUsers() });
-  const cookies = {} as Record<Who, string>;
-  for (const who of Object.keys(PEOPLE) as Who[]) cookies[who] = await signIn(app, `code-${who}`);
+  const cookies = await signInAll(app);
   const A = await teamA(db, app);
   const B = await teamB(db, app);
   return { db, app, clock, cookies, A, B };
 }
 
 /** A request as the GitHub user `who` from the server's own pages; a string body is sent as it is, any other as JSON. */
-export const asUser = async (w: ManageWorld, who: Who, path: string, init: { method?: string; body?: unknown } = {}): Promise<Response> =>
+export const asUser = async (w: Pick<ManageWorld, "app" | "cookies">, who: Who, path: string, init: { method?: string; body?: unknown } = {}): Promise<Response> =>
   w.app.request(path, {
     method: init.method ?? "GET",
     body: init.body === undefined || typeof init.body === "string" ? init.body : JSON.stringify(init.body),
     headers: { "Content-Type": "application/json", Origin: PUBLIC, Cookie: w.cookies[who] },
   });
+
+/**
+ * A second hosted app on the world's database with another code key, as a server whose operator replaced the key; its
+ * GitHub users sign in again. `as` and `post` send requests to it as a GitHub user.
+ */
+export async function appOnSameDatabase(db: Db, codeKey: Buffer) {
+  const { app } = hostedApp({ db, codeKey, users: githubUsers() });
+  const second = { app, cookies: await signInAll(app) };
+  return {
+    as: (who: Who, path: string) => asUser(second, who, path),
+    post: (who: Who, path: string) => asUser(second, who, path, { method: "POST" }),
+  };
+}
 
 /** A team's row of `teams`. */
 export const teamRow = (db: Db, teamId: number): unknown => db.prepare("select * from teams where id = ?").get(teamId);

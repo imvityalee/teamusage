@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { newTeamCode } from "./codes.js";
 import { now, safeEqual, storeInviteCode, type Db } from "./db.js";
 import { endTeamSessions } from "./sessions.js";
 
@@ -26,7 +27,7 @@ export function singleTeamCodes(teamId: number, inviteCode: () => string): (code
 
 /** Stores a new invite code and ends the sessions of team `teamId` in one step; returns the code. */
 export function rotateInviteCode(db: Db, teamId: number): string {
-  const code = randomBytes(12).toString("hex");
+  const code = newTeamCode();
   db.transaction(() => {
     storeInviteCode(db, code);
     endTeamSessions(db, teamId);

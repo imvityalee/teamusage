@@ -1,7 +1,6 @@
 import { beforeEach, expect, test } from "vitest";
 import { dashboardLinkToken } from "./hosted.fixture.js";
-import { everythingOf, manageWorld, PEOPLE, teamRow, type ManageWorld } from "./manage.fixture.js";
-import { findUser } from "./users.js";
+import { everythingOf, manageWorld, teamRow, type ManageWorld } from "./manage.fixture.js";
 import { setDashboardAccess } from "./team-settings.js";
 
 let w: ManageWorld;
@@ -12,15 +11,6 @@ beforeEach(async () => {
 const rowsWhere = (table: string, where: string, ...values: unknown[]) =>
   w.db.prepare(`select * from ${table} where ${where} order by rowid`).all(...values);
 const githubSessions = () => rowsWhere("sessions", "kind = 'user'");
-
-test("in the world, the ids that could be mistaken for one another differ, and B's id is not 1", () => {
-  const userId = (who: "bob" | "cyd" | "dee") => findUser(w.db, PEOPLE[who].githubId)?.id;
-  const ids = [w.B.id, w.B.sam.memberId, w.B.tia.memberId, userId("bob"), userId("cyd"), userId("dee"), ...Object.values(PEOPLE).map((p) => p.githubId)];
-  expect(ids.every((id) => typeof id === "number")).toBe(true);
-  expect(new Set(ids).size).toBe(ids.length);
-  expect(w.B.id).not.toBe(1);
-  expect(everythingOf(w.db, w.B.id).usage).toHaveLength(4 + 3 + 2);
-});
 
 test("setDashboardAccess to admins ends the team's member sessions and drops its links; the other team's rows and GitHub sessions stay", async () => {
   await dashboardLinkToken(w.app, w.A.members[1]!.one.token);

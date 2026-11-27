@@ -4,7 +4,9 @@ import type { Db } from "./db.js";
 import { isDashboardAccess, isTeamName, type DashboardAccess } from "./hosted-teams.js";
 import { crossSite, fail, isObject, readJson } from "./http.js";
 import { ANY_ROLE, githubSession, MANAGERS, OWNER_ONLY, teamAccess, userTeam } from "./team-access.js";
-import { renameTeam, setDashboardAccess } from "./team-settings.js";
+import { renameTeam, rotateTeamCode, setDashboardAccess, teamCode } from "./team-settings.js";
+
+const CODE_NOT_SHOWN = "this code can no longer be shown; rotate it";
 
 /** What a PATCH of a team asks to change; only the fields it names. */
 type Changes = { name?: string; dashboardAccess?: DashboardAccess };
@@ -31,7 +33,7 @@ function applyChanges(db: Db, teamId: number, changes: Changes): void {
   })();
 }
 
-/** Reading a team and changing its name and dashboard access. Mounted only on a hosted server. */
+/** Reading a team, changing its name and dashboard access, and showing and rotating its code. Mounted only on a hosted server. */
 export function teamSettingsRoutes(app: Hono, ctx: RouteContext): void {
   const hosted = ctx.opts.hosted;
   if (hosted === undefined) return;
@@ -61,5 +63,26 @@ export function teamSettingsRoutes(app: Hono, ctx: RouteContext): void {
     if (access instanceof Response) return access;
     applyChanges(ctx.db, access.team.id, changes);
     return c.json({ team: userTeam({ role: access.role, team: { ...access.team, ...changes } }) });
+  });
+
+  app.get("/api/teams/:team/code", (c) => {
+    c.header("Cache-Control", "no-store");
+    const user = githubSession(ctx, c);
+    if (user instanceof Response) return user;
+    const access = teamAccess(ctx, c, user, MANAGERS);
+    if (access instanceof Response) return access;
+    const code = teamCode(ctx.db, access.team.id, hosted.codeKey);
+    return code === null ? fail(c, 409, CODE_NOT_SHOWN) : c.json({ code });
+  });
+
+  app.post("/api/teams/:team/code/rotate", (c) => {
+    c.header("Cache-Control", "no-store");
+    const refused = crossSite(c, hosted.publicUrl);
+    if (refused) return refused;
+    const user = githubSession(ctx, c);
+    if (user instanceof Response) return user;
+    const access = teamAccess(ctx, c, user, MANAGERS);
+    if (access instanceof Response) return access;
+    return c.json({ code: rotateTeamCode(ctx.db, access.team.id, hosted.codeKey) });
   });
 }
