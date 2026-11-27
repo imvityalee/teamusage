@@ -1,10 +1,10 @@
 import type { Context, Hono } from "hono";
-import { isDisplayName, isEmail, validateBatch } from "@teamusage/shared";
+import { isDisplayName, isEmail, validateBatch, type UsageRecord } from "@teamusage/shared";
 import type { RouteContext } from "./app-context.js";
 import { bearerToken, fail, readJson } from "./http.js";
 import { createLimiter } from "./limiter.js";
 import { limitAnswer, secondsToUtcMidnight } from "./limit-answers.js";
-import { authenticate, MachineOwnedError } from "./team-data.js";
+import { authenticate, MachineOwnedError, type MachineIdentity } from "./team-data.js";
 import { LimitError } from "./team-limits.js";
 
 const MINUTE_MS = 60_000;
@@ -54,6 +54,22 @@ export function machineRoutes(app: Hono, ctx: RouteContext): void {
     return wait === null ? null : limitAnswer(c, "team-uploads", limits.team, wait);
   };
 
+  /**
+   * Refuses the batch when the team has used up its budget; otherwise counts it against the budget and stores it.
+   * Nothing here is awaited, so no other upload of the team is counted between the check and the store.
+   */
+  const store = (c: Context, who: MachineIdentity, records: UsageRecord[]): Response => {
+    // Other uploads of the team may have been counted while this body was read.
+    const overBudget = teamOverBudget(c, who.teamId);
+    if (overBudget) return overBudget;
+    if (records.length > 0) limits?.teamRecords.count(String(who.teamId), records.length);
+    try {
+      return c.json(team(who.teamId).upsertUsage(who, records));
+    } catch (err) {
+      return refused(c, err);
+    }
+  };
+
   app.post("/api/register", async (c) => {
     c.header("Cache-Control", "no-store");
     const entry = await teamOfInvite(c);
@@ -82,11 +98,6 @@ export function machineRoutes(app: Hono, ctx: RouteContext): void {
     if (body === undefined) return fail(c, 400, "invalid JSON body");
     const batch = validateBatch(body, new Date(ctx.now()));
     if (!batch.ok) return fail(c, 400, batch.error);
-    if (batch.records.length > 0) limits?.teamRecords.count(String(who.teamId), batch.records.length);
-    try {
-      return c.json(team(who.teamId).upsertUsage(who, batch.records));
-    } catch (err) {
-      return refused(c, err);
-    }
+    return store(c, who, batch.records);
   });
 }

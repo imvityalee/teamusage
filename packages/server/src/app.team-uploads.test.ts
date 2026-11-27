@@ -43,6 +43,14 @@ test("the request that takes a team past its budget is stored whole; the next is
   clock.t += 1_000;
   expect((await upload(one, recordsOf(1, 12))).status).toBe(200);
 });
+test("uploads of a team that are open together: only those up to the crossing are stored, the rest are refused whole", async () => {
+  const answers = await Promise.all(Array.from({ length: 40 }, (_, i) => upload(i % 2 === 0 ? one : two, recordsOf(6, i * 6))));
+  const refusals = answers.filter((res) => res.status !== 200);
+  expect(answers.length - refusals.length).toBe(2);
+  expect(refusals.map((res) => [res.status, res.headers.get("retry-after")])).toEqual(Array(38).fill([429, "60"]));
+  expect(await Promise.all(refusals.map((res) => res.json()))).toEqual(Array(38).fill(REFUSED));
+  expect(storedRows()).toEqual({ n: 12 });
+});
 test("the agreed value", () => expect(TEAM_UPLOAD_RECORDS_PER_MINUTE).toBe(60000));
 
 describe("what counts for the team", () => {
@@ -66,6 +74,15 @@ describe("what counts for the team", () => {
     expect((await upload(two, recordsOf(1, 9))).status).toBe(200); // the team is at 9 of 10 only if nothing above counted
     expect(await (await upload(two, recordsOf(1, 10))).json()).toEqual(REFUSED);
     expect(storedRows()).toEqual({ n: 10 });
+  });
+  test("an empty batch does not start the team's minute: it starts at the first record counted", async () => {
+    await upload(one, []);
+    clock.t += 30_000;
+    expect((await upload(two, recordsOf(10))).status).toBe(200);
+    clock.t += 30_000;
+    const refused = await upload(one, recordsOf(1, 10));
+    expect(await refused.json()).toEqual(REFUSED);
+    expect(refused.headers.get("retry-after")).toBe("30");
   });
   test("a request with an unknown token is 401 and counts for no team", async () => {
     for (let i = 0; i < 3; i++) expect((await upload("nope", recordsOf(10))).status).toBe(401);
