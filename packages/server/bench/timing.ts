@@ -21,3 +21,9 @@ export function timeRuns(run: () => unknown): Timing {
 
 /** `label: median … ms, slowest … ms`. */
 export const line = (label: string, t: Timing) => `${label}: median ${t.median.toFixed(1)} ms, slowest ${t.slowest.toFixed(1)} ms`;
+
+/** `label: whole … ms, … slices, slowest slice … ms`, for a removal whose slices took `slices` ms each and whose last step took `last` ms. */
+export function removalLine(label: string, slices: number[], last: number): string {
+  const whole = slices.reduce((sum, ms) => sum + ms, last);
+  return `${label}: whole ${whole.toFixed(1)} ms, ${slices.length} slices, slowest slice ${Math.max(...slices).toFixed(1)} ms`;
+}

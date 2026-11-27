@@ -1,6 +1,6 @@
 import Database from "better-sqlite3";
 import { codeHash, newTeamCode, sealCode } from "../codes.js";
-import type { Db } from "../db.js";
+import { sha256, type Db } from "../db.js";
 import { newPublicId } from "../hosted-teams.js";
 import { runSteps, STEPS } from "../migrate.js";
 
@@ -9,9 +9,9 @@ export const T = "2026-11-01T00:00:00.000Z";
 /** The code key the hosted teams of these databases are sealed with. */
 const KEY = Buffer.alloc(32, 9);
 
-/** An empty database brought to `version` by the steps of that release. */
-export function atVersion(version: number): Db {
-  const db = new Database(":memory:");
+/** An empty database, in memory unless `file` is given, brought to `version` by the steps of that release. */
+export function atVersion(version: number, file = ":memory:"): Db {
+  const db = new Database(file);
   runSteps(db, STEPS.slice(0, version));
   return db;
 }
@@ -62,4 +62,28 @@ export function selfHostedAt7(): Db {
     insert into sessions (id, kind, team_id, created_at) values ('${"c".repeat(64)}', 'team', 1, '${T}');
   `);
   return db;
+}
+
+/**
+ * Writes to `file` a self-hosted server at version 5 in use, with SQL of that version: its invite code, its one team on
+ * code without a code hash, member 7 with a machine, a usage row of 10 tokens and its count, and a browser signed in with
+ * the code under the session id `sessionId`. The session is opened now, since sessions expire by the real clock.
+ */
+export function selfHostedInUseAt5(file: string, sessionId: string): { inviteCode: string } {
+  const inviteCode = "e".repeat(24);
+  const db = atVersion(5, file);
+  db.exec(`
+    insert into settings (key, value) values ('invite_code', '${inviteCode}');
+    insert into teams (public_id, name, dashboard_access, created_at) values ('${"1".repeat(16)}', 'Team', 'code', '${T}');
+    insert into members (id, team_id, email, name, created_at) values (7, 1, 'zeb@x.com', 'Zeb', '${T}');
+    insert into machines (team_id, id, member_id, label, token_hash, created_at, last_sync_at)
+      values (1, '${MID}', 7, 'box', '${"g".repeat(64)}', '${T}', '${T}');
+    insert into usage (team_id, member_id, machine_id, date, agent, model, input, output, cache_create, cache_read, total,
+        cost_usd, unpriced, account_kind, account_org, account_plan)
+      values (1, 7, '${MID}', '2026-11-01', 'claude', 'm', 1, 2, 3, 4, 10, 0.25, 0, null, null, null);
+    insert into usage_counts (team_id, rows, day, added) values (1, 1, '2026-11-01', 1);
+  `);
+  db.prepare("insert into sessions (id, kind, team_id, created_at) values (?, 'team', 1, ?)").run(sha256(sessionId), new Date().toISOString());
+  db.close();
+  return { inviteCode };
 }
