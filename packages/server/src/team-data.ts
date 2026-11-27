@@ -141,7 +141,6 @@ function refuseNewMachine(db: Db, teamId: number, memberId: number, limits: Team
 }
 
 type Listed = ReturnType<TeamData["listMembers"]>[number];
-type ListedMachine = Listed["machines"][number];
 
 /** The team's members by id, each with its machines by creation, then id; the machines are read once and grouped by member. */
 function listMembers(db: Db, teamId: number): Listed[] {
@@ -156,7 +155,7 @@ function listMembers(db: Db, teamId: number): Listed[] {
   const machines = db
     .prepare("select id, member_id, label, last_sync_at from machines where team_id = ? order by created_at, id")
     .all(teamId) as { id: string; member_id: number; label: string; last_sync_at: string | null }[];
-  for (const x of machines) byId.get(x.member_id)?.push({ id: x.id, label: x.label, lastSyncAt: x.last_sync_at } satisfies ListedMachine);
+  for (const x of machines) byId.get(x.member_id)?.push({ id: x.id, label: x.label, lastSyncAt: x.last_sync_at });
   return members;
 }
 

@@ -84,6 +84,7 @@ test("no credential, a machine token and a member's session get 401", async () =
   for (const headers of credentials) {
     const res = await w.app.request(membersPath(), { headers: { ...headers, Origin: PUBLIC } });
     expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "unauthorized" });
   }
 });
 

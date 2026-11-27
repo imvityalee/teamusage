@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, test } from "vitest";
+import Database from "better-sqlite3";
 import { openDb, type Db } from "./db.js";
+import { migrate } from "./migrate.js";
 import { authenticate, forTeam, MachineOwnedError, type TeamData } from "./team-data.js";
 import { rec, reg } from "./team-data.fixture.js";
 import { createTeam } from "./teams.js";
@@ -104,16 +106,14 @@ describe("two teams", () => {
     const timed = forTeam(db, B, { clock });
     // The machine ids ascend against creation order, so a list ordered by id alone differs from one ordered by creation.
     const machineId = (i: number, round: number) => (i * 3 + (2 - round)).toString(16).padStart(32, "0");
-    const emailOf = (i: number) => `member${i}@x.com`;
     // Team A holds machines of the same ids, belonging to other members, registered among B's.
-    const other = forTeam(db, A);
     const memberIds = new Map<string, number>();
     for (let round = 0; round < 3; round++) {
       for (let i = 0; i < 300; i++) {
-        const email = emailOf((i * 7) % 300); // a mixed order of the members within each round
-        const j = (i * 7) % 300;
+        const j = (i * 7) % 300; // a mixed order of the members within each round
+        const email = `member${j}@x.com`;
         memberIds.set(email, timed.registerMachine(reg(machineId(j, round), { name: `Member ${j}`, email, machineLabel: `box-${j}-${round}` })).memberId);
-        other.registerMachine(reg(machineId(j, round), { name: "Other", email: `other${j}@x.com`, machineLabel: `other-${j}-${round}` }));
+        a.registerMachine(reg(machineId(j, round), { name: "Other", email: `other${j}@x.com`, machineLabel: `other-${j}-${round}` }));
       }
     }
     const listed = timed.listMembers();
@@ -137,5 +137,22 @@ describe("two teams", () => {
     timed.removeMachine(MID);
     timed.removeMachine(MID2);
     expect(timed.listMembers()).toEqual([expect.objectContaining({ joinedAt: "2026-11-02T09:00:00.000Z", machines: [] })]);
+  });
+  test("the member list reads members and machines through the team's index, never by scanning", () => {
+    const seen: string[] = [];
+    const verboseDb = new Database(":memory:", { verbose: (sql) => seen.push(String(sql)) });
+    migrate(verboseDb);
+    createTeam(verboseDb, "A");
+    const teamId = createTeam(verboseDb, "B");
+    forTeam(verboseDb, teamId).registerMachine(reg(MID));
+    seen.length = 0;
+    forTeam(verboseDb, teamId).listMembers();
+    for (const table of ["members", "machines"]) {
+      const statements = seen.filter((sql) => new RegExp(`from ${table} where`).test(sql));
+      expect(statements).toHaveLength(1);
+      const plan = (verboseDb.prepare(`explain query plan ${statements[0]}`).all() as { detail: string }[]).map((r) => r.detail).join(" | ");
+      expect(plan).toMatch(/SEARCH .* \(team_id=\?/);
+      expect(plan).not.toMatch(/SCAN/);
+    }
   });
 });
