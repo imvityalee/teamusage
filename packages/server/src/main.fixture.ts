@@ -1,6 +1,6 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach } from "vitest";
 import type { ServerConfig } from "./config.js";
 import { fakeGithub, KEY } from "./hosted.fixture.js";
@@ -17,6 +17,17 @@ export function tempDir(): string {
   const d = mkdtempSync(join(tmpdir(), "tu-main-"));
   dirs.push(d);
   return d;
+}
+
+/** A web directory in a temporary place holding `files`, each containing its own name; returns its path. */
+export function webWith(files: string[]): string {
+  const web = join(tempDir(), "web");
+  mkdirSync(web);
+  for (const file of files) {
+    mkdirSync(dirname(join(web, file)), { recursive: true });
+    writeFileSync(join(web, file), file);
+  }
+  return web;
 }
 
 /** A data directory that does not exist yet, inside a temporary directory removed after the test. */

@@ -1,9 +1,7 @@
 #!/usr/bin/env node
-import { chmodSync, closeSync, existsSync, mkdirSync, openSync, realpathSync, statSync } from "node:fs";
-import { readFile } from "node:fs/promises";
-import { extname, join, resolve, sep } from "node:path";
+import { chmodSync, closeSync, existsSync, mkdirSync, openSync } from "node:fs";
+import { join } from "node:path";
 import type { Server } from "node:http";
-import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
 import { getConnInfo } from "@hono/node-server/conninfo";
 import { Hono, type Context } from "hono";
@@ -19,64 +17,15 @@ import { hostedLimits, type HostedLimits } from "./hosted-limits.js";
 import { hostedTeamCodes } from "./hosted-teams.js";
 import { clientKeyFrom } from "./limiter.js";
 import { codeOf, openFailureMessage } from "./open-failure.js";
+import { pagesOf } from "./pages.js";
 import type { DiskSpace } from "./storage-guard.js";
 import { ensureSingleTeam, singleTeamCodes } from "./teams.js";
+import { DEFAULT_WEB_ROOT, serveWeb } from "./web-files.js";
+
+export { DEFAULT_WEB_ROOT };
 
 const CSP =
   "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'";
-
-const TYPES: Record<string, string> = {
-  ".html": "text/html; charset=utf-8",
-  ".js": "text/javascript; charset=utf-8",
-  ".mjs": "text/javascript; charset=utf-8",
-  ".css": "text/css; charset=utf-8",
-  ".json": "application/json; charset=utf-8",
-  ".svg": "image/svg+xml",
-  ".png": "image/png",
-  ".ico": "image/x-icon",
-  ".woff2": "font/woff2",
-  ".txt": "text/plain; charset=utf-8",
-  ".map": "application/json; charset=utf-8",
-};
-
-const NOT_BUILT =
-  '<!doctype html><html lang="en"><head><meta charset="utf-8"><title>teamusage</title></head>' +
-  "<body><h1>teamusage</h1><p>The dashboard is not built. The API is running.</p></body></html>";
-
-/** packages/server/web/dist, from both src/main.ts and the built dist/main.js (siblings of web/). */
-export const DEFAULT_WEB_ROOT = fileURLToPath(new URL("../web/dist", import.meta.url));
-
-/** Serves files from `root` only. Anything that resolves outside it (dot segments, symlinks, encodings) is a 404. */
-async function serveWeb(c: Context, root: string): Promise<Response> {
-  const notFound = () => c.text("not found", 404);
-  const index = join(root, "index.html");
-  if (!existsSync(index)) return c.req.path === "/" ? c.html(NOT_BUILT) : notFound();
-  let rel: string;
-  try {
-    // Decoded exactly once, from the raw path (c.req.path is already partly decoded).
-    rel = decodeURIComponent(new URL(c.req.url).pathname);
-  } catch {
-    return notFound();
-  }
-  if (rel.includes("\0") || rel.includes("\\")) return notFound();
-  if (rel.endsWith("/")) rel += "index.html";
-  // No dotfiles or directories, and no source maps.
-  if (rel.split("/").some((seg) => seg.startsWith(".")) || rel.toLowerCase().endsWith(".map")) return notFound();
-  try {
-    const base = realpathSync(root);
-    const file = realpathSync(resolve(base, `.${rel}`));
-    if (!file.startsWith(base + sep) || !statSync(file).isFile()) return notFound();
-    const body = await readFile(file);
-    const headers: Record<string, string> = {
-      "Content-Type": TYPES[extname(file).toLowerCase()] ?? "application/octet-stream",
-    };
-    if (file === join(base, "index.html")) headers["Cache-Control"] = "no-cache";
-    else if (file.startsWith(join(base, "assets") + sep)) headers["Cache-Control"] = "public, max-age=31536000, immutable";
-    return c.body(body, 200, headers);
-  } catch {
-    return notFound();
-  }
-}
 
 export interface BuiltServer {
   app: Hono;
@@ -165,8 +114,8 @@ function hostedApi(db: Db, hosted: HostedConfig, wiring: Wiring, github: GithubC
   return { api, inviteCode: undefined, inviteGenerated: false };
 }
 
-/** Security headers on every response; the API answers everything under `apiPaths`, the web directory the rest. */
-function serverApp(api: Hono, apiPaths: string[], webRoot: string): Hono {
+/** Security headers on every response; the API answers everything under `apiPaths`, the web directory's `pages` and files the rest. */
+function serverApp(api: Hono, apiPaths: string[], webRoot: string, pages: Readonly<Record<string, string>>): Hono {
   const app = new Hono();
   app.use(async (c, next) => {
     await next();
@@ -177,7 +126,7 @@ function serverApp(api: Hono, apiPaths: string[], webRoot: string): Hono {
   });
   // The API app answers everything under its paths, including its own 404s; the web directory never does.
   for (const path of apiPaths) app.all(path, (c) => api.fetch(c.req.raw, c.env));
-  app.get("*", (c) => serveWeb(c, webRoot));
+  app.get("*", (c) => serveWeb(c, webRoot, pages));
   app.all("*", (c) => c.json({ error: "not found" }, 404));
   return app;
 }
@@ -203,7 +152,7 @@ export function buildServer(config: ServerConfig, opts: BuildOptions = {}): Buil
     : selfHostedApi(db, config, wiring);
   // A hosted server also signs people in under /auth.
   const apiPaths = config.hosted ? ["/api/*", "/auth/*"] : ["/api/*"];
-  const app = serverApp(api, apiPaths, opts.webRoot ?? DEFAULT_WEB_ROOT);
+  const app = serverApp(api, apiPaths, opts.webRoot ?? DEFAULT_WEB_ROOT, pagesOf(config.mode));
   return { app, db, inviteCode, inviteGenerated, close: () => db.close() };
 }
 
