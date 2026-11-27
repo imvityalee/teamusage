@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { sha256, type Db } from "./db.js";
+import { countOf, sha256, type Db } from "./db.js";
 import { newPublicId, roleIn, type DashboardAccess, type UserTeam } from "./hosted-teams.js";
 import { MAX_ADMINS_AND_VIEWERS } from "./team-roles.js";
 import { ensureUser } from "./users.js";
@@ -34,8 +34,6 @@ const INVITE_COLUMNS = "id, role, created_at as createdAt, expires_at as expires
 
 /** The moment `ms` (epoch milliseconds) as the ISO text the table holds; texts of one format compare as their moments do. */
 const iso = (ms: number): string => new Date(ms).toISOString();
-
-const countOf = (db: Db, sql: string, ...params: unknown[]): number => (db.prepare(sql).get(...params) as { n: number }).n;
 
 /** A new invite of the team and its token, which is stored only as a hash and returned only here. `now` is epoch milliseconds. */
 export function createInvite(db: Db, teamId: number, role: InviteRole, now: number): { invite: Invite; token: string } {

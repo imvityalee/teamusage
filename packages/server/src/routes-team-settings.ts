@@ -2,7 +2,7 @@ import type { Hono } from "hono";
 import type { RouteContext } from "./app-context.js";
 import type { Db } from "./db.js";
 import { deleteTeam, isDashboardAccess, isTeamName, type DashboardAccess } from "./hosted-teams.js";
-import { crossSite, fail, isObject, readJson } from "./http.js";
+import { crossSite, fail, readObject } from "./http.js";
 import { removeInSlices } from "./sliced-removal.js";
 import { ANY_ROLE, githubSession, MANAGERS, OWNER_ONLY, teamAccess, userTeam } from "./team-access.js";
 import { renameTeam, rotateTeamCode, setDashboardAccess, teamCode } from "./team-settings.js";
@@ -58,9 +58,8 @@ export function teamSettingsRoutes(app: Hono, ctx: RouteContext): void {
     if (refused) return refused;
     const user = githubSession(ctx, c);
     if (user instanceof Response) return user;
-    const body = await readJson(c);
-    if (body === undefined) return fail(c, 400, "invalid JSON body");
-    if (!isObject(body)) return fail(c, 400, "body must be an object");
+    const body = await readObject(c);
+    if (body instanceof Response) return body;
     const changes = parseChanges(body);
     if (typeof changes === "string") return fail(c, 400, changes);
     // The role is read after the body, which the role's removal may have outrun; nothing is awaited from here to the write.
@@ -97,9 +96,8 @@ export function teamSettingsRoutes(app: Hono, ctx: RouteContext): void {
     if (refused) return refused;
     const user = githubSession(ctx, c);
     if (user instanceof Response) return user;
-    const body = await readJson(c);
-    if (body === undefined) return fail(c, 400, "invalid JSON body");
-    if (!isObject(body)) return fail(c, 400, "body must be an object");
+    const body = await readObject(c);
+    if (body instanceof Response) return body;
     if (typeof body.name !== "string") return fail(c, 400, "invalid name");
     // The name is compared once the role is read, so that a caller with no role gets the 404 and learns nothing of the
     // team. Nothing is awaited from here to the first slice.

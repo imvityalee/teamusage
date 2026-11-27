@@ -1,7 +1,7 @@
 import type { Hono } from "hono";
 import type { RouteContext } from "./app-context.js";
 import { createHostedTeam, isDashboardAccess, isTeamName, MAX_TEAMS_PER_USER, TeamLimitError } from "./hosted-teams.js";
-import { crossSite, fail, isObject, readJson } from "./http.js";
+import { crossSite, fail, readObject } from "./http.js";
 import { githubSession } from "./team-access.js";
 
 const SIGN_UPS_PAUSED = "sign-ups are paused";
@@ -19,9 +19,8 @@ export function teamRoutes(app: Hono, ctx: RouteContext): void {
     const session = githubSession(ctx, c);
     if (session instanceof Response) return session;
 
-    const body = await readJson(c);
-    if (body === undefined) return fail(c, 400, "invalid JSON body");
-    if (!isObject(body)) return fail(c, 400, "body must be an object");
+    const body = await readObject(c);
+    if (body instanceof Response) return body;
     if (!isTeamName(body.name)) return fail(c, 400, "invalid name");
     if (!isDashboardAccess(body.dashboardAccess)) return fail(c, 400, "invalid dashboardAccess");
 

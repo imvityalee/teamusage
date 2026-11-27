@@ -2,7 +2,7 @@ import type { Context, Hono } from "hono";
 import { acceptInvite, cancelInvite, createInvite, InviteError, listInvites, MAX_PENDING_INVITES, type InviteRefusal, type InviteRole } from "./admin-invites.js";
 import type { RouteContext } from "./app-context.js";
 import { isPublicId, MAX_TEAMS_PER_USER } from "./hosted-teams.js";
-import { crossSite, fail, isObject, readJson } from "./http.js";
+import { crossSite, fail, readObject } from "./http.js";
 import { ANY_ROLE, githubSession, MANAGERS, OWNER_ONLY, ROLE_NOT_ALLOWED, teamAccess } from "./team-access.js";
 import { handOver, HandOverError, listRoles, MAX_ADMINS_AND_VIEWERS, removeRole, type HandOverReason } from "./team-roles.js";
 
@@ -87,9 +87,8 @@ export function teamRolesRoutes(app: Hono, ctx: RouteContext): void {
     if (refused) return refused;
     const user = githubSession(ctx, c);
     if (user instanceof Response) return user;
-    const body = await readJson(c);
-    if (body === undefined) return fail(c, 400, "invalid JSON body");
-    if (!isObject(body)) return fail(c, 400, "body must be an object");
+    const body = await readObject(c);
+    if (body instanceof Response) return body;
     if (!isGithubId(body.user)) return fail(c, 400, "invalid user");
     // The role is read after the body; handOver reads it again in its own transaction, in the same turn.
     const access = teamAccess(ctx, c, user, OWNER_ONLY);
@@ -103,15 +102,15 @@ export function teamRolesRoutes(app: Hono, ctx: RouteContext): void {
     }
     return c.body(null, 204);
   });
+
   app.post("/api/teams/:team/invites", async (c) => {
     c.header("Cache-Control", "no-store");
     const refused = crossSite(c, hosted.publicUrl);
     if (refused) return refused;
     const user = githubSession(ctx, c);
     if (user instanceof Response) return user;
-    const body = await readJson(c);
-    if (body === undefined) return fail(c, 400, "invalid JSON body");
-    if (!isObject(body)) return fail(c, 400, "body must be an object");
+    const body = await readObject(c);
+    if (body instanceof Response) return body;
     if (!isInviteRole(body.role)) return fail(c, 400, "invalid role");
     // The role is read after the body, and the invite made in the same turn.
     const access = teamAccess(ctx, c, user, OWNER_ONLY);
@@ -151,9 +150,8 @@ export function teamRolesRoutes(app: Hono, ctx: RouteContext): void {
     if (refused) return refused;
     const user = githubSession(ctx, c);
     if (user instanceof Response) return user;
-    const body = await readJson(c);
-    if (body === undefined) return fail(c, 400, "invalid JSON body");
-    if (!isObject(body)) return fail(c, 400, "body must be an object");
+    const body = await readObject(c);
+    if (body instanceof Response) return body;
     if (typeof body.token !== "string" || !INVITE_TOKEN.test(body.token)) return fail(c, 400, "invalid token");
     // An unknown token is not counted as a failed attempt: an invite's 256 random bits are not guessed.
     try {

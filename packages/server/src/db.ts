@@ -12,6 +12,9 @@ export function safeEqual(a: string, b: string): boolean {
   return timingSafeEqual(Buffer.from(sha256(a)), Buffer.from(sha256(b)));
 }
 
+/** The `n` of a `select count(*) as n` statement run with `params`. */
+export const countOf = (db: Db, sql: string, ...params: unknown[]): number => (db.prepare(sql).get(...params) as { n: number }).n;
+
 export function openDb(path: string): Db {
   const db = new Database(path);
   db.pragma("journal_mode = WAL");

@@ -3,7 +3,7 @@ import type { RouteContext } from "./app-context.js";
 import { createDashboardLink, DASHBOARD_LINK_SECONDS, takeDashboardLink } from "./dashboard-links.js";
 import type { Db } from "./db.js";
 import { membersSeeTeam } from "./hosted-teams.js";
-import { bearerToken, crossSite, fail, isObject, readJson, setSessionCookie } from "./http.js";
+import { bearerToken, crossSite, fail, readObject, setSessionCookie } from "./http.js";
 import { createMemberSession } from "./sessions.js";
 import { DASHBOARD_ADMINS_ONLY } from "./stats-access.js";
 import { authenticate } from "./team-data.js";
@@ -44,9 +44,8 @@ export function memberSignInRoutes(app: Hono, ctx: RouteContext): void {
     // A hosted server signs a browser in only from its own pages; a self-hosted one has no public URL to compare.
     const crossSiteRefusal = opts.hosted ? crossSite(c, opts.hosted.publicUrl) : null;
     if (crossSiteRefusal) return crossSiteRefusal;
-    const body = await readJson(c);
-    if (body === undefined) return fail(c, 400, "invalid JSON body");
-    if (!isObject(body)) return fail(c, 400, "body must be an object");
+    const body = await readObject(c);
+    if (body instanceof Response) return body;
     if (typeof body.token !== "string" || !LINK_TOKEN.test(body.token)) return fail(c, 400, "invalid token");
     // An unknown token is not counted as a failed attempt: a link's 256 random bits are not guessed.
     const opened = openWithLink(db, body.token, ctx.now());

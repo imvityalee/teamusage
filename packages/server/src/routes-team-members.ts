@@ -1,6 +1,6 @@
 import type { Hono } from "hono";
 import type { RouteContext } from "./app-context.js";
-import { crossSite, fail, isObject, readJson } from "./http.js";
+import { crossSite, fail, readObject } from "./http.js";
 import { removeInSlices } from "./sliced-removal.js";
 import { githubSession, MANAGERS, teamAccess } from "./team-access.js";
 import { isMachineId } from "./team-data.js";
@@ -58,9 +58,8 @@ export function teamMembersRoutes(app: Hono, ctx: RouteContext): void {
     if (refused) return refused;
     const user = githubSession(ctx, c);
     if (user instanceof Response) return user;
-    const body = await readJson(c);
-    if (body === undefined) return fail(c, 400, "invalid JSON body");
-    if (!isObject(body)) return fail(c, 400, "body must be an object");
+    const body = await readObject(c);
+    if (body instanceof Response) return body;
     const asked = parseRemoval(body);
     if (typeof asked === "string") return fail(c, 400, asked);
     // The usage goes in slices, the role read again before each; the rest goes in the turn of the last slice.

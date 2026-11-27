@@ -1,6 +1,7 @@
 import type { Db } from "./db.js";
 import { isPublicId, membersSeeTeam, roleIn, teamByPublicId } from "./hosted-teams.js";
 import type { Session } from "./sessions.js";
+import { TEAM_NOT_FOUND } from "./team-access.js";
 import type { MachineIdentity } from "./team-data.js";
 
 export const DASHBOARD_LIMITED = "this team's dashboard is limited to its admins; update teamusage to see your own numbers here";
@@ -14,13 +15,13 @@ export type StatsAccess =
 const UNAUTHORIZED: StatsAccess = { ok: false, status: 401, error: "unauthorized" };
 const INVALID_TEAM: StatsAccess = { ok: false, status: 400, error: "invalid query" };
 /** The one answer for a team that does not exist and for a team the caller has no role in. */
-const TEAM_NOT_FOUND: StatsAccess = { ok: false, status: 404, error: "team not found" };
+const NO_SUCH_TEAM: StatsAccess = { ok: false, status: 404, error: TEAM_NOT_FOUND };
 
 /** The team named by public id in which the GitHub user has a role; any other team is not found. */
 function userAccess(db: Db, githubId: number, teamParam: string | undefined): StatsAccess {
   if (!isPublicId(teamParam)) return INVALID_TEAM;
   const team = teamByPublicId(db, teamParam);
-  if (team === null || roleIn(db, team.id, githubId) === null) return TEAM_NOT_FOUND;
+  if (team === null || roleIn(db, team.id, githubId) === null) return NO_SUCH_TEAM;
   return { ok: true, teamId: team.id, member: null, teamNumbers: true };
 }
 

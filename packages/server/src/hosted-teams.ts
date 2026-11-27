@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { isDisplayName, MAX_TEAM_NAME_CHARS } from "@teamusage/shared";
 import { codeHash, isTeamCode, newTeamCode, sealCode } from "./codes.js";
-import { now, type Db } from "./db.js";
+import { countOf, now, type Db } from "./db.js";
 import { dropUsersWithoutRole, ensureUser } from "./users.js";
 
 export type Role = "owner" | "admin" | "viewer";
@@ -37,8 +37,6 @@ export const isTeamName = (v: unknown): v is string => isDisplayName(v) && v.tri
 
 /** True for a value of DashboardAccess. */
 export const isDashboardAccess = (v: unknown): v is DashboardAccess => v === "members" || v === "admins";
-
-const countOf = (db: Db, sql: string, ...params: unknown[]): number => (db.prepare(sql).get(...params) as { n: number }).n;
 
 /** Inserts the team with its code hashed and sealed; returns its id. */
 function insertTeam(db: Db, team: Omit<TeamInfo, "id">, code: string, codeKey: Buffer): number {

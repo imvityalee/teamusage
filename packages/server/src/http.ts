@@ -20,6 +20,14 @@ export async function readJson(c: Context): Promise<unknown> {
 
 export const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
+/** The JSON body when it is an object; otherwise the 400 that refuses it, "invalid JSON body" or "body must be an object". */
+export async function readObject(c: Context): Promise<Record<string, unknown> | Response> {
+  const body = await readJson(c);
+  if (body === undefined) return fail(c, 400, "invalid JSON body");
+  if (!isObject(body)) return fail(c, 400, "body must be an object");
+  return body;
+}
+
 /** The token of an `Authorization: Bearer` header; undefined when there is none. */
 export const bearerToken = (c: Context): string | undefined => BEARER.exec(c.req.header("Authorization") ?? "")?.[1];
 
