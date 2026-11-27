@@ -1,6 +1,7 @@
 import type { Hono } from "hono";
 import { goodReg } from "./app.fixture.js";
 import type { Db } from "./db.js";
+import { rowsOf } from "./hosted.two-teams.fixture.js";
 import {
   grantRole,
   hostedApp,
@@ -41,8 +42,8 @@ export type ManageWorld = {
   cookies: Record<Who, string>;
   A: ManagedTeam & { members: { memberId: number; name: string; email: string; one: Machine }[]; memberSession: string };
   B: ManagedTeam & {
-    sam: { memberId: number; one: Machine; two: Machine; session: string };
-    tia: { memberId: number; one: Machine; session: string };
+    sam: { memberId: number; name: string; email: string; one: Machine; two: Machine; session: string };
+    tia: { memberId: number; name: string; email: string; one: Machine; session: string };
   };
 };
 
@@ -107,8 +108,8 @@ async function teamB(db: Db, app: Hono): Promise<ManageWorld["B"]> {
     publicId: team.publicId,
     name: team.name,
     code,
-    sam: { memberId: samOne.memberId, one: samOne.machine, two: samTwo.machine, session: await memberSignIn(app, samOne.machine.token) },
-    tia: { memberId: tiaOne.memberId, one: tiaOne.machine, session: await memberSignIn(app, tiaOne.machine.token) },
+    sam: { memberId: samOne.memberId, ...SAM, one: samOne.machine, two: samTwo.machine, session: await memberSignIn(app, samOne.machine.token) },
+    tia: { memberId: tiaOne.memberId, ...TIA, one: tiaOne.machine, session: await memberSignIn(app, tiaOne.machine.token) },
   };
 }
 
@@ -153,6 +154,10 @@ export async function appOnSameDatabase(db: Db, codeKey: Buffer, logError?: (lin
     post: (who: Who, path: string) => asUser(second, who, path, { method: "POST" }),
   };
 }
+
+/** How many usage rows team `teamId` holds; only its member `memberId`'s when that is given. */
+export const usageRowsOf = (db: Db, teamId: number, memberId?: number): number =>
+  rowsOf(db, teamId).usage.filter((u) => memberId === undefined || u.member_id === memberId).length;
 
 /** A team's row of `teams`. */
 export const teamRow = (db: Db, teamId: number): unknown => db.prepare("select * from teams where id = ?").get(teamId);

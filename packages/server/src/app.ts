@@ -15,6 +15,10 @@ import { teamSettingsRoutes } from "./routes-team-settings.js";
 import { teamRoutes } from "./routes-teams.js";
 import { findSession } from "./sessions.js";
 import { forTeam } from "./team-data.js";
+import { REMOVAL_SLICE_ROWS } from "./team-removal.js";
+
+/** Waits one turn of the event loop, so that the requests waiting in it are served first. */
+const nextTurn = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
 
 export function createApp(db: Db, opts: AppOptions): Hono {
   const app = new Hono();
@@ -80,7 +84,8 @@ export function createApp(db: Db, opts: AppOptions): Hono {
       limits: opts.limits?.team,
       daysKept: opts.limits?.usageDaysKept,
     });
-  const ctx: RouteContext = { db, opts, now, stopwatch, team, teamOfInvite, session: sessionOf };
+  const removal = { sliceRows: opts.removal?.sliceRows ?? REMOVAL_SLICE_ROWS, pause: opts.removal?.pause ?? nextTurn };
+  const ctx: RouteContext = { db, opts, now, stopwatch, team, teamOfInvite, session: sessionOf, removal };
   machineRoutes(app, ctx);
   dashboardRoutes(app, ctx);
   memberSignInRoutes(app, ctx);

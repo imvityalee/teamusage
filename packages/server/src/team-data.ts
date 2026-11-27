@@ -16,6 +16,9 @@ export class MachineOwnedError extends Error {
 
 export type MachineIdentity = { teamId: number; memberId: number; machineId: string };
 
+/** A machine's id as a client makes it: 32 lowercase hex digits. */
+export const isMachineId = (v: unknown): v is string => typeof v === "string" && /^[a-f0-9]{32}$/.test(v);
+
 /** Members, machines and usage of one team; nothing here reads or writes another team's rows. */
 export interface TeamData {
   registerMachine(a: { name: string; email: string; machineId: string; machineLabel: string }): {
@@ -33,10 +36,11 @@ export interface TeamData {
   }[];
   /**
    * Removes up to `most` usage rows of the named members and machines, takes them off the team's count, and returns how
-   * many; fewer than `most` means they hold none now. One transaction.
+   * many; fewer than `most` means they hold none now. One transaction. Throws a RangeError when `most` is not a
+   * positive whole number.
    */
   removeUsageSlice(what: Removal, most: number): number;
-  /** The same for any of the team's usage rows. */
+  /** The same for any of the team's usage rows, with the same RangeError. */
   removeAnyUsageSlice(most: number): number;
   /**
    * Removes the named members with their machines, the named machines, and the usage they still hold, in one transaction;

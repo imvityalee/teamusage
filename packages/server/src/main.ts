@@ -116,8 +116,11 @@ function clientKeyOf(trustedProxies: number): ClientKey {
 
 type Api = { api: Hono; inviteCode: BuiltServer["inviteCode"]; inviteGenerated: boolean };
 
-/** What the app of either kind of server is given: how it tells clients apart, and a test's clock when it has one. */
-type Wiring = Pick<AppOptions, "clientKey" | "now">;
+/**
+ * What the app of either kind of server is given: how it tells clients apart, and a test's clock when it has one; a
+ * hosted server's also a test's pause between the slices of a removal.
+ */
+type Wiring = Pick<AppOptions, "clientKey" | "now" | "removal">;
 
 /** The API of a self-hosted server: one team, opened with the invite code. */
 function selfHostedApi(db: Db, config: ServerConfig, wiring: Wiring): Api {
@@ -138,8 +141,17 @@ function selfHostedApi(db: Db, config: ServerConfig, wiring: Wiring): Api {
   return { api, inviteCode, inviteGenerated };
 }
 
-/** Replaces parts of a server for a test: the web directory, the GitHub client, the disk measurement and the clock. */
-type BuildOptions = { webRoot?: string; github?: GithubClient; measureDisk?: (dir: string) => DiskSpace; now?: () => number };
+/**
+ * Replaces parts of a server for a test: the web directory, the GitHub client, the disk measurement, the clock and the
+ * pause between the slices of a removal.
+ */
+type BuildOptions = {
+  webRoot?: string;
+  github?: GithubClient;
+  measureDisk?: (dir: string) => DiskSpace;
+  now?: () => number;
+  pause?: () => Promise<void>;
+};
 
 /** The API of a hosted server: people sign in with GitHub and create teams, each with its own code, within its limits. */
 function hostedApi(db: Db, hosted: HostedConfig, wiring: Wiring, github: GithubClient | undefined, limits: HostedLimits): Api {
@@ -171,9 +183,9 @@ function serverApp(api: Hono, apiPaths: string[], webRoot: string): Hono {
 }
 
 /**
- * Opens storage and wires the app. Starts no listener. In hosted mode `opts.github` replaces the GitHub client and
- * `opts.measureDisk` the measurement of the data volume; a self-hosted server never measures it. In both modes
- * `opts.now` replaces the app's clock.
+ * Opens storage and wires the app. Starts no listener. In hosted mode `opts.github` replaces the GitHub client,
+ * `opts.measureDisk` the measurement of the data volume (a self-hosted server never measures it) and `opts.pause` the
+ * pause between the slices of a removal. In both modes `opts.now` replaces the app's clock.
  */
 export function buildServer(config: ServerConfig, opts: BuildOptions = {}): BuiltServer {
   const db = openStorage(config);
@@ -185,8 +197,9 @@ export function buildServer(config: ServerConfig, opts: BuildOptions = {}): Buil
     throw err;
   }
   const wiring: Wiring = { clientKey: clientKeyOf(config.trustedProxies), now: opts.now };
+  const hostedWiring: Wiring = { ...wiring, removal: { pause: opts.pause } };
   const { api, inviteCode, inviteGenerated } = config.hosted
-    ? hostedApi(db, config.hosted, wiring, opts.github, hostedLimits({ dataDir: config.dataDir, db, measure: opts.measureDisk }))
+    ? hostedApi(db, config.hosted, hostedWiring, opts.github, hostedLimits({ dataDir: config.dataDir, db, measure: opts.measureDisk }))
     : selfHostedApi(db, config, wiring);
   // A hosted server also signs people in under /auth.
   const apiPaths = config.hosted ? ["/api/*", "/auth/*"] : ["/api/*"];

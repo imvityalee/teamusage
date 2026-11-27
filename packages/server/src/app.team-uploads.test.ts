@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, test } from "vitest";
 import type { Hono } from "hono";
 import * as selfHosted from "./app.harness.js";
 import type { Db } from "./db.js";
-import { hostedApp, hostedTeam, machineClient, machineIdOf, recordsOf, testCaps, testLimits } from "./hosted.fixture.js";
+import { heldRequest, hostedApp, hostedTeam, machineClient, machineIdOf, recordsOf, settle, testCaps, testLimits } from "./hosted.fixture.js";
+import { forTeam } from "./team-data.js";
 import { TEAM_UPLOAD_RECORDS_PER_MINUTE, type TeamLimits } from "./team-limits.js";
 
 // A team's machines share a budget of upload records a minute; here it is ten records, and each machine may upload twenty times.
@@ -11,18 +12,23 @@ const clock = { t: Date.parse("2026-11-25T10:30:00.000Z") };
 let db: Db;
 let app: Hono;
 let code: string;
+let teamId: number;
 let one: string;
 let two: string;
+let logged: string[];
+const machineIdOfTwo = machineIdOf(2);
 
 const { join, uploadRaw, upload } = machineClient(() => app, () => code);
 const storedRows = () => db.prepare("select count(*) as n from usage").get();
 const REFUSED = { error: "this team is sending too much at once; try again in a minute", limit: "team-uploads" };
 
 async function server(team: Partial<TeamLimits> = {}, uploadsPerMinute = 20): Promise<void> {
-  ({ db, app } = hostedApp({ limits: testLimits(testCaps(team), { uploadsPerMinute, teamUploadRecordsPerMinute: 10 }), now: () => clock.t }));
-  code = hostedTeam(db, { githubId: 1, login: "ann" }, "members").code;
+  logged = [];
+  const logError = (line: string) => logged.push(line);
+  ({ db, app } = hostedApp({ limits: testLimits(testCaps(team), { uploadsPerMinute, teamUploadRecordsPerMinute: 10 }), now: () => clock.t, logError }));
+  ({ code, team: { id: teamId } } = hostedTeam(db, { githubId: 1, login: "ann" }, "members"));
   one = await join({ machineId: machineIdOf(1) });
-  two = await join({ machineId: machineIdOf(2) });
+  two = await join({ machineId: machineIdOfTwo });
 }
 beforeEach(async () => {
   clock.t = Date.parse("2026-11-25T10:30:00.000Z");
@@ -52,6 +58,39 @@ test("uploads of a team that are open together: only those up to the crossing ar
   expect(storedRows()).toEqual({ n: 12 });
 });
 test("the agreed value", () => expect(TEAM_UPLOAD_RECORDS_PER_MINUTE).toBe(60000));
+
+/** Sends an upload of `records` as the machine `token` and holds it while the handler waits for its body. */
+async function heldUpload(token: string, records: unknown[]) {
+  const held = heldRequest(app, "/api/usage", { method: "POST", text: JSON.stringify({ records }), headers: { Authorization: `Bearer ${token}` } });
+  await settle();                                                     // the handler now waits for the body
+  return held;
+}
+
+test("an upload whose machine is removed while its body is read is refused, stores nothing and logs no error", async () => {
+  const held = await heldUpload(two, recordsOf(2));
+  forTeam(db, teamId).removeMachine(machineIdOfTwo);
+  held.finish();
+  const res = await held.answer;
+  expect(res.status).toBe(401);
+  expect(await res.json()).toEqual({ error: "unauthorized" });
+  expect(storedRows()).toEqual({ n: 0 });
+  expect(logged).toEqual([]);                                         // today: a 500 and "SqliteError SQLITE_CONSTRAINT_FOREIGNKEY"
+});
+test("an upload refused because its machine went while its body was read counts nothing against the team's budget", async () => {
+  const held = await heldUpload(two, recordsOf(10));
+  forTeam(db, teamId).removeMachine(machineIdOfTwo);
+  held.finish();
+  expect((await held.answer).status).toBe(401);
+  expect(await (await upload(one, recordsOf(10))).json()).toEqual({ stored: 10, kept: 0 }); // the whole budget is still there
+});
+test("an upload whose machine registered again while its body was read is refused: its token is no longer the machine's", async () => {
+  const held = await heldUpload(two, recordsOf(2));
+  const fresh = await join({ machineId: machineIdOfTwo });
+  held.finish();
+  expect((await held.answer).status).toBe(401);
+  expect(storedRows()).toEqual({ n: 0 });
+  expect((await upload(fresh, recordsOf(2))).status).toBe(200);
+});
 
 describe("what counts for the team", () => {
   test("records that are kept count", async () => {

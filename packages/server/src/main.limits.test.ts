@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { goodReg, MID2, record } from "./app.fixture.js";
+import { goodReg, MID, MID2, record } from "./app.fixture.js";
 import { hostedTeam, machineIdOf, signIn } from "./hosted.fixture.js";
 import { conn, github, hosted, PUBLIC_URL, roomy, serverConfig, tempDataDir } from "./main.fixture.js";
 import { buildServer, type BuiltServer } from "./main.js";
@@ -29,14 +29,14 @@ const tokenOf = async (res: Response) => ((await res.json()) as { token: string 
  * A hosted server at NOW unless `opts` gives another clock, with one team that ann created, her session cookie, the
  * team's code and one registered machine's token.
  */
-async function hostedMachine(opts: { measureDisk?: (dir: string) => DiskSpace; now?: () => number }) {
+async function hostedMachine(opts: { measureDisk?: (dir: string) => DiskSpace; now?: () => number; pause?: () => Promise<void> }) {
   const config = hosted(tempDataDir());
   const s = buildServer(config, { github: github(), now: clock, ...opts });
   const ann = await signIn(s.app, "code-ann");
   const created = await createTeamAs(s, ann, { name: "Acme", dashboardAccess: "members" });
-  const { code } = (await created.json()) as { code: string };
+  const { team, code } = (await created.json()) as { team: { id: string }; code: string };
   const token = await tokenOf(await register(s, goodReg({ inviteCode: code })));
-  return { s, ann, code, token, dataDir: config.dataDir };
+  return { s, ann, teamPublicId: team.id, code, token, dataDir: config.dataDir };
 }
 
 test("a hosted server lets a machine upload thirty times a minute", async () => {
@@ -141,6 +141,22 @@ test("a hosted server on a nearly full volume accepts rows again once a machine'
       ["teamusage: less than 15% of the data volume is free; requests that add rows are refused"],
       ["teamusage: the data volume has room again; requests that add rows are accepted"],
     ]);
+  } finally {
+    s.close();
+  }
+});
+
+test("a hosted server removes a machine's usage in slices of 5,000, pausing between them", async () => {
+  const rowsAtPause: number[] = [];
+  let usageRows = () => 0;                                            // reads the server's database once it exists
+  const { s, ann, teamPublicId, token } = await hostedMachine({ measureDisk: roomy, pause: async () => void rowsAtPause.push(usageRows()) });
+  try {
+    usageRows = () => s.db.prepare("select count(*) from usage").pluck().get() as number;
+    await storeThousands(s, token, 10_001, "r");
+    const res = await send(s, `/api/teams/${teamPublicId}/removals`, { members: [], machines: [MID], rotateCode: false }, { Origin: PUBLIC_URL, Cookie: ann });
+    expect(await res.json()).toEqual({ removed: { members: 0, machines: 1 } });
+    expect(rowsAtPause).toEqual([5_001, 1]);
+    expect(usageRows()).toBe(0);
   } finally {
     s.close();
   }

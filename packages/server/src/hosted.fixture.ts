@@ -58,7 +58,7 @@ export function grantRole(db: Db, teamId: number, user: Person, role: Role): voi
  * What a test may give a hosted app; `limits` may be made from the database the app opens, `users` replaces the
  * GitHub users its fake GitHub knows, `db` is an existing database to open the app on and `codeKey` replaces the code key.
  */
-export type HostedAppOptions = Pick<AppOptions, "clientKey" | "logError" | "now" | "stopwatch"> & {
+export type HostedAppOptions = Pick<AppOptions, "clientKey" | "logError" | "now" | "stopwatch" | "removal"> & {
   limits?: AppOptions["limits"] | ((db: Db) => AppOptions["limits"]);
   maxTeams?: number;
   users?: Record<string, GithubUser>;
@@ -77,6 +77,7 @@ export function hostedApp(o: HostedAppOptions = {}) {
     limits: typeof o.limits === "function" ? o.limits(db) : o.limits,
     now: o.now,
     stopwatch: o.stopwatch,
+    removal: o.removal,
     hosted: { github, publicUrl: PUBLIC, codeKey: o.codeKey ?? KEY, maxTeams: o.maxTeams ?? 200 },
   });
   return { db, app, github };

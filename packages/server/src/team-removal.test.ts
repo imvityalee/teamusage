@@ -66,6 +66,15 @@ test("removing a member takes their machines, their usage and their sign-ins, an
 
 test("the agreed value", () => expect(REMOVAL_SLICE_ROWS).toBe(5000));
 
+test("a slice of a size that is not a positive whole number is refused and removes nothing", () => {
+  const before = everythingOf(w.db, w.B.id);
+  for (const most of [-1, 0, 2.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+    expect(() => b.removeUsageSlice({ members: [w.B.sam.memberId], machines: [] }, most), String(most)).toThrow(RangeError);
+    expect(() => b.removeAnyUsageSlice(most), String(most)).toThrow(RangeError);
+  }
+  expect(everythingOf(w.db, w.B.id)).toEqual(before);
+});
+
 test("a slice over a member and another member's machine removes at most `most` rows in all", () => {
   const what = { members: [w.B.sam.memberId], machines: [w.B.tia.one.id] };
   const taken = [0, 0, 0].map(() => {

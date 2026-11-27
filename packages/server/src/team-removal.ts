@@ -47,15 +47,23 @@ function deleteUsageOf(db: Db, teamId: number, what: Removal, most: number): num
   return byMember + byMachine;
 }
 
+/** `most` when it is a positive whole number; otherwise a RangeError, since SQLite reads a negative limit as none. */
+function sliceSize(most: number): number {
+  if (!Number.isSafeInteger(most) || most < 1) throw new RangeError("a slice takes a positive whole number of rows");
+  return most;
+}
+
 /** Removes up to `most` usage rows of the named members and machines in one transaction; returns how many. */
 export function removeUsageSlice(db: Db, teamId: number, what: Removal, most: number): number {
-  return db.transaction(() => deleteUsageOf(db, teamId, what, most))();
+  const size = sliceSize(most);
+  return db.transaction(() => deleteUsageOf(db, teamId, what, size))();
 }
 
 /** Removes up to `most` of the team's usage rows in one transaction; returns how many. */
 export function removeAnyUsageSlice(db: Db, teamId: number, most: number): number {
+  const size = sliceSize(most);
   return db.transaction(() => {
-    const removed = db.prepare(DELETE_ANY_USAGE).run({ teamId, most }).changes;
+    const removed = db.prepare(DELETE_ANY_USAGE).run({ teamId, most: size }).changes;
     countRemovedRows(db, teamId, removed);
     return removed;
   })();

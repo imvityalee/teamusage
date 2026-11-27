@@ -4,10 +4,12 @@ import type { RouteContext } from "./app-context.js";
 import { bearerToken, fail, readJson } from "./http.js";
 import { createLimiter, MINUTE_MS } from "./limiter.js";
 import { limitAnswer, secondsToUtcMidnight } from "./limit-answers.js";
-import { authenticate, MachineOwnedError, type MachineIdentity } from "./team-data.js";
+import { authenticate, isMachineId, MachineOwnedError, type MachineIdentity } from "./team-data.js";
 import { LimitError } from "./team-limits.js";
 
-const MACHINE_ID = /^[a-f0-9]{32}$/;
+/** True when `now` is the machine `before`: the same team, member and machine. */
+const sameMachine = (now: MachineIdentity | null, before: MachineIdentity): boolean =>
+  now !== null && now.teamId === before.teamId && now.memberId === before.memberId && now.machineId === before.machineId;
 
 type RegisterInput = { name: string; email: string; machineId: string; machineLabel: string };
 
@@ -15,7 +17,7 @@ function parseRegister(b: Record<string, unknown>): RegisterInput | string {
   const { name, email, machineId, machineLabel } = b;
   if (!isDisplayName(name)) return "invalid name";
   if (!isEmail(email)) return "invalid email";
-  if (typeof machineId !== "string" || !MACHINE_ID.test(machineId)) return "invalid machineId";
+  if (!isMachineId(machineId)) return "invalid machineId";
   if (!isDisplayName(machineLabel)) return "invalid machineLabel";
   return { name: name.trim(), email: email.trim(), machineId, machineLabel: machineLabel.trim() };
 }
@@ -54,10 +56,13 @@ export function machineRoutes(app: Hono, ctx: RouteContext): void {
   };
 
   /**
-   * Refuses the batch when the team has used up its budget; otherwise counts it against the budget and stores it.
-   * Nothing here is awaited, so no other upload of the team is counted between the check and the store.
+   * Refuses the batch when its token no longer opens the machine `who` it opened before the body was read, or when the
+   * team has used up its budget; otherwise counts it against the budget and stores it. Nothing here is awaited, so no
+   * removal and no other upload of the team comes between the checks and the store.
    */
-  const store = (c: Context, who: MachineIdentity, records: UsageRecord[]): Response => {
+  const store = (c: Context, token: string, who: MachineIdentity, records: UsageRecord[]): Response => {
+    // The machine may have been removed, or its team deleted, while this body was read.
+    if (!sameMachine(authenticate(db, token), who)) return fail(c, 401, "unauthorized");
     // Other uploads of the team may have been counted while this body was read.
     const overBudget = teamOverBudget(c, who.teamId);
     if (overBudget) return overBudget;
@@ -88,7 +93,7 @@ export function machineRoutes(app: Hono, ctx: RouteContext): void {
     const token = bearerToken(c);
     // Identity comes only from the token; nothing in the body can influence it.
     const who = token ? authenticate(db, token) : null;
-    if (!who) return fail(c, 401, "unauthorized");
+    if (!token || !who) return fail(c, 401, "unauthorized");
     const outOfUploads = tooManyUploads(c, who);
     if (outOfUploads) return outOfUploads;
     const overBudget = teamOverBudget(c, who.teamId);
@@ -97,6 +102,6 @@ export function machineRoutes(app: Hono, ctx: RouteContext): void {
     if (body === undefined) return fail(c, 400, "invalid JSON body");
     const batch = validateBatch(body, new Date(ctx.now()));
     if (!batch.ok) return fail(c, 400, batch.error);
-    return store(c, who, batch.records);
+    return store(c, token, who, batch.records);
   });
 }
