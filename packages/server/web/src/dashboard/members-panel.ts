@@ -3,7 +3,7 @@ import { counted, h, icon } from "../dom.js";
 import { matchCount, t, type Lang } from "../i18n.js";
 import { matchMembers } from "../search.js";
 import { loadPageSize, pageOf, savePageSize, type PageSize } from "../site/paging.js";
-import { renderPager } from "../site/pager.js";
+import { renderPager, updatePager } from "../site/pager.js";
 import { memberRows } from "./member-rows.js";
 import { DEFAULT_SORT, nextSort, sortMembers, type MemberSort } from "./members-table.js";
 
@@ -49,9 +49,13 @@ interface View {
   query: string;
   table: MembersTable;
   size: PageSize;
+  /** Built with the first draw and kept for the life of the panel; a search matching nobody only takes it out. */
+  pager: HTMLElement | null;
 }
 
 const views = new WeakMap<Element, View>();
+
+type Step = "prev" | "next";
 
 const ARROWS = { asc: "↑", desc: "↓" } as const;
 
@@ -85,7 +89,7 @@ function showCount(line: HTMLElement, lang: Lang, query: string, matched: number
 }
 
 /** Draws the rows, the count line, the sorted header and the pager of `section` from its view. */
-function draw(section: Element, view: View, focus?: Focus): void {
+function draw(section: Element, view: View, pressed?: Step): void {
   const { doc, stats, lang, today, filtered } = view.context;
   const table = section.querySelector("#members");
   const body = table?.querySelector("tbody");
@@ -100,36 +104,31 @@ function draw(section: Element, view: View, focus?: Focus): void {
   showCount(countLine, lang, view.query, matched.length, stats.members.length);
   scroll.hidden = matched.length === 0;
   markSorted(table, view.table.sort, doc);
-  const go = (n: number) => {
-    const pressed = n > view.table.page ? "next" : "prev";
-    view.table.page = n;
-    draw(section, view, pressed);
-  };
-  const resize = (size: PageSize) => {
-    savePageSize(size);
-    view.size = size;
-    view.table.page = 1;
-    draw(section, view, "size");
-  };
-  const pager = matched.length === 0 ? [] : [renderPager(doc, page, view.size, lang, { page: go, size: resize })];
-  slot.replaceChildren(...pager);
-  if (focus !== undefined) refocus(slot, focus);
+  const on = { page: (n: number) => go(section, view, n), size: (s: PageSize) => resize(section, view, s) };
+  const pager = (view.pager ??= renderPager(doc, page, view.size, lang, on));
+  updatePager(pager, page, view.size, lang);
+  if (matched.length === 0) slot.replaceChildren();
+  else if (pager.parentElement !== slot) slot.replaceChildren(pager);
+  if (pressed !== undefined) refocus(pager, pressed);
 }
 
-/** Which pager control a person pressed: a step button, or the rows-per-page select. */
-type Focus = "prev" | "next" | "size";
+function go(section: Element, view: View, page: number): void {
+  const pressed = page > view.table.page ? "next" : "prev";
+  view.table.page = page;
+  draw(section, view, pressed);
+}
 
-/**
- * The pager was drawn anew, so keyboard focus goes back to the control that was pressed; to the other step button when
- * that one is now disabled.
- */
-function refocus(slot: Element, pressed: Focus): void {
-  const selector = (name: Focus) => (name === "size" ? "select" : `button[data-step="${name}"]`);
-  const control = (name: Focus) => slot.querySelector<HTMLElement>(selector(name));
-  const pressedControl = control(pressed);
-  const other = pressed === "next" ? "prev" : "next";
-  const target = pressedControl && !(pressedControl as HTMLButtonElement).disabled ? pressedControl : control(other);
-  target?.focus({ preventScroll: true });
+function resize(section: Element, view: View, size: PageSize): void {
+  savePageSize(size);
+  view.size = size;
+  view.table.page = 1;
+  draw(section, view);
+}
+
+/** The step button just pressed is now disabled (the first or the last page): focus goes to the other one. */
+function refocus(pager: Element, pressed: Step): void {
+  const button = (step: Step) => pager.querySelector<HTMLButtonElement>(`button[data-step="${step}"]`);
+  if (button(pressed)?.disabled) button(pressed === "next" ? "prev" : "next")?.focus({ preventScroll: true });
 }
 
 /**
@@ -219,7 +218,7 @@ export function membersPanel(
   );
   const context = { doc, stats, lang, today, filtered: opts.filtered };
   if (opts.table.stats !== stats) Object.assign(opts.table, { page: 1, stats });
-  const view: View = { context, query: opts.query, table: opts.table, size: loadPageSize() };
+  const view: View = { context, query: opts.query, table: opts.table, size: loadPageSize(), pager: null };
   views.set(section, view);
   section.addEventListener("click", (event) => pressSort(section, event));
   draw(section, view);

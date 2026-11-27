@@ -1,7 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 import { Window } from "happy-dom";
 import { pageOf, type PageSize } from "./paging.js";
-import { renderPager } from "./pager.js";
+import { renderPager, updatePager } from "./pager.js";
 import { chooseSize } from "./pager.fixture.js";
 import type { Lang } from "../lang.js";
 
@@ -33,15 +33,35 @@ describe("the range line", () => {
 });
 
 describe("when everything fits on the smallest page", () => {
-  test("3 members draw the range alone, with no select and no buttons", () => {
+  const hidden = (el: HTMLElement) => [el.querySelector<HTMLElement>(".pager-size")?.hidden, el.querySelector<HTMLElement>(".pager-steps")?.hidden];
+
+  test("3 members show the range alone: the select and the buttons are hidden", () => {
     const { el, range } = pager(3, 1);
     expect(range).toBe("1–3 of 3");
-    expect([el.querySelector("select"), el.querySelector("button")]).toEqual([null, null]);
+    expect(hidden(el)).toEqual([true, true]);
   });
 
-  test.each([25, 26])("%i members draw the select and both buttons only above 25", (total) => {
-    const { el } = pager(total, 1);
-    expect([el.querySelector("select") !== null, el.querySelectorAll("button").length]).toEqual(total > 25 ? [true, 2] : [false, 0]);
+  test.each([[25, false], [26, true]])("%i members: the select and both buttons show only above 25 (%s)", (total, shown) => {
+    expect(hidden(pager(total, 1).el)).toEqual([!shown, !shown]);
+  });
+
+  test("updatePager changes the same element: the range, the buttons, the select and what is hidden", () => {
+    const { el } = pager(3, 1);
+    const range = el.querySelector(".pager-range");
+    updatePager(el, pageOf(Array.from({ length: 60 }, (_, i) => i), 2, 50), 50, "en");
+    expect(el.querySelector(".pager-range")).toBe(range);
+    expect(range?.textContent).toBe("51–60 of 60");
+    expect(hidden(el)).toEqual([false, false]);
+    expect(el.querySelector<HTMLSelectElement>("select")?.value).toBe("50");
+    expect(el.querySelector<HTMLButtonElement>('button[data-step="next"]')?.disabled).toBe(true);
+    expect(el.querySelector<HTMLButtonElement>('button[data-step="prev"]')?.disabled).toBe(false);
+  });
+
+  test("the buttons ask for the neighbour of the page last shown, not the page drawn first", () => {
+    const { el, on } = pager(512, 1);
+    updatePager(el, pageOf(Array.from({ length: 512 }, (_, i) => i), 7, 25), 25, "en");
+    el.querySelector<HTMLButtonElement>('button[data-step="next"]')?.click();
+    expect(on.page).toHaveBeenCalledExactlyOnceWith(8);
   });
 
   test("the range is a polite live region, so a page change is announced", () => {

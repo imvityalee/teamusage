@@ -49,6 +49,7 @@ describe("focus stays where the person pressed", () => {
 
   test("after choosing a size, on the select", () => {
     const m = mount(team(200));
+    m.host.querySelector<HTMLSelectElement>("select")!.focus();
     m.choose("50");
     expect(m.range()).toBe("1–50 of 200");
     expect(focused(m)).toBe("select");
@@ -69,11 +70,62 @@ describe("focus stays where the person pressed", () => {
   });
 });
 
+describe("the pager is updated in place, so its range is announced", () => {
+  const rangeNode = (m: ReturnType<typeof mount>) => m.host.querySelector(".pager-range");
+
+  test("the range element is the same node after Next, a size change, a search and a sort, and its text changed", () => {
+    const m = mount(team(200));
+    const node = rangeNode(m);
+    const texts = [node?.textContent];
+    const steps: [string, () => void][] = [
+      ["Next", () => m.next()],
+      ["a size change", () => m.choose("50")],
+      ["a search", () => m.search("jo ")],
+      ["a sort", () => m.sortBy("name")],
+    ];
+    for (const [name, act] of steps) {
+      act();
+      expect(rangeNode(m), name).toBe(node);
+      texts.push(node?.textContent);
+    }
+    expect(new Set(texts).size).toBeGreaterThan(3);
+  });
+
+  test("the pressed Next is the same node and keeps focus", () => {
+    const m = mount(team(100));
+    const next = step(m, "next");
+    press(m, "next");
+    expect(step(m, "next")).toBe(next);
+    expect(m.doc.activeElement).toBe(next);
+  });
+
+  test("the pager stays in the document through a search that matches nobody", () => {
+    const m = mount(team(100));
+    const pager = m.host.querySelector(".pager");
+    m.search("zzzz");
+    expect(m.host.querySelector(".pager")).toBeNull();
+    m.search("");
+    expect(m.host.querySelector(".pager")).toBe(pager);
+  });
+
+  test("a search down to under 26 members hides the select and buttons, and clearing it to 100 shows them again", () => {
+    const m = mount(team(100));
+    const hidden = () => [m.host.querySelector<HTMLElement>(".pager-size")?.hidden, m.host.querySelector<HTMLElement>(".pager-steps")?.hidden];
+    m.search("jo 7", team(100));
+    expect(m.count()).toBeGreaterThan(0);
+    expect(m.count()).toBeLessThan(26);
+    expect(hidden()).toEqual([true, true]);
+    m.search("", team(100));
+    expect(hidden()).toEqual([false, false]);
+    expect(m.range()).toBe("1–25 of 100");
+  });
+});
+
 describe("one page and two", () => {
   test("25 members fit on one page: only the range", () => {
     const m = mount(team(25));
     expect(m.range()).toBe("1–25 of 25");
-    expect(m.host.querySelector(".pager button")).toBeNull();
+    expect(m.host.querySelector<HTMLElement>(".pager-steps")?.hidden).toBe(true);
   });
 
   test("26 members need a second page: Next is on, and page 2 reads 26–26 of 26", () => {
