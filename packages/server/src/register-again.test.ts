@@ -45,7 +45,9 @@ describe("on a hosted server", () => {
     const pending = await dashboardLinkToken(app, B.sam.one.token);      // a link asked for and not yet opened
     const other = await memberSignIn(app, B.sam.two.token);              // sam's second machine
     const colleague = await memberSignIn(app, B.tia.one.token);
-    const before = { A: everythingOf(db, A.id), tia: sessionRowsOf(db, B.id, B.tia.memberId) };
+    const otherLink = await dashboardLinkToken(app, B.sam.two.token);    // links of sam's second machine and of tia's
+    const colleaguesLink = await dashboardLinkToken(app, B.tia.one.token);
+    const before ={ A: everythingOf(db, A.id), tia: sessionRowsOf(db, B.id, B.tia.memberId) };
 
     const again = await register(B.code, B.sam.email, B.sam.one.id);     // the same machine id and email
     const { token } = (await again.json()) as { token: string };
@@ -58,6 +60,8 @@ describe("on a hosted server", () => {
     expect((await stats({ Cookie: colleague })).status).toBe(200);
     expect((await stats({ Cookie: await memberSignIn(app, token) })).status).toBe(200);   // the new token opens a new sign-in
     expect({ A: everythingOf(db, A.id), tia: sessionRowsOf(db, B.id, B.tia.memberId) }).toEqual(before);
+    expect((await openLink(otherLink)).status).toBe(204);
+    expect((await openLink(colleaguesLink)).status).toBe(204);
   });
 
   test("a registration that is refused ends nothing", async () => {
@@ -95,6 +99,10 @@ describe("on a hosted server", () => {
     const laptop = A.members[0]!.one;
     await dashboardLinkToken(app, laptop.token);
     await dashboardLinkToken(app, B.sam.one.token);
+    await dashboardLinkToken(app, B.sam.two.token);
+    const linkOf = (machineId: string) => everythingOf(db, B.id).dashboard_links!.filter((l) => (l as { machine_id: string }).machine_id === machineId);
+    const samsSecondLink = linkOf(B.sam.two.id);
+    expect(samsSecondLink).toHaveLength(1);
     const isSamsFirst = (row: unknown) => {
       const r = row as { kind: string; team_id: number; machine_id: string };
       return r.kind === "member" && r.team_id === B.id && r.machine_id === B.sam.one.id;
@@ -106,7 +114,7 @@ describe("on a hosted server", () => {
     dropMachineLink(db, B.id, B.sam.one.id);
 
     expect(machineSessionRows(B.id, B.sam.one.id)).toEqual([]);
-    expect(everythingOf(db, B.id).dashboard_links).toEqual([]);
+    expect(everythingOf(db, B.id).dashboard_links).toEqual(samsSecondLink);
     expect({ A: everythingOf(db, A.id), others: allSessionRows() }).toEqual(before);
   });
 
