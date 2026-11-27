@@ -8,6 +8,7 @@ import { errorTrace, fail, isObject, MAX_BODY_BYTES, readJson, SESSION_COOKIE } 
 import { createLimiter } from "./limiter.js";
 import { authRoutes } from "./routes-auth.js";
 import { dashboardRoutes } from "./routes-dashboard.js";
+import { demoRoutes } from "./routes-demo.js";
 import { machineRoutes } from "./routes-machines.js";
 import { memberSignInRoutes } from "./routes-member-sign-in.js";
 import { teamMembersRoutes } from "./routes-team-members.js";
@@ -95,6 +96,7 @@ export function createApp(db: Db, opts: AppOptions): Hono {
   const ctx: RouteContext = { db, opts, now, stopwatch, team, teamOfInvite, session: sessionOf, removal };
   machineRoutes(app, ctx);
   dashboardRoutes(app, ctx);
+  if (opts.hosted) demoRoutes(app, ctx);
   memberSignInRoutes(app, ctx);
   authRoutes(app, ctx);
   teamRoutes(app, ctx);

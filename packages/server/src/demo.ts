@@ -57,6 +57,9 @@ const MEMBERS: { name: string; email: string; agents: string[]; scale: number; l
   { name: "Farid Karimi", email: "farid@example.com", agents: ["claude"], scale: 0.3, labels: { claude: { kind: "personal" } } },
 ];
 
+/** The names of the demo's members. */
+export const DEMO_NAMES: readonly string[] = MEMBERS.map((m) => m.name);
+
 /**
  * Fills the database with deterministic made-up usage: 6 members, 4 agents, 180 days ending at `today`, some with Claude and Codex account labels and plans.
  * No real time or `Math.random`; rows go through the same write paths as real data.
