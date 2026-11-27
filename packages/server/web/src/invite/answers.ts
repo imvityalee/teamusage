@@ -1,9 +1,13 @@
 import type { Lang } from "../lang.js";
 import type { ApiResult } from "../site/http.js";
 import { dashboardPath, isTeamId, teamPath } from "../site/team-param.js";
-import type { InviteView, Preview } from "./invite.js";
 
 /** What the server's answers about an invitation mean for `/invite` (src/routes-team-roles.ts). */
+
+export type InviteView = "none" | "notValid" | "signIn" | "accept" | "hasRole" | "teamFull" | "failed";
+export type Preview = { team: { name: string }; role: "admin" | "viewer"; expiresAt: string };
+/** Why the page could not go on: the server was not reached (network, 5xx), refused with its own text, or answered what the page cannot read. */
+export type Failure = { kind: "unreachable" } | { kind: "refused"; error: string } | { kind: "unreadable" };
 
 /** Most admins and viewers one team may have: the server's own limit (`MAX_ADMINS_AND_VIEWERS`, which a test compares). */
 export const MAX_ADMINS_AND_VIEWERS = 50;
@@ -41,7 +45,14 @@ export function viewAfterRefusal(answer: Exclude<ApiResult<unknown>, { kind: "ok
   return "failed";
 }
 
-/** The invitation's last day, in the reader's time zone and the page's language: "Dec 4, 2026", "4 дек. 2026 г.". */
-export function expiryDay(expiresAt: string, lang: Lang): string {
-  return new Intl.DateTimeFormat(lang, { day: "numeric", month: "short", year: "numeric" }).format(new Date(expiresAt));
+/** The failure an answer that the page could not go on with stands for. `failed` of `request` is a 5xx or a 2xx that is not JSON. */
+export function failureOf(answer: ApiResult<unknown>): Failure {
+  if (answer.kind === "refused" && answer.status < 500) return { kind: "refused", error: answer.error };
+  if (answer.kind === "ok") return { kind: "unreadable" };
+  return { kind: "unreachable" };
+}
+
+/** The invitation's last day in the page's language: "Dec 4, 2026", "4 дек. 2026 г.". The page passes no `timeZone`, so the day is the reader's. */
+export function expiryDay(expiresAt: string, lang: Lang, timeZone?: string): string {
+  return new Intl.DateTimeFormat(lang, { day: "numeric", month: "short", year: "numeric", timeZone }).format(new Date(expiresAt));
 }

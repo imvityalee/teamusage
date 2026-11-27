@@ -1,15 +1,14 @@
 import { isToken, tokenOf } from "../site/fragment-token.js";
 import type { request } from "../site/http.js";
 import type { me, signOut } from "../site/session.js";
-import { acceptedPath, isPreview, viewAfterRefusal } from "./answers.js";
+import { acceptedPath, failureOf, isPreview, viewAfterRefusal, type Failure, type InviteView, type Preview } from "./answers.js";
 
 /** What `/invite` shows and does with an admin's or viewer's invitation. Nothing is accepted until `accept()`. */
 
 /** Where the invitation's token waits in the tab while the person signs in with GitHub. */
 export const INVITE_KEY = "teamusage.invite";
 
-export type InviteView = "none" | "notValid" | "signIn" | "accept" | "hasRole" | "teamFull" | "failed";
-export type Preview = { team: { name: string }; role: "admin" | "viewer"; expiresAt: string };
+export type { InviteView, Preview } from "./answers.js";
 
 const PREVIEW_PATH = "/api/invites/preview";
 const ACCEPT_PATH = "/api/invites/accept";
@@ -33,6 +32,7 @@ export function takeToken(hash: string, storage: Pick<Storage, "getItem" | "setI
  * `busy`: a press of Accept or "Use another account" is being answered.
  * `switchAccount`: the person signed out to use another account, so the sign-in says how.
  * `signOutFailed`: the last "Use another account" did not end the session.
+ * `failure`: why the view is `failed`; null in any other view.
  */
 export type Inviter = {
   view: InviteView;
@@ -42,6 +42,7 @@ export type Inviter = {
   busy: boolean;
   switchAccount: boolean;
   signOutFailed: boolean;
+  failure: Failure | null;
   accept(): Promise<void>;
   useAnotherAccount(): Promise<void>;
   retry(): Promise<void>;
@@ -69,6 +70,7 @@ export function inviter(deps: Deps): Inviter {
     busy: false,
     switchAccount: false,
     signOutFailed: false,
+    failure: null,
     accept,
     useAnotherAccount,
     retry,
@@ -77,20 +79,27 @@ export function inviter(deps: Deps): Inviter {
   /** Shows `view` with every read and press answered, and forgets the token after a view that has no more use for it. */
   function show(view: InviteView): void {
     state.view = view;
+    if (view !== "failed") state.failure = null;
     state.loading = false;
     state.busy = false;
     if (FORGETS.includes(view)) forget();
     deps.onChange();
   }
 
+  /** Shows `failed`, saying why. */
+  function fail(failure: Failure): void {
+    state.failure = failure;
+    show("failed");
+  }
+
   /** The preview first, so a link that no longer works never asks who is signed in; then the session. */
   async function read(link: string): Promise<void> {
     const answer = await deps.request<unknown>("POST", PREVIEW_PATH, { token: link });
     if (answer.kind === "refused" && answer.status === 404) return show("notValid");
-    if (answer.kind !== "ok" || !isPreview(answer.value)) return show("failed");
+    if (answer.kind !== "ok" || !isPreview(answer.value)) return fail(failureOf(answer));
     state.preview = answer.value;
     const session = await deps.me();
-    if (session.kind === "failed") return show("failed");
+    if (session.kind === "failed") return fail({ kind: "unreachable" });
     state.login = session.kind === "me" && session.me.kind === "user" ? session.me.login : null;
     show(state.login === null ? "signIn" : "accept");
   }
@@ -115,7 +124,9 @@ export function inviter(deps: Deps): Inviter {
       return deps.go(acceptedPath(answer.value));
     }
     if (answer.kind === "unauthorized") state.login = null;
-    show(viewAfterRefusal(answer));
+    const view = viewAfterRefusal(answer);
+    if (view === "failed") fail(failureOf(answer));
+    else show(view);
   }
 
   /** Ends the GitHub session so another account can sign in; if it may still be there, the person stays on `accept`. */

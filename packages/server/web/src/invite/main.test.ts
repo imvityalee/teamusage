@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { bootPage, json, nobody, user, type Page, type Reply } from "../site/page.fixture.js";
 import { worstCase } from "../site/worst-case.fixture.js";
+import { expiryDay } from "./answers.js";
 import { INVITE_KEY } from "./invite.js";
 import { strings } from "./strings.js";
 
@@ -83,8 +84,9 @@ describe("before accepting", () => {
     expect(page.$("#sign-in").getAttribute("href")).toBe("/auth/github/start?to=invite");
     expect(page.$("#signin-notice").hidden).toBe(true);
     expect(page.$("#switch-line").hidden).toBe(true);
+    // The day is drawn in the machine's zone, like the page's; answers.test.ts pins its format in a given zone.
     expect(page.$("#expiry-note").textContent).toBe(
-      "The invitation works once and until Dec 4, 2026. Signing in gives teamusage no access to your repositories or your email.",
+      `The invitation works once and until ${expiryDay(DAY, "en")}. Signing in gives teamusage no access to your repositories or your email.`,
     );
   });
 
@@ -124,7 +126,7 @@ describe("before accepting", () => {
     page = await boot(`#${TOKEN}`, [preview(), nobody()]);
     page.press('#lang [data-lang="ru"]');
     expect(page.$("#expiry-note").textContent).toBe(
-      "Приглашение действует до 4 дек. 2026 г. и только один раз. Вход не даёт teamusage доступа к вашим репозиториям и почте.",
+      `До ${expiryDay(DAY, "ru")} приглашение можно использовать один раз. Вход не даёт teamusage доступа к вашим репозиториям и почте.`,
     );
   });
 });
@@ -218,5 +220,65 @@ describe("another account", () => {
     expect(page.doc.activeElement).toBe(page.$("#use-another"));
     page.press('#lang [data-lang="ru"]');
     expect(page.$("#signout-error").textContent).toBe("Не удалось выйти. Попробуйте ещё раз.");
+  });
+});
+
+describe("after a press that did not accept", () => {
+  test.each([
+    ["hasRole", [refused(409, "you already have a role in this team")], "#open-teams"],
+    ["teamFull", [refused(409, "this team has reached its limit of 50 admins and viewers")], '[data-view="teamFull"] h1'],
+    ["notValid", [refused(404, "this invite is no longer valid")], '[data-view="notValid"] h1'],
+    ["failed", [new TypeError("Failed to fetch")], "#retry"],
+    ["signIn", [nobody()], "#sign-in"],
+  ] as const)("%s takes focus to its action, or to its heading", async (view, answer, target) => {
+    page = await boot(`#${TOKEN}`, [preview(), aigerim(), ...answer]);
+    // A browser drops focus from a control that is hidden; happy-dom does not, so the call itself is what is asserted.
+    const focus = vi.spyOn(page.$(target), "focus");
+    page.press("#accept");
+    await page.flush();
+    expect(page.shownViews()).toEqual([view]);
+    expect(focus).toHaveBeenCalledTimes(1);
+  });
+
+  test("a heading that takes focus is focusable from script only", async () => {
+    page = await boot("", []);
+    for (const view of ["notValid", "teamFull"]) expect(page.$(`[data-view="${view}"] h1`).getAttribute("tabindex")).toBe("-1");
+  });
+});
+
+describe("the sentence of a failure", () => {
+  const failedText = () => page.$("#failed-text").textContent;
+  const failedSection = () => page.$('[data-view="failed"]').textContent?.replace(/\s+/g, " ").trim();
+
+  test("a refusal is named in the page's own sentence, and nothing else of the answer is shown", async () => {
+    page = await boot(`#${TOKEN}`, [preview(), aigerim(), json({ error: "cross-site request refused", detail: "x-origin" }, 403)]);
+    page.press("#accept");
+    await page.flush();
+    expect(page.shownViews()).toEqual(["failed"]);
+    expect(failedText()).toBe("The server refused this invitation: cross-site request refused");
+    expect(failedSection()).toBe("Could not open the invitation The server refused this invitation: cross-site request refused Try again");
+    page.press('#lang [data-lang="ru"]');
+    expect(failedText()).toBe("Сервер отклонил приглашение: cross-site request refused");
+  });
+
+  test("markup in a refusal is drawn as text", async () => {
+    page = await boot(`#${TOKEN}`, [preview(), aigerim(), refused(403, "<b>no</b>")]);
+    page.press("#accept");
+    await page.flush();
+    expect(page.doc.querySelector('[data-view="failed"] b')).toBeNull();
+    expect(failedText()).toBe("The server refused this invitation: <b>no</b>");
+  });
+
+  test.each([
+    ["a refusal with no text of its own", new Response("Forbidden", { status: 403 }), "The server refused this invitation.", "Сервер отклонил приглашение."],
+    ["a 500", json({ error: "internal error" }, 500), "The server could not be reached.", "Не удалось связаться с сервером."],
+    ["a network error", new TypeError("Failed to fetch"), "The server could not be reached.", "Не удалось связаться с сервером."],
+    ["a preview it cannot read", json({ team: { name: "Acme" }, role: "owner", expiresAt: DAY }), "The server's answer could not be read.", "Не удалось прочитать ответ сервера."],
+  ])("%s has its own sentence", async (_what, reply, en, ru) => {
+    page = await boot(`#${TOKEN}`, [reply]);
+    expect(page.shownViews()).toEqual(["failed"]);
+    expect(failedText()).toBe(en);
+    page.press('#lang [data-lang="ru"]');
+    expect(failedText()).toBe(ru);
   });
 });

@@ -1,31 +1,23 @@
-import { readFileSync } from "node:fs";
-import { Window } from "happy-dom";
 import { afterEach, describe, expect, test, vi } from "vitest";
+import { bootPage, json, nobody, user as githubUser, type Call, type Page, type Reply } from "../site/page.fixture.js";
 import { SIGN_IN_PATH } from "../site/session.js";
 import { worstCase } from "../site/worst-case.fixture.js";
 import { strings } from "./strings.js";
-
-const PAGE = readFileSync(new URL("../../open.html", import.meta.url), "utf8");
-const BODY = /<body[^>]*>([\s\S]*)<\/body>/.exec(PAGE)?.[1]?.replace(/<script[\s\S]*?<\/script>/g, "") ?? "";
 
 const TOKEN = "fedcba9876543210".repeat(4);
 const ADMINS_ONLY = "this team's dashboard is limited to its admins";
 const NOT_VALID = "this link is no longer valid; ask your agent for a new one";
 
-type Reply = Response | Error | "pending";
-
-const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
-const user = (login: string) => json({ kind: "user", githubId: 9_104_227, login, teams: [] });
-const nobody = () => json({ error: "unauthorized" }, 401);
+const user = (login: string) => githubUser([], login);
 const noAccounts = () => new Response("not found", { status: 404 });
 const opened = () => new Response(null, { status: 204 });
 const refused = (error: string) => json({ error }, 403);
 
-let win: Window;
+let page: Page | undefined;
+let win: Page["win"];
 let doc: Document;
-let calls: { url: string; init: RequestInit; href: string }[];
-let replies: Reply[];
-let replace: ReturnType<typeof vi.fn>;
+let calls: Call[];
+let replace: Page["replace"];
 let logged: unknown[][];
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => doc.querySelector(sel) as T;
@@ -38,42 +30,8 @@ const shownViews = () =>
     .map((el) => el.dataset.view);
 
 async function boot(hash: string, ...first: Reply[]): Promise<void> {
-  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-  win = new Window({
-    url: `http://localhost:8787/open${hash}`,
-    settings: { disableJavaScriptEvaluation: true, disableJavaScriptFileLoading: true, disableCSSFileLoading: true },
-  });
-  doc = win.document as unknown as Document;
-  doc.body.innerHTML = BODY; // the page's own static markup
-  calls = [];
-  replies = [...first];
-  logged = [];
-  replace = vi.fn();
-  vi.spyOn(win.location, "replace").mockImplementation(replace);
-  for (const name of ["log", "info", "warn", "error", "debug"] as const) {
-    vi.spyOn(console, name).mockImplementation((...args: unknown[]) => void logged.push(args));
-  }
-  vi.stubGlobal("window", win);
-  vi.stubGlobal("document", doc);
-  vi.stubGlobal("navigator", win.navigator);
-  vi.stubGlobal("localStorage", win.localStorage);
-  vi.stubGlobal("sessionStorage", win.sessionStorage);
-  vi.stubGlobal("location", win.location);
-  vi.stubGlobal("history", win.history);
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async (url: string, init: RequestInit) => {
-      calls.push({ url, init, href: win.location.href });
-      const next = replies.shift();
-      if (next === undefined) throw new Error(`unexpected request ${url}`);
-      if (next === "pending") return new Promise<Response>(() => {});
-      if (next instanceof Error) throw next;
-      return next;
-    }),
-  );
-  vi.resetModules();
-  await import("./main.js");
-  await flush();
+  page = await bootPage({ url: `/open${hash}`, html: "open.html", load: () => import("./main.js") }, first);
+  ({ win, doc, calls, replace, logged } = page);
 }
 
 function press(sel: string): void {
@@ -81,10 +39,8 @@ function press(sel: string): void {
 }
 
 afterEach(async () => {
-  vi.useRealTimers();
-  vi.restoreAllMocks();
-  vi.unstubAllGlobals();
-  await win?.happyDOM.close();
+  await page?.close();
+  page = undefined;
 });
 
 describe("the token", () => {

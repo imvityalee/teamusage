@@ -57,7 +57,7 @@ body.site { font-size: 16px; line-height: 1.5; }
 .identity-text { min-width: 0; }
 .identity-name { font-weight: 600; overflow-wrap: anywhere; }
 /* An identity with an action at its end (/invite): the action moves under the name when the row is narrow. */
-.identity.with-action { flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; }
+.identity.with-action { flex-wrap: wrap; justify-content: space-between; gap: 8px 12px; }
 .identity-who { display: flex; align-items: center; gap: 12px; flex: 1 1 200px; min-width: 0; }
 .with-action .link-button { font-size: 14px; }
 

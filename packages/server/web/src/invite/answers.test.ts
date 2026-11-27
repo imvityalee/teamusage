@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { INVITE_DAYS } from "../../../src/admin-invites.js";
 import { MAX_ADMINS_AND_VIEWERS as SERVER_MAX } from "../../../src/team-roles.js";
-import { acceptedPath, expiryDay, isPreview, MAX_ADMINS_AND_VIEWERS, viewAfterRefusal } from "./answers.js";
+import { acceptedPath, expiryDay, failureOf, isPreview, MAX_ADMINS_AND_VIEWERS, viewAfterRefusal } from "./answers.js";
 import { strings } from "./strings.js";
 
 const DAY = "2026-12-04T12:00:00.000Z";
@@ -68,7 +68,26 @@ describe("viewAfterRefusal", () => {
   });
 });
 
+// No instant is the same day in every zone (UTC−12 to UTC+14), so the tests name the zone; the page passes none.
 test("the last day is written in the page's language", () => {
-  expect(expiryDay(DAY, "en")).toBe("Dec 4, 2026");
-  expect(expiryDay(DAY, "ru")).toBe("4 дек. 2026 г.");
+  expect(expiryDay(DAY, "en", "UTC")).toBe("Dec 4, 2026");
+  expect(expiryDay(DAY, "ru", "UTC")).toBe("4 дек. 2026 г.");
+});
+
+test("the last day is the reader's own: noon in UTC is the next day in Auckland", () => {
+  expect(expiryDay(DAY, "en", "Pacific/Auckland")).toBe("Dec 5, 2026");
+});
+
+describe("failureOf", () => {
+  test.each([
+    [{ kind: "refused", status: 403, error: "cross-site request refused" } as const, { kind: "refused", error: "cross-site request refused" }],
+    [{ kind: "refused", status: 409, error: "" } as const, { kind: "refused", error: "" }],
+    [{ kind: "refused", status: 503, error: "sign-ups are paused" } as const, { kind: "unreachable" }],
+    [{ kind: "refused", status: 507, error: "" } as const, { kind: "unreachable" }],
+    [{ kind: "network" } as const, { kind: "unreachable" }],
+    [{ kind: "failed" } as const, { kind: "unreachable" }],
+    [{ kind: "ok", value: { team: null } } as const, { kind: "unreadable" }],
+  ])("%j is %j", (answer, failure) => {
+    expect(failureOf(answer)).toEqual(failure);
+  });
 });

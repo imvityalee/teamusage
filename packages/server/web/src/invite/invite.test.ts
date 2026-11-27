@@ -1,6 +1,7 @@
 import { describe, expect, test, vi, type Mock } from "vitest";
 import type { ApiResult } from "../site/http.js";
 import type { Me, MeAnswer } from "../site/session.js";
+import type { Failure } from "./answers.js";
 import { INVITE_KEY, inviter, takeToken, type Inviter } from "./invite.js";
 
 const TOKEN = "0123456789abcdef".repeat(4);
@@ -151,6 +152,7 @@ describe("opening an invitation", () => {
     const answers: MeAnswer[] = [{ kind: "failed" }, { kind: "me", me: AIGERIM }];
     const { i, requests, deps } = await started({ answers: [preview(), preview()], me: async () => answers.shift() ?? { kind: "none" } });
     expect(i.view).toBe("failed");
+    expect(i.failure).toEqual({ kind: "unreachable" });
     await i.retry();
     expect(i.view).toBe("accept");
     expect(deps.me).toHaveBeenCalledTimes(2);
@@ -228,15 +230,16 @@ describe("accepting", () => {
     expect(deps.storage.removeItem).not.toHaveBeenCalled();
   });
 
-  test.each<[string, Answer]>([
-    ["a network error", { kind: "network" }],
-    ["a 500", { kind: "failed" }],
-    ["an unknown refusal", refused(409, "something else")],
-    ["a cross-site refusal", refused(403, "cross-site request")],
-  ])("%s keeps the token; Try again reads the invitation again and waits for a new press", async (_what, answer) => {
+  test.each<[string, Answer, Failure]>([
+    ["a network error", { kind: "network" }, { kind: "unreachable" }],
+    ["a 500", { kind: "failed" }, { kind: "unreachable" }],
+    ["an unknown refusal", refused(409, "something else"), { kind: "refused", error: "something else" }],
+    ["a cross-site refusal", refused(403, "cross-site request"), { kind: "refused", error: "cross-site request" }],
+  ])("%s keeps the token; Try again reads the invitation again and waits for a new press", async (_what, answer, failure) => {
     const { i, deps, requests } = await started({ answers: [preview(), answer, preview()] });
     await i.accept();
     expect(i.view).toBe("failed");
+    expect(i.failure).toEqual(failure);
     expect(deps.storage.removeItem).not.toHaveBeenCalled();
     await i.retry();
     expect(i.view).toBe("accept");

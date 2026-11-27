@@ -25,13 +25,13 @@ const ui = {
   expiryNote: byId("expiry-note"),
   signInNotice: byId("signin-notice"),
   switchLine: byId("switch-line"),
-  signIn: byId("sign-in"),
   signOutError: byId("signout-error"),
   login: byId("login"),
   initials: byId("initials"),
   useAnother: byId<HTMLButtonElement>("use-another"),
   accept: byId<HTMLButtonElement>("accept"),
   hasRoleText: byId("has-role-text"),
+  failedText: byId("failed-text"),
   retry: byId<HTMLButtonElement>("retry"),
 };
 
@@ -60,6 +60,13 @@ function paintAccount(): void {
   ui.accept.textContent = t(lang, "acceptAs", { login });
 }
 
+/** The sentence of `failed`: a refusal is named inside the page's own words, drawn as text. */
+function failedSentence(): string {
+  const { failure } = state;
+  if (failure?.kind === "refused") return failure.error === "" ? t(lang, "refusedBare") : t(lang, "refusedText", { error: failure.error });
+  return t(lang, failure?.kind === "unreadable" ? "unreadableText" : "failedText");
+}
+
 /** While a press is answered both buttons wait, so neither can send a second request. */
 function paintBusy(): void {
   for (const b of [ui.accept, ui.useAnother]) {
@@ -76,26 +83,41 @@ function paint(): void {
   ui.signInNotice.hidden = !signInFailed;
   ui.switchLine.hidden = !state.switchAccount;
   ui.signOutError.hidden = !state.signOutFailed;
+  ui.failedText.textContent = failedSentence();
   paintInvite();
   paintAccount();
   paintBusy();
 }
 
-/** After a sign-out the GitHub button takes focus; after one that failed, the button that was pressed gets it back. */
+/**
+ * A press that moves the page to another view hides the button that was pressed, which a browser answers by dropping
+ * focus; it goes to the new view's `data-focus` element: its action, or its heading when it has none.
+ */
+function focusView(): void {
+  document.querySelector<HTMLElement>(`[data-view="${state.view}"] [data-focus]`)?.focus();
+}
+
+/** On success the browser moves on and the view stays `accept`; any other answer shows another view. */
+async function accept(): Promise<void> {
+  await state.accept();
+  if (state.view !== "accept") focusView();
+}
+
+/** After a sign-out the sign-in's GitHub button takes focus; after one that failed, the button that was pressed gets it back. */
 async function useAnotherAccount(): Promise<void> {
   signInFailed = false;
   await state.useAnotherAccount();
-  if (state.view === "signIn") ui.signIn.focus();
+  if (state.view === "signIn") focusView();
   else if (state.signOutFailed) ui.useAnother.focus();
 }
 
-/** A second failure hides the button that was pressed, which a browser answers by dropping focus, so it is put back. */
+/** A second failure shows `failed` again, and focus goes back to Try again. */
 async function retry(): Promise<void> {
   await state.retry();
-  if (state.view === "failed") ui.retry.focus();
+  if (state.view === "failed") focusView();
 }
 
-ui.accept.addEventListener("click", () => void state.accept());
+ui.accept.addEventListener("click", () => void accept());
 ui.useAnother.addEventListener("click", () => void useAnotherAccount());
 ui.retry.addEventListener("click", () => void retry());
 paint();

@@ -45,19 +45,19 @@
     </div>
   </section>
 
-  <section data-view="expired" hidden>
+  <section data-view="expired" role="alert" hidden>
     <span class="badge warn" data-i18n="expiredBadge">Link not opened</span>
-    <h1 role="alert" data-i18n="expiredTitle">This link no longer works</h1>
+    <h1 data-i18n="expiredTitle">This link no longer works</h1>
     <p class="lede" data-i18n="expiredText">A link opens the dashboard once, within 5 minutes of being made. Ask for a new one:</p>
   </section>
 
-  <section data-view="adminsOnly" hidden>
-    <h1 role="alert" data-i18n="adminsOnlyTitle">This team's dashboard is limited to its admins</h1>
+  <section data-view="adminsOnly" role="alert" hidden>
+    <h1 data-i18n="adminsOnlyTitle">This team's dashboard is limited to its admins</h1>
     <p class="lede" data-i18n="adminsOnlyText">Your own numbers are available in your agent.</p>
   </section>
 
-  <section data-view="failed" hidden>
-    <h1 role="alert" data-i18n="failedTitle">Could not open the link</h1>
+  <section data-view="failed" role="alert" hidden>
+    <h1 data-i18n="failedTitle">Could not open the link</h1>
     <p class="lede" data-i18n="failedText">The server could not be reached. The link may still work if you try again within 5 minutes of making it.</p>
     <div class="actions">
       <button type="button" class="btn primary" id="retry" data-i18n="tryAgain">Try again</button>
