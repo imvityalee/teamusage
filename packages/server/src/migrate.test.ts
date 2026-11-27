@@ -139,7 +139,8 @@ test("the team schema has its indexes and every foreign key cascades on delete",
   expect(indexes.map((r) => (r as { name: string }).name)).toEqual([
     "machines_team_member",
     "sessions_github",
-    "sessions_team",
+    "sessions_machine",
+    "sessions_member",
     "team_roles_one_owner",
     "team_roles_user",
     "teams_code_hash",
@@ -154,7 +155,8 @@ test("the team schema has its indexes and every foreign key cascades on delete",
   expect(foreignKeys("members")).toEqual(["teams CASCADE"]);
   expect(foreignKeys("machines")).toEqual(["members CASCADE", "teams CASCADE"]);
   expect(foreignKeys("usage")).toEqual(["machines CASCADE", "members CASCADE"]);
-  expect(foreignKeys("sessions")).toEqual(["teams CASCADE"]);
+  expect(foreignKeys("sessions")).toEqual(["machines CASCADE", "teams CASCADE"]);
+  expect(foreignKeys("dashboard_links")).toEqual(["machines CASCADE"]);
   expect(foreignKeys("team_roles")).toEqual(["teams CASCADE", "users CASCADE"]);
   expect(foreignKeys("users")).toEqual([]);
 });

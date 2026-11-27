@@ -1,34 +1,15 @@
-import Database from "better-sqlite3";
 import { expect, test } from "vitest";
-import { codeHash, newTeamCode, sealCode } from "../codes.js";
 import type { Db } from "../db.js";
 import { newPublicId } from "../hosted-teams.js";
 import { runSteps, STEPS } from "../migrate.js";
 import { accessValues } from "./access-values.js";
+import { atVersion, insertHostedTeam, T } from "./earlier-version.fixture.js";
 
-const T = "2026-11-01T00:00:00.000Z";
 const MID = "a".repeat(32);
-const KEY = Buffer.alloc(32, 9);
-
-/** An empty database brought to version 5 by the steps of that release. */
-function atVersion5(): Db {
-  const db = new Database(":memory:");
-  runSteps(db, STEPS.slice(0, 5));
-  return db;
-}
-
-/** Inserts a hosted team with its code hashed and sealed; returns its id. */
-function insertHostedTeam(db: Db, name: string, access: string): number {
-  const code = newTeamCode();
-  const { lastInsertRowid } = db
-    .prepare("insert into teams (public_id, name, dashboard_access, code_hash, code_sealed, created_at) values (?, ?, ?, ?, ?, ?)")
-    .run(newPublicId(), name, access, codeHash(code), sealCode(code, KEY), T);
-  return Number(lastInsertRowid);
-}
 
 /** A self-hosted server at version 5: its invite code, its one team on code and without a code hash, and a browser signed in with the code. */
 function selfHostedAt5(): Db {
-  const db = atVersion5();
+  const db = atVersion(5);
   db.exec(`
     insert into settings (key, value) values ('invite_code', '${"e".repeat(24)}');
     insert into teams (public_id, name, dashboard_access, created_at) values ('${"1".repeat(16)}', 'Team', 'code', '${T}');
@@ -42,7 +23,7 @@ function selfHostedAt5(): Db {
  * has a machine and a usage row.
  */
 function hostedAt5(): Db {
-  const db = atVersion5();
+  const db = atVersion(5);
   db.exec("insert into settings (key, value) values ('mode', 'hosted')");
   const admins = insertHostedTeam(db, "Aurora", "admins");
   const open = insertHostedTeam(db, "Borealis", "code");

@@ -2,6 +2,7 @@ import type { Db } from "./db.js";
 import { accessValues } from "./migrations/access-values.js";
 import { baseline } from "./migrations/baseline.js";
 import { hostedTeams } from "./migrations/hosted.js";
+import { memberSessions } from "./migrations/member-sessions.js";
 import { teamKeys } from "./migrations/team-keys.js";
 import { usageCountsTable } from "./migrations/usage-counts.js";
 import { orderedUsageIndexes } from "./migrations/usage-indexes.js";
@@ -27,7 +28,15 @@ export class UpgradeFailedError extends Error {
 
 const BASELINE = 1;
 
-export const STEPS: readonly Step[] = [baseline, teamKeys, orderedUsageIndexes, hostedTeams, usageCountsTable, accessValues];
+export const STEPS: readonly Step[] = [
+  baseline,
+  teamKeys,
+  orderedUsageIndexes,
+  hostedTeams,
+  usageCountsTable,
+  accessValues,
+  memberSessions,
+];
 
 export const SCHEMA_VERSION = STEPS.length;
 

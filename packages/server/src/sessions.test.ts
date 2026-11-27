@@ -5,10 +5,12 @@ import { join } from "node:path";
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { openDb, type Db } from "./db.js";
+import { machineIdOf } from "./hosted.fixture.js";
 import { migrate } from "./migrate.js";
 import { LEGACY_SCHEMA } from "./migrations/legacy.fixture.js";
-import { createTeamSession, createUserSession, endSession, endTeamSessions, findSession, MAX_TEAM_SESSIONS, MAX_USER_SESSIONS } from "./sessions.js";
-import { authenticate } from "./team-data.js";
+import { createMemberSession, createTeamSession, createUserSession, endSession, endTeamSessions, findSession, MAX_TEAM_SESSIONS, MAX_USER_SESSIONS } from "./sessions.js";
+import { authenticate, forTeam, type MachineIdentity } from "./team-data.js";
+import { reg } from "./team-data.fixture.js";
 import { createTeam } from "./teams.js";
 
 const MID = "a".repeat(32);
@@ -16,14 +18,26 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const ANN = { githubId: 7, login: "ann" };
 const sha = (s: string): string => createHash("sha256").update(s).digest("hex");
 const sessionCount = () => (db.prepare("select count(*) as n from sessions").get() as { n: number }).n;
+/** Machine `n` of the member with `email` in team `teamId`, as its token identifies it. */
+const machineOf = (teamId: number, email: string, n: number): MachineIdentity =>
+  authenticate(db, forTeam(db, teamId).registerMachine(reg(machineIdOf(n), { email })).token)!;
+const found = (sid: string) => findSession(db, sid) !== null;
 
 let db: Db;
 let A: number;
 let B: number;
+/** A's member ann, then B's members sam (two machines) and tia; B's member ids differ from A's and from both team ids. */
+let ann: MachineIdentity, samOne: MachineIdentity, samTwo: MachineIdentity, tia: MachineIdentity;
 beforeEach(() => {
   db = openDb(":memory:");
   A = createTeam(db, "A");
   B = createTeam(db, "B");
+  ann = machineOf(A, "ann@x.com", 1);
+  machineOf(A, "abe@x.com", 2);
+  samOne = machineOf(B, "sam@x.com", 3);
+  // tia joins before sam's second machine: registering a known member's machine uses up a member id.
+  tia = machineOf(B, "tia@x.com", 5);
+  samTwo = machineOf(B, "sam@x.com", 4);
 });
 afterEach(() => {
   vi.useRealTimers();
@@ -32,6 +46,11 @@ afterEach(() => {
 test("a team session is found as its team's", () => {
   expect(findSession(db, createTeamSession(db, A))).toEqual({ kind: "team", teamId: A });
   expect(findSession(db, createTeamSession(db, B))).toEqual({ kind: "team", teamId: B });
+});
+
+test("a member's session is found as that member's, from the machine that opened it", () => {
+  expect([samOne.memberId, tia.memberId]).toEqual([3, 4]);
+  expect(findSession(db, createMemberSession(db, samTwo))).toEqual({ kind: "member", teamId: B, memberId: samTwo.memberId, machineId: samTwo.machineId });
 });
 
 test("a user session is found as its user's", () => {
@@ -52,8 +71,8 @@ test("session ids of both kinds are stored only as their hashes", () => {
   expect(rows.map((r) => r.id)).toEqual(ids.map(sha));
 });
 
-test("sessions of both kinds expire after 30 days", () => {
-  for (const sid of [createTeamSession(db, A), createUserSession(db, ANN)]) {
+test("sessions of every kind expire after 30 days", () => {
+  for (const sid of [createTeamSession(db, A), createMemberSession(db, samOne), createUserSession(db, ANN)]) {
     expect(findSession(db, sid, new Date(Date.now() + 29 * DAY_MS))).not.toBeNull();
     expect(findSession(db, sid, new Date(Date.now() + 31 * DAY_MS))).toBeNull();
   }
@@ -84,14 +103,19 @@ test("endSession ends only that session", () => {
   expect(findSession(db, user)).toBeNull();
 });
 
-test("endTeamSessions ends one team's sessions and leaves another team's and every user's", () => {
-  const a = createTeamSession(db, A);
-  const b = createTeamSession(db, B);
-  const user = createUserSession(db, ANN);
-  endTeamSessions(db, A);
-  expect(findSession(db, a)).toBeNull();
-  expect(findSession(db, b)).toEqual({ kind: "team", teamId: B });
-  expect(findSession(db, user)).toEqual({ kind: "user", ...ANN });
+test("endTeamSessions ends one team's code and member sessions and leaves another team's and every user's", () => {
+  const ended = [createTeamSession(db, B), createMemberSession(db, samOne), createMemberSession(db, tia)];
+  const kept = [createTeamSession(db, A), createMemberSession(db, ann), createUserSession(db, ANN)];
+  endTeamSessions(db, B);
+  expect(ended.map(found)).toEqual([false, false, false]);
+  expect(kept.map(found)).toEqual([true, true, true]);
+});
+
+test("a member holding more than its maximum keeps its newest sessions; another member's and another team's are not counted or dropped", () => {
+  const others = [createMemberSession(db, tia), createMemberSession(db, ann), createTeamSession(db, B), createUserSession(db, ANN)];
+  const sam = [createMemberSession(db, samOne, 2), createMemberSession(db, samTwo, 2), createMemberSession(db, samOne, 2)];
+  expect(sam.map(found)).toEqual([false, true, true]);
+  expect(others.map(found)).toEqual([true, true, true, true]);
 });
 
 test("a team holding more than its maximum keeps its newest sessions, oldest dropped first within one millisecond", () => {
@@ -154,16 +178,20 @@ test.each(["team", "user"] as const)("a %s session opened after the clock steppe
   expect(earlier.map((sid) => findSession(db, sid) !== null)).toEqual([false, true, true]);
 });
 
-test("the account's sessions are found through their index", () => {
+test.each([
+  ["an account's", "user", "sessions_github"],
+  ["a member's", "member", "sessions_member"],
+] as const)("%s sessions are found through their index", (_, kind, index) => {
   const seen: string[] = [];
   const verboseDb = new Database(":memory:", { verbose: (sql) => seen.push(String(sql)) });
   migrate(verboseDb);
-  createUserSession(verboseDb, ANN);
+  if (kind === "user") createUserSession(verboseDb, ANN);
+  else createMemberSession(verboseDb, authenticate(verboseDb, forTeam(verboseDb, createTeam(verboseDb, "A")).registerMachine(reg(MID)).token)!);
   const plans = seen
-    .filter((sql) => /delete from sessions where rowid in/.test(sql) && sql.includes("'user'"))
+    .filter((sql) => /delete from sessions where rowid in/.test(sql) && sql.includes(`'${kind}'`))
     .map((sql) => (verboseDb.prepare(`explain query plan ${sql}`).all() as { detail: string }[]).map((r) => r.detail).join(" | "));
   expect(plans).toHaveLength(1);
-  expect(plans[0]).toContain("sessions_github");
+  expect(plans[0]).toContain(index);
 });
 
 test("a token and a session from before the upgrade still work", () => {

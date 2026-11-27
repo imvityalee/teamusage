@@ -76,6 +76,24 @@ describe("a team session", () => {
   });
 });
 
+describe("a member's session", () => {
+  /** A session of team A's second member, whose id (3) is neither team's id. */
+  const memberSession = (teamId: number): Session => {
+    const { token } = forTeam(db, teamId).registerMachine(reg("c".repeat(32), { email: "cy@example.com" }));
+    const who = authenticate(db, token)!;
+    return { kind: "member", ...who };
+  };
+  test("of a team whose members see it reads that team as its member, with the team's numbers, and ignores the query's team", () => {
+    const session = memberSession(a.id);
+    const reads = { ok: true, teamId: a.id, member: { memberId: 3 }, teamNumbers: true };
+    expect(access({ session })).toEqual(reads);
+    expect(access({ session, teamParam: b.publicId })).toEqual(reads);
+  });
+  test("of an admins-only team is 401", () => {
+    expect(access({ session: memberSession(b.id) })).toEqual({ ok: false, status: 401, error: "unauthorized" });
+  });
+});
+
 describe("a user session", () => {
   const invalid = { ok: false, status: 400, error: "invalid query" };
   test.each([undefined, "", "0".repeat(15), "0".repeat(17), "A".repeat(16), "g".repeat(16), ` ${"0".repeat(15)}`])(

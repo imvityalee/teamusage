@@ -72,7 +72,8 @@ function parseRange(c: Context): StatsRange | string {
 
 /**
  * The member whose stats the request asks for, or null for the whole team; otherwise the answer that refuses the
- * request. `me` is the token's member; a session or the demo has no member of its own.
+ * request. `me` is the member of the token or of a member's session; any other session, or the demo, has no member
+ * of its own.
  */
 function askedMember(
   c: Context,

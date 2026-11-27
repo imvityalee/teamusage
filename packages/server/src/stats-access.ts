@@ -4,9 +4,10 @@ import type { Session } from "./sessions.js";
 import type { MachineIdentity } from "./team-data.js";
 
 export const DASHBOARD_LIMITED = "this team's dashboard is limited to its admins; update teamusage to see your own numbers here";
+export const DASHBOARD_ADMINS_ONLY = "this team's dashboard is limited to its admins";
 
 export type StatsAccess =
-  | { ok: true; teamId: number; member: MachineIdentity | null; teamNumbers: boolean }
+  | { ok: true; teamId: number; member: { memberId: number } | null; teamNumbers: boolean }
   | { ok: false; status: 400 | 401 | 404; error: string };
 
 const UNAUTHORIZED: StatsAccess = { ok: false, status: 401, error: "unauthorized" };
@@ -40,8 +41,11 @@ export function statsAccess(
     return { ok: true, teamId: a.who.teamId, member: a.who, teamNumbers: membersSeeTeam(db, a.who.teamId) };
   }
   const { session } = a;
-  if (session?.kind === "team") {
-    return membersSeeTeam(db, session.teamId) ? { ok: true, teamId: session.teamId, member: null, teamNumbers: true } : UNAUTHORIZED;
+  // A session opened with the team's code or by its member reads only its own team, while its members see the team.
+  if (session?.kind === "team" || session?.kind === "member") {
+    if (!membersSeeTeam(db, session.teamId)) return UNAUTHORIZED;
+    const member = session.kind === "member" ? { memberId: session.memberId } : null;
+    return { ok: true, teamId: session.teamId, member, teamNumbers: true };
   }
   if (session?.kind === "user") return userAccess(db, session.githubId, a.teamParam);
   return UNAUTHORIZED;

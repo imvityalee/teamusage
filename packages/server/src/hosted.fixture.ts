@@ -103,6 +103,16 @@ export async function signIn(app: Hono, code: string): Promise<string> {
   return session;
 }
 
+/** Signs a browser in as the machine `token`'s member: asks for a link and opens it; returns the `tu_session` cookie. */
+export async function memberSignIn(app: Hono, token: string): Promise<string> {
+  const linked = await app.request("/api/dashboard-link", { method: "POST", headers: { Authorization: `Bearer ${token}` } });
+  const { path } = (await linked.json()) as { path?: string };
+  const opened = await postFromPage(app, "/api/dashboard-link/open", { token: path?.slice("/open#".length) });
+  const session = cookieOf(opened, "tu_session");
+  if (!session) throw new Error(`signing in as a member answered ${linked.status}, then ${opened.status}`);
+  return session;
+}
+
 /** Caps for a test's team, each a value of its own, with room on the volume unless `over` says otherwise. */
 export const testCaps = (over: Partial<TeamLimits> = {}): TeamLimits => ({
   membersPerTeam: 5, machinesPerMember: 6, rowsPerMachine: 1000, rowsPerTeam: 1001, rowsAddedPerDay: 1002, storageLow: () => false, ...over,

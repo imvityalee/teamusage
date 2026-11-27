@@ -1,6 +1,8 @@
 import { expect, test } from "vitest";
 import { getStoredInviteCode, openDb } from "./db.js";
-import { createTeamSession, findSession } from "./sessions.js";
+import { createMemberSession, createTeamSession, findSession } from "./sessions.js";
+import { authenticate, forTeam } from "./team-data.js";
+import { reg } from "./team-data.fixture.js";
 import { createTeam, ensureSingleTeam, rotateInviteCode, singleTeamCodes } from "./teams.js";
 
 const teamCount = (db: ReturnType<typeof openDb>) => (db.prepare("select count(*) as n from teams").get() as { n: number }).n;
@@ -38,15 +40,19 @@ test("singleTeamCodes gives the team for its code and null for anything else", (
   expect(teamForCode(42)).toBeNull();
 });
 
-test("rotating the code ends only that team's sessions", () => {
+test("rotating the code ends that team's code and member sessions, and only that team's", () => {
   const db = openDb(":memory:");
   const A = createTeam(db, "A");
   const B = createTeam(db, "B");
-  const sa = createTeamSession(db, A);
-  const sb = createTeamSession(db, B);
+  // B's member is registered first, so that A's member id (2) is neither A's id nor B's member id.
+  const memberOf = (teamId: number, machineId: string) => authenticate(db, forTeam(db, teamId).registerMachine(reg(machineId)).token)!;
+  const ofB = memberOf(B, "b".repeat(32));
+  const ofA = memberOf(A, "a".repeat(32));
+  const ended = [createTeamSession(db, A), createMemberSession(db, ofA)];
+  const kept = [createTeamSession(db, B), createMemberSession(db, ofB)];
   const code = rotateInviteCode(db, A);
   expect(code).toMatch(/^[a-f0-9]{24}$/);
   expect(getStoredInviteCode(db)).toBe(code);
-  expect(findSession(db, sa)).toBeNull();
-  expect(findSession(db, sb)).toEqual({ kind: "team", teamId: B });
+  expect(ended.map((sid) => findSession(db, sid))).toEqual([null, null]);
+  expect(kept.map((sid) => findSession(db, sid))).toEqual([{ kind: "team", teamId: B }, { kind: "member", ...ofB }]);
 });

@@ -3,7 +3,7 @@ import type { Context, Hono } from "hono";
 import { getCookie } from "hono/cookie";
 import type { RouteContext } from "./app-context.js";
 import { safeEqual, type Db } from "./db.js";
-import { teamById, teamsOf } from "./hosted-teams.js";
+import { membersSeeTeam, teamById, teamsOf } from "./hosted-teams.js";
 import { clearPrivateCookie, clearSessionCookie, crossSite, fail, SESSION_COOKIE, setPrivateCookie, setSessionCookie } from "./http.js";
 import { createUserSession, endSession, type Session } from "./sessions.js";
 
@@ -34,11 +34,14 @@ function callbackOf(c: Context): { code: string; verifier: string } | null {
   return safeEqual(state, pending.state) ? { code, verifier: pending.verifier } : null;
 }
 
-/** What `/api/me` tells of a session; null for a team's session whose team is gone. */
+/** What `/api/me` tells of a session; null when its team is gone, and for a member's while the team's members do not see it. */
 function meOf(db: Db, session: Session) {
   if (session.kind === "user") return { kind: "user", login: session.login, teams: teamsOf(db, session.githubId) };
+  if (session.kind === "member" && !membersSeeTeam(db, session.teamId)) return null;
   const team = teamById(db, session.teamId);
-  return team ? { kind: "team", team: { id: team.publicId, name: team.name } } : null;
+  if (team === null) return null;
+  const named = { id: team.publicId, name: team.name };
+  return session.kind === "team" ? { kind: "team", team: named } : { kind: "member", team: named, memberId: session.memberId };
 }
 
 /** Signing in with GitHub, signing out, and who the session is. Mounted only on a hosted server. */
