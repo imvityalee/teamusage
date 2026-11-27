@@ -1,39 +1,14 @@
-import type { Stats } from "@teamusage/shared";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { chooseSize } from "../site/pager.fixture.js";
-import { worstCase } from "../site/worst-case.fixture.js";
-import { renderStats } from "../render.js";
-import { newDocument, TODAY, who } from "../render.fixture.js";
-import { statsFixture } from "../test-fixtures.js";
-import { applyMemberSearch } from "./members-panel.js";
-import type { MemberSort } from "./members-table.js";
+import { t } from "../i18n.js";
+import { emptyStatsFixture } from "../test-fixtures.js";
+import { mount, team } from "./members-panel.fixture.js";
+import type { MembersTable } from "./members-panel.js";
+import { DEFAULT_SORT } from "./members-table.js";
+
+/** U+00A0 NO-BREAK SPACE, which this runtime's Russian number format writes between thousands. */
+const NBSP = "\u00a0";
 
 /** What a team of two thousand makes of the members table: one page of rows, search and sorting over everyone. */
-
-const SIZE = 2000;
-/** The no-break space that this runtime's Russian number format writes between thousands (U+00A0). */
-const NBSP = " ";
-
-/** `count` members from the worst-case people: member i has i in its name, `count - i` x 10 tokens, and most have synced. */
-function team(count = SIZE): Stats {
-  const base = statsFixture();
-  const members = Array.from({ length: count }, (_, i): Stats["members"][number] => {
-    const person = worstCase.people[i % worstCase.people.length] as { name: string; email: string };
-    return {
-      id: i + 1,
-      name: `${person.name} ${i + 1}`,
-      email: `${i + 1}.${person.email}`,
-      tokens: (count - i) * 10,
-      costUsd: (i * 7) % 13,
-      machines: 1,
-      lastSyncAt: i % 10 === 9 ? null : "2026-11-17T08:00:00.000Z",
-      byAgent: { claude: (count - i) * 10 },
-      byAccount: {},
-      byAccountPlan: [],
-    };
-  });
-  return { ...base, totals: { ...base.totals, memberCount: count }, members };
-}
 
 let store: Map<string, string>;
 beforeEach(() => {
@@ -41,30 +16,6 @@ beforeEach(() => {
   vi.stubGlobal("localStorage", { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v) });
 });
 afterEach(() => vi.unstubAllGlobals());
-
-function mount(stats = team(), opts: { lang?: "en" | "ru"; sort?: MemberSort; onSort?: (s: MemberSort) => void; query?: string } = {}) {
-  const doc = newDocument();
-  const host = doc.createElement("div");
-  host.append(renderStats(doc, stats, opts.lang ?? "en", TODAY, { query: opts.query, sort: opts.sort, onSort: opts.onSort }));
-  const view = {
-    doc,
-    host,
-    names: () => [...host.querySelectorAll("#members tbody tr")].map((r) => who(r)[1]),
-    count: () => host.querySelectorAll("#members tbody tr").length,
-    range: () => host.querySelector(".pager-range")?.textContent,
-    count_line: () => host.querySelector("#members-count")?.textContent,
-    press: (selector: string) => (host.querySelector(selector) as HTMLElement).click(),
-    next: () => view.press('.pager button[data-step="next"]'),
-    sortBy: (by: string) => view.press(`#members th button[data-sort="${by}"]`),
-    th: (by: string) => host.querySelector(`#members th:has(button[data-sort="${by}"])`) as HTMLElement,
-    choose(size: string) {
-      const select = host.querySelector<HTMLSelectElement>(".pager select")!;
-      chooseSize(select, size);
-    },
-    search: (query: string, stats: Stats = team()) => applyMemberSearch(doc, host, stats, "en", TODAY, query),
-  };
-  return view;
-}
 
 describe("one page of rows", () => {
   test("2,000 members draw 25 rows and a footer that counts them all", () => {
@@ -129,10 +80,12 @@ describe("one page of rows", () => {
     expect(mount(team(1)).range()).toBe("1–1 of 1");
   });
 
-  test("a team with no members draws no pager and no rows", () => {
-    const m = mount(team(0));
+  test("a team with no members draws no members table, no pager, and the empty text", () => {
+    const stats = { ...emptyStatsFixture(), members: [], totals: { tokens: 0, costUsd: 0, activeMembers: 0, memberCount: 0 } };
+    const m = mount(stats);
     expect(m.host.querySelector(".pager")).toBeNull();
-    expect(m.count()).toBe(0);
+    expect(m.host.querySelector("#members")).toBeNull();
+    expect(m.host.querySelector(".empty")?.textContent).toBe(t("en", "empty"));
   });
 
   test("the Russian footer reads 1–25 из 2 000", () => {
@@ -234,14 +187,17 @@ describe("sorting covers everyone", () => {
     expect(m.range()).toBe("1–50 of 2,000");
   });
 
-  test("the sort is kept by a caller that repaints: it is given back and reported", () => {
-    const seen: MemberSort[] = [];
-    const m = mount(team(), { onSort: (s) => seen.push(s) });
+  test("the sort and the page are held by a caller that repaints: it is told, and gives them back", () => {
+    const table: MembersTable = { sort: DEFAULT_SORT, page: 1, stats: null };
+    const stats = team();
+    const m = mount(stats, { table });
     m.sortBy("lastSync");
-    expect(seen).toEqual([{ by: "lastSync", dir: "desc" }]);
-    const again = mount(team(), { sort: seen[0] });
+    m.next();
+    expect(table).toMatchObject({ sort: { by: "lastSync", dir: "desc" }, page: 2 });
+    const again = mount(stats, { table });
     expect(again.th("lastSync").getAttribute("aria-sort")).toBe("descending");
     expect(again.th("tokens").hasAttribute("aria-sort")).toBe(false);
+    expect(again.range()).toBe("26–50 of 2,000");
   });
 
   test("sorting keeps the search: only the matching members are sorted", () => {

@@ -24,8 +24,7 @@ import {
 } from "./filters.js";
 import { rangeText } from "./format.js";
 import { loadLang, pickLang, saveLang, t, type Lang, type MessageKey } from "./i18n.js";
-import { applyMemberSearch } from "./dashboard/members-panel.js";
-import { DEFAULT_SORT, type MemberSort } from "./dashboard/members-table.js";
+import { applyMemberSearch, newTable, type MembersTable } from "./dashboard/members-panel.js";
 import { applyStaticText, renderBackLink, renderMember, renderMemberHead, renderNotFound, renderStats } from "./render.js";
 import { parseRoute, type Route } from "./route.js";
 
@@ -81,8 +80,8 @@ const state: {
   shown: Shown | null;
   /** The member search text. It lives only here and in the input: never sent, stored or put in the URL. */
   query: string;
-  /** The members table's order; kept here so a repaint (a new range, a filter, the language) gives it back. */
-  sort: MemberSort;
+  /** The members table's order and page; kept here so a repaint of the same statistics gives them back. */
+  members: MembersTable;
   /** The agent, model, account and plan filters. Only here: sent as query parameters, never stored or put in the URL. */
   filters: Filters;
   open: FilterKind | null;
@@ -105,7 +104,7 @@ const state: {
   route: parseRoute(location.hash),
   shown: null,
   query: "",
-  sort: DEFAULT_SORT,
+  members: newTable(),
   filters: NO_FILTERS,
   open: null,
   modelQuery: "",
@@ -211,7 +210,8 @@ function paint(): void {
   switch (shown.kind) {
     case "team":
       ui.pageHead.replaceChildren();
-      ui.stats.replaceChildren(renderStats(document, shown.stats, lang, today(), { query: state.query, filters: shown.filters, sort: state.sort, onSort: (sort) => (state.sort = sort) }));
+      const opts = { query: state.query, filters: shown.filters, table: state.members };
+      ui.stats.replaceChildren(renderStats(document, shown.stats, lang, today(), opts));
       break;
     case "member": {
       ui.pageHead.replaceChildren(renderMemberHead(document, shown.stats, shown.id, lang, today()));

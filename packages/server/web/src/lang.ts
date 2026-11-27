@@ -27,3 +27,6 @@ export function saveLang(lang: Lang): void {
     // Storage blocked or full: the choice simply lasts for this visit.
   }
 }
+
+/** The BCP 47 locale a language's numbers and dates are written in. */
+export const locale = (lang: Lang): string => (lang === "ru" ? "ru-RU" : "en-US");

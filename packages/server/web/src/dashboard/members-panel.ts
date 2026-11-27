@@ -5,20 +5,33 @@ import { matchMembers } from "../search.js";
 import { loadPageSize, pageOf, savePageSize, type PageSize } from "../site/paging.js";
 import { renderPager } from "../site/pager.js";
 import { memberRows } from "./member-rows.js";
-import { nextSort, sortMembers, type MemberSort } from "./members-table.js";
+import { DEFAULT_SORT, nextSort, sortMembers, type MemberSort } from "./members-table.js";
 
 /**
  * The members panel: a search box and a table that draws one page of the members that match, in the order of the
  * pressed header, with a pager under it. Search and sorting cover every member; only the rows drawn are one page.
  */
 
+/**
+ * The order and the page of the table. The caller holds one and hands it to every panel it draws; the panel changes it
+ * when a header or the pager is pressed, so a repaint of the same statistics comes back on the same page, in the
+ * same order.
+ */
+export interface MembersTable {
+  sort: MemberSort;
+  page: number;
+  /** The statistics `page` belongs to: new statistics start again at page 1. */
+  stats: Stats | null;
+}
+
+/** A table in its first state: sorted by tokens, largest first, on page 1. */
+export const newTable = (): MembersTable => ({ sort: DEFAULT_SORT, page: 1, stats: null });
+
 export interface MembersOptions {
   query: string;
   /** The numbers are narrowed by a filter, so the bars speak of the filtered tokens. */
   filtered: boolean;
-  sort: MemberSort;
-  /** Told the new sort when a header is pressed, so a caller that repaints can give it back. */
-  onSort?: (sort: MemberSort) => void;
+  table: MembersTable;
 }
 
 /** What a draw needs from the page it is on. */
@@ -34,10 +47,8 @@ interface Context {
 interface View {
   context: Context;
   query: string;
-  sort: MemberSort;
-  page: number;
+  table: MembersTable;
   size: PageSize;
-  onSort: ((sort: MemberSort) => void) | undefined;
 }
 
 const views = new WeakMap<Element, View>();
@@ -55,8 +66,8 @@ function plainHead(doc: Document, label: string): HTMLElement {
 
 /** `aria-sort` and the arrow go on the sorted column and nowhere else. */
 function markSorted(table: Element, sort: MemberSort, doc: Document): void {
-  for (const th of table.querySelectorAll("thead th:has(button[data-sort])")) {
-    const button = th.querySelector("button") as HTMLElement;
+  for (const button of table.querySelectorAll<HTMLElement>("thead button[data-sort]")) {
+    const th = button.closest("th") as HTMLElement;
     button.querySelector(".sort")?.remove();
     if (button.dataset.sort !== sort.by) {
       th.removeAttribute("aria-sort");
@@ -74,7 +85,7 @@ function showCount(line: HTMLElement, lang: Lang, query: string, matched: number
 }
 
 /** Draws the rows, the count line, the sorted header and the pager of `section` from its view. */
-function draw(section: Element, view: View): void {
+function draw(section: Element, view: View, focus?: Focus): void {
   const { doc, stats, lang, today, filtered } = view.context;
   const table = section.querySelector("#members");
   const body = table?.querySelector("tbody");
@@ -83,45 +94,74 @@ function draw(section: Element, view: View): void {
   const scroll = table?.parentElement;
   if (!table || !body || !countLine || !slot || !scroll) return;
   const matched = matchMembers(stats.members, view.query);
-  const page = pageOf(sortMembers(matched, view.sort, lang), view.page, view.size);
-  view.page = page.page;
+  const page = pageOf(sortMembers(matched, view.table.sort, lang), view.table.page, view.size);
+  view.table.page = page.page;
   body.replaceChildren(...memberRows(doc, stats, lang, today, page.rows, filtered));
   showCount(countLine, lang, view.query, matched.length, stats.members.length);
   scroll.hidden = matched.length === 0;
-  markSorted(table, view.sort, doc);
+  markSorted(table, view.table.sort, doc);
   const go = (n: number) => {
-    view.page = n;
-    draw(section, view);
+    const pressed = n > view.table.page ? "next" : "prev";
+    view.table.page = n;
+    draw(section, view, pressed);
   };
   const resize = (size: PageSize) => {
     savePageSize(size);
     view.size = size;
-    go(1);
+    view.table.page = 1;
+    draw(section, view, "size");
   };
-  slot.replaceChildren(...(matched.length === 0 ? [] : [renderPager(doc, page, view.size, lang, { page: go, size: resize })]));
+  const pager = matched.length === 0 ? [] : [renderPager(doc, page, view.size, lang, { page: go, size: resize })];
+  slot.replaceChildren(...pager);
+  if (focus !== undefined) refocus(slot, focus);
+}
+
+/** Which pager control a person pressed: a step button, or the rows-per-page select. */
+type Focus = "prev" | "next" | "size";
+
+/**
+ * The pager was drawn anew, so keyboard focus goes back to the control that was pressed; to the other step button when
+ * that one is now disabled.
+ */
+function refocus(slot: Element, pressed: Focus): void {
+  const selector = (name: Focus) => (name === "size" ? "select" : `button[data-step="${name}"]`);
+  const control = (name: Focus) => slot.querySelector<HTMLElement>(selector(name));
+  const pressedControl = control(pressed);
+  const other = pressed === "next" ? "prev" : "next";
+  const target = pressedControl && !(pressedControl as HTMLButtonElement).disabled ? pressedControl : control(other);
+  target?.focus({ preventScroll: true });
 }
 
 /**
- * Shows the members matching `query` in an already rendered members panel, from page 1, without rebuilding the search box.
+ * Shows the members matching `query` in an already rendered members panel, from page 1, without rebuilding the
+ * search box.
  * `filtered`: the numbers are narrowed by a filter, so the bars speak of the filtered tokens.
  */
-export function applyMemberSearch(doc: Document, root: ParentNode, stats: Stats, lang: Lang, today: string, query: string, filtered = false): void {
+export function applyMemberSearch(
+  doc: Document,
+  root: ParentNode,
+  stats: Stats,
+  lang: Lang,
+  today: string,
+  query: string,
+  filtered = false,
+): void {
   const section = root.querySelector('section[aria-labelledby="members-heading"]');
   const view = section && views.get(section);
   if (!section || !view) return;
   view.context = { doc, stats, lang, today, filtered };
   view.query = query;
-  view.page = 1;
+  view.table.page = 1;
   draw(section, view);
 }
 
 function pressSort(section: Element, event: Event): void {
-  const by = (event.target as Element | null)?.closest<HTMLElement>("button[data-sort]")?.dataset.sort as MemberSort["by"] | undefined;
+  const button = (event.target as Element | null)?.closest<HTMLElement>("button[data-sort]");
+  const by = button?.dataset.sort as MemberSort["by"] | undefined;
   const view = views.get(section);
   if (by === undefined || !view) return;
-  view.sort = nextSort(view.sort, by);
-  view.page = 1;
-  view.onSort?.(view.sort);
+  view.table.sort = nextSort(view.table.sort, by);
+  view.table.page = 1;
   draw(section, view);
 }
 
@@ -146,26 +186,40 @@ function tableHead(doc: Document, lang: Lang): HTMLElement {
 }
 
 function searchBox(doc: Document, lang: Lang, query: string): HTMLElement {
-  const input = h(doc, "input", { type: "search", id: "member-search", autocomplete: "off", spellcheck: "false" }) as HTMLInputElement;
+  const attrs = { type: "search", id: "member-search", autocomplete: "off", spellcheck: "false" };
+  const input = h(doc, "input", attrs) as HTMLInputElement;
   input.placeholder = t(lang, "searchPlaceholder");
   input.value = query; // a property, never markup
-  return h(doc, "div", { class: "search" }, h(doc, "label", { for: "member-search", class: "sr" }, t(lang, "searchMembers")), icon(doc, "search", "search-icon"), input);
+  const label = h(doc, "label", { for: "member-search", class: "sr" }, t(lang, "searchMembers"));
+  return h(doc, "div", { class: "search" }, label, icon(doc, "search", "search-icon"), input);
 }
 
-export function membersPanel(doc: Document, stats: Stats, lang: Lang, today: string, opts: MembersOptions): HTMLElement {
+function heading(doc: Document, lang: Lang, members: number): HTMLElement {
+  const title = h(doc, "h2", { id: "members-heading" }, ...counted(doc, lang, t(lang, "members"), members));
+  return h(doc, "div", {}, title, h(doc, "p", { class: "hint" }, t(lang, "membersHint")));
+}
+
+export function membersPanel(
+  doc: Document,
+  stats: Stats,
+  lang: Lang,
+  today: string,
+  opts: MembersOptions,
+): HTMLElement {
   const table = h(doc, "table", { id: "members" }, tableHead(doc, lang), h(doc, "tbody"));
-  const heading = h(doc, "div", {}, h(doc, "h2", { id: "members-heading" }, ...counted(doc, t(lang, "members"), stats.members.length)), h(doc, "p", { class: "hint" }, t(lang, "membersHint")));
   const section = h(
     doc,
     "section",
     { class: "panel", "aria-labelledby": "members-heading" },
-    h(doc, "div", { class: "panel-head" }, heading, searchBox(doc, lang, opts.query)),
+    h(doc, "div", { class: "panel-head" }, heading(doc, lang, stats.members.length), searchBox(doc, lang, opts.query)),
     h(doc, "p", { id: "members-count", class: "count", "aria-live": "polite" }),
     h(doc, "div", { class: "scroll" }, table),
     h(doc, "div", { class: "pager-slot" }),
     h(doc, "p", { class: "mix-note" }, t(lang, "mixNote")),
   );
-  const view: View = { context: { doc, stats, lang, today, filtered: opts.filtered }, query: opts.query, sort: opts.sort, page: 1, size: loadPageSize(), onSort: opts.onSort };
+  const context = { doc, stats, lang, today, filtered: opts.filtered };
+  if (opts.table.stats !== stats) Object.assign(opts.table, { page: 1, stats });
+  const view: View = { context, query: opts.query, table: opts.table, size: loadPageSize() };
   views.set(section, view);
   section.addEventListener("click", (event) => pressSort(section, event));
   draw(section, view);

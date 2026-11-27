@@ -8,6 +8,8 @@ test.each([
   [512, 21, 25, { rows: 12, page: 21, pages: 21, from: 501, to: 512, total: 512 }],
   [512, 99, 25, { rows: 12, page: 21, pages: 21, from: 501, to: 512, total: 512 }],
   [512, 0, 100, { rows: 100, page: 1, pages: 6, from: 1, to: 100, total: 512 }],
+  [25, 1, 25, { rows: 25, page: 1, pages: 1, from: 1, to: 25, total: 25 }],
+  [26, 2, 25, { rows: 1, page: 2, pages: 2, from: 26, to: 26, total: 26 }],
   [50, 2, 25, { rows: 25, page: 2, pages: 2, from: 26, to: 50, total: 50 }],
 ])("pageOf(%i items, page %i, %i rows)", (n, page, size, expected) => {
   const p = pageOf(Array.from({ length: n }, (_, i) => i), page, size as PageSize);

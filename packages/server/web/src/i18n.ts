@@ -1,9 +1,9 @@
 /** UI strings in English and Russian, and the stored language choice. */
 
-import type { Lang } from "./lang.js";
+import { locale, type Lang } from "./lang.js";
 import { pluralForm } from "./plural.js";
 
-export { LANG_KEY, loadLang, pickLang, saveLang, type Lang } from "./lang.js";
+export { LANG_KEY, loadLang, locale, pickLang, saveLang, type Lang } from "./lang.js";
 export { pluralForm, type PluralForm } from "./plural.js";
 
 const en = {
@@ -366,5 +366,3 @@ export function count(lang: Lang, noun: CountedNoun, n: number): string {
   const form = pluralForm(lang, n);
   return t(lang, FORMS[noun][form === "other" ? "many" : form], { n });
 }
-
-export const locale = (lang: Lang): string => (lang === "ru" ? "ru-RU" : "en-US");

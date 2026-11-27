@@ -7,8 +7,8 @@ import type { Lang } from "../lang.js";
 
 const doc = () => new Window().document as unknown as Document;
 
-/** The no-break space the runtime's Russian number format puts between thousands (U+00A0 on this runtime; the assertion below names it). */
-const THOUSANDS = new Intl.NumberFormat("ru-RU").format(2000).charAt(1);
+/** U+00A0 NO-BREAK SPACE, which this runtime's Russian number format puts between thousands. */
+const NBSP = "\u00a0";
 
 function pager(total: number, page: number, size: PageSize = 25, lang: Lang = "en") {
   const on = { page: vi.fn(), size: vi.fn() };
@@ -28,8 +28,24 @@ describe("the range line", () => {
   });
 
   test("Russian reads 1–25 из 2 000, with the thousands separator of the runtime", () => {
-    expect(THOUSANDS).toBe(" "); // U+00A0 NO-BREAK SPACE is what this runtime's ru-RU format gives
-    expect(pager(2000, 1, 25, "ru").range).toBe(`1–25 из 2${THOUSANDS}000`);
+    expect(pager(2000, 1, 25, "ru").range).toBe(`1–25 из 2${NBSP}000`);
+  });
+});
+
+describe("when everything fits on the smallest page", () => {
+  test("3 members draw the range alone, with no select and no buttons", () => {
+    const { el, range } = pager(3, 1);
+    expect(range).toBe("1–3 of 3");
+    expect([el.querySelector("select"), el.querySelector("button")]).toEqual([null, null]);
+  });
+
+  test.each([25, 26])("%i members draw the select and both buttons only above 25", (total) => {
+    const { el } = pager(total, 1);
+    expect([el.querySelector("select") !== null, el.querySelectorAll("button").length]).toEqual(total > 25 ? [true, 2] : [false, 0]);
+  });
+
+  test("the range is a polite live region, so a page change is announced", () => {
+    expect(pager(512, 1).el.querySelector(".pager-range")?.getAttribute("aria-live")).toBe("polite");
   });
 });
 
@@ -37,7 +53,6 @@ describe("Previous and Next", () => {
   test("Previous is disabled on the first page and Next on the last", () => {
     expect([pager(512, 1).prev.disabled, pager(512, 1).next.disabled]).toEqual([true, false]);
     expect([pager(512, 21).prev.disabled, pager(512, 21).next.disabled]).toEqual([false, true]);
-    expect([pager(10, 1).prev.disabled, pager(10, 1).next.disabled]).toEqual([true, true]);
   });
 
   test("pressing them asks for the neighbouring page", () => {

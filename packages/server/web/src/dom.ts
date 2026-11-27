@@ -3,6 +3,8 @@
  * value, so nothing is ever parsed as HTML.
  */
 
+import { locale, type Lang } from "./lang.js";
+
 export type Child = Node | string;
 
 export function h(doc: Document, tag: string, attrs: Record<string, string> = {}, ...children: Child[]): HTMLElement {
@@ -53,5 +55,9 @@ export function icon(doc: Document, name: IconName, className = "icon"): SVGSVGE
   return svg;
 }
 
-/** "Members 3": a heading's text with its count. */
-export const counted = (doc: Document, label: string, n: number): Child[] => [label, " ", h(doc, "span", { class: "n" }, String(n))];
+/** "Members 3": a heading's text with its count, written in the language's way ("2,000", "2 000"). */
+export const counted = (doc: Document, lang: Lang, label: string, n: number): Child[] => [
+  label,
+  " ",
+  h(doc, "span", { class: "n" }, new Intl.NumberFormat(locale(lang)).format(n)),
+];

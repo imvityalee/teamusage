@@ -6,7 +6,7 @@ import { CODEX_ONLY, HOSTILE, TODAY, cells, codexOnly, newDocument, render, rows
 import { statsFixture } from "../test-fixtures.js";
 
 describe("members table", () => {
-  test("keeps the API order with an initials avatar, name, email, tokens, cost and last sync", () => {
+  test("lists the members by tokens, each with an initials avatar, name, email, tokens, cost and last sync", () => {
     const r = rows(render(), "members");
     expect(r.map(who)).toEqual([
       ["AA", "Alice Archer", "alice@example.com"],

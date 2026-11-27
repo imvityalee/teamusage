@@ -3,8 +3,7 @@ import { accountPlanName } from "./accounts.js";
 import { agentIcon, agentName, OTHER_SERIES, SERIES, otherAgentsIcon } from "./agents.js";
 import { dailyAgentTotals, buckets, drawChart, presentSeries, rankAgents, WEEKLY_AFTER_DAYS } from "./chart.js";
 import { counted, h, icon, type Child } from "./dom.js";
-import { membersPanel } from "./dashboard/members-panel.js";
-import { DEFAULT_SORT, type MemberSort } from "./dashboard/members-table.js";
+import { membersPanel, newTable, type MembersTable } from "./dashboard/members-panel.js";
 import { byAccountPlanOf, lastSync, pct, STALE_DAYS, sumOf } from "./dashboard/member-facts.js";
 import { availableTotal, isActive, NO_FILTERS, type Filters } from "./filters.js";
 import { compact, daysSince, full, initials, longDate, shortDate, usd } from "./format.js";
@@ -159,7 +158,7 @@ function activeSub(f: Filters): MessageKey {
 }
 
 /** The team view: tiles, then the chart and tables, or the empty state when nothing matches. */
-export function renderStats(doc: Document, stats: Stats, lang: Lang, today: string, opts: { query?: string; filters?: Filters; sort?: MemberSort; onSort?: (sort: MemberSort) => void } = {}): DocumentFragment {
+export function renderStats(doc: Document, stats: Stats, lang: Lang, today: string, opts: { query?: string; filters?: Filters; table?: MembersTable } = {}): DocumentFragment {
   const filters = opts.filters ?? NO_FILTERS;
   const days = Math.max(1, stats.daily.length);
   const active = tile(
@@ -174,7 +173,7 @@ export function renderStats(doc: Document, stats: Stats, lang: Lang, today: stri
     out.append(emptyState(doc, lang, filters));
     return out;
   }
-  out.append(chartPanel(doc, stats, lang), membersPanel(doc, stats, lang, today, { query: opts.query ?? "", filtered: isActive(filters), sort: opts.sort ?? DEFAULT_SORT, onSort: opts.onSort }), modelsPanel(doc, stats, lang));
+  out.append(chartPanel(doc, stats, lang), membersPanel(doc, stats, lang, today, { query: opts.query ?? "", filtered: isActive(filters), table: opts.table ?? newTable() }), modelsPanel(doc, stats, lang));
   return out;
 }
 
@@ -217,7 +216,7 @@ function machineStatus(doc: Document, lang: Lang, at: string | null, today: stri
 
 function machinesPanel(doc: Document, stats: Stats, lang: Lang, today: string): HTMLElement {
   const machines = stats.machines ?? [];
-  const heading = counted(doc, t(lang, "machinesHeading"), machines.length);
+  const heading = counted(doc, lang, t(lang, "machinesHeading"), machines.length);
   if (machines.length === 0) return panel(doc, heading, "machines-heading", h(doc, "p", { class: "machines-none" }, t(lang, "noMachines")));
   const items = machines.map((m) => {
     const { pill, note } = machineStatus(doc, lang, m.lastSyncAt, today);

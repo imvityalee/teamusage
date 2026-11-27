@@ -1,6 +1,5 @@
 import type { Stats } from "@teamusage/shared";
-import { locale } from "../i18n.js";
-import type { Lang } from "../lang.js";
+import { locale, type Lang } from "../lang.js";
 
 /** The order of the members table: which column sorts, which way, and what a press on a header does. */
 
