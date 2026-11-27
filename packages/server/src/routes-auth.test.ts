@@ -46,7 +46,7 @@ test("a callback with the browser's own state signs the user in", async () => {
   expect(await me.json()).toEqual({ kind: "user", githubId: 1, login: "ann", teams: [] });
   expect(me.headers.get("cache-control")).toBe("no-store");
 });
-test("the callback proves the cookie's verifier to GitHub, sets today's session cookie and goes home", async () => {
+test("the callback proves the cookie's verifier to GitHub, sets today's session cookie and lands on /teams", async () => {
   const { oauth, url } = await started();
   const res = await app.request(url, { headers: { Cookie: oauth } });
   expect(res.status).toBe(302);

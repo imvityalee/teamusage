@@ -39,9 +39,14 @@ function expectLanded(res: Response, location: string): void {
   expect(sessionCount(db)).toBe(1);
 }
 
-test.each([["", "/teams"], ["?to=teams", "/teams"], ["?to=invite", "/invite"], ["?to=https://evil.example", "/teams"], ["?to=//evil.example", "/teams"], ["?to=/team", "/teams"], ["?to=invite&to=teams", "/teams"]])(
+test.each([
+  ["", "/teams"], ["?to=teams", "/teams"], ["?to=invite", "/invite"], ["?to=https://evil.example", "/teams"],
+  ["?to=//evil.example", "/teams"], ["?to=/team", "/teams"], ["?to=invite&to=teams", "/teams"],
+  ["?to=constructor", "/teams"], ["?to=__proto__", "/teams"],
+])(
   "a sign-in started with %s lands on %s", async (query, landing) => {
-    const res = await finishSignIn(app, `/auth/github/start${query}`, "code-bob");   // follows start, then calls the callback with the cookie and state
+    // follows start, then calls the callback with the cookie and state
+    const res = await finishSignIn(app, `/auth/github/start${query}`, "code-bob");
     expect(res.status).toBe(302);
     expect(res.headers.get("location")).toBe(landing);
     expect(res.headers.get("cache-control")).toBe("no-store");
@@ -84,7 +89,7 @@ test("a sign-in begun before the upgrade, with a cookie of two parts, lands on /
   const { state, verifier } = await started();
   expectLanded(await callback(`code=code-bob&state=${state}`, `tu_oauth=${state}.${verifier}`), "/teams");
 });
-test.each(["team", "Invite", "/invite", ""])("a cookie whose third part is %j lands on /teams", async (to) => {
+test.each(["team", "Invite", "/invite", "", "constructor", "toString"])("a cookie whose third part is %j lands on /teams", async (to) => {
   const { state, verifier } = await started();
   expectLanded(await callback(`code=code-bob&state=${state}`, `tu_oauth=${state}.${verifier}.${to}`), "/teams");
 });
@@ -101,7 +106,8 @@ test("/api/me of a member's session is unchanged", async () => {
   const { team, code } = hostedTeam(db, { githubId: 5101, login: "own" }, "members", "Acme");
   const machine = await machineClient(() => app, () => code).register();
   const { token, memberId } = (await machine.json()) as { token: string; memberId: number };
-  expect(await (await me(await memberSignIn(app, token))).json()).toEqual({ kind: "member", team: { id: team.publicId, name: "Acme" }, memberId });
+  const answer = await me(await memberSignIn(app, token));
+  expect(await answer.json()).toEqual({ kind: "member", team: { id: team.publicId, name: "Acme" }, memberId });
 });
 
 test("a sign-in that fails leaves the browser's session alive", async () => {
