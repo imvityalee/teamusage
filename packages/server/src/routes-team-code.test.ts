@@ -1,7 +1,8 @@
 import { beforeEach, expect, test } from "vitest";
 import { goodReg, record } from "./app.fixture.js";
 import { postFromPage, PUBLIC } from "./hosted.fixture.js";
-import { appOnSameDatabase, asUser, codeRow, manageWorld, notGithubSessions, RANGE, send, type ManageWorld, type Who } from "./manage.fixture.js";
+import { appOnSameDatabase, asUser, codeRow, manageWorld, notGithubSessions, send, type ManageWorld, type Who } from "./manage.fixture.js";
+import { statsAs, uploadAs } from "./manage.requests.fixture.js";
 
 let w: ManageWorld;
 let logged: string[];
@@ -15,8 +16,6 @@ const rotatePath = (team = w.B) => `${codePath(team)}/rotate`;
 const as = (who: Who, path: string) => asUser(w, who, path);
 const post = (who: Who, path: string) => asUser(w, who, path, { method: "POST" });
 const register = (code: string, email: string) => postFromPage(w.app, "/api/register", goodReg({ inviteCode: code, email }));
-const upload = (token: string, records: unknown[]) => postFromPage(w.app, "/api/usage", { records }, { Authorization: `Bearer ${token}` });
-const stats = (session: string) => w.app.request(`/api/stats?${RANGE}`, { headers: { Cookie: session } });
 const codeOf = async (res: Response) => ((await res.json()) as { code: string }).code;
 
 test("an admin sees the code the team was created with", async () => {
@@ -30,8 +29,8 @@ test("after a rotation the old code joins nobody, the new one does, and nobody a
   expect(code).not.toBe(w.B.code);
   expect((await register(w.B.code, "new@example.com")).status).toBe(403);
   expect((await register(code, "new@example.com")).status).toBe(200);
-  expect((await upload(w.B.sam.one.token, [record()])).status).toBe(200); // a machine that joined before keeps sending
-  expect((await stats(w.B.sam.session)).status).toBe(200); // and its member stays signed in
+  expect((await uploadAs(w, w.B.sam.one.token, [record()])).status).toBe(200); // a machine that joined before keeps sending
+  expect((await statsAs(w, w.B.sam.session)).status).toBe(200); // and its member stays signed in
   expect(await (await as("bob", codePath())).json()).toEqual({ code });
   expect(codeRow(w.db, w.A.id)).toEqual(before); // A's hash and sealed text
   expect((await register(w.A.code, "other@example.com")).status).toBe(200);

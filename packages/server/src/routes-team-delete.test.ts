@@ -14,7 +14,6 @@ import {
   PEOPLE,
   RANGE,
   send,
-  T0,
   teamRow as teamRowOf,
   usageRowsOf,
   userRow as userRowOf,
@@ -22,40 +21,22 @@ import {
   type ManageWorld,
   type Who,
 } from "./manage.fixture.js";
+import { NEWCOMER, pacedWorld, registerAs, registration, statsAs, uploadAs, type PacedWorld } from "./manage.requests.fixture.js";
 import { handOver } from "./team-roles.js";
-import { usageCounts } from "./usage-counts.js";
 
-const TODAY = T0.slice(0, 10);
 const NAME_DOES_NOT_MATCH = "the name does not match";
 const ROLE_NOT_ALLOWED = "your role does not allow this";
 /** A team name with letters that Unicode composes, as stored (NFC) and as some keyboards send it (NFD). */
 const CAFE = "Café Ёж";
 const CAFE_NFD = CAFE.normalize("NFD");
 
-let w: ManageWorld;
-/** What the next pause of a deletion runs; a test sets it. */
-let atPause: (() => Promise<void>) | undefined;
-let pauses: number;
-let logged: string[];
-const pause = async () => {
-  pauses++;
-  await atPause?.();
-};
+let w: PacedWorld;
 beforeEach(async () => {
-  atPause = undefined;
-  pauses = 0;
-  logged = [];
-  w = await manageWorld({ removal: { sliceRows: 3, pause }, logError: (line) => logged.push(line) });
+  w = await pacedWorld();
 });
-
-/** Someone who never joined `B`. */
-const newcomer = { name: "Uma", email: "uma@example.com", machineId: machineIdOf(0xc1), machineLabel: "uma-laptop" };
 
 const as = (who: Who, path: string) => asUser(w, who, path);
 const post = (who: Who, path: string, body: unknown) => asUser(w, who, path, { method: "POST", body });
-const upload = (token: string, records: unknown[]) => postFromPage(w.app, "/api/usage", { records }, { Authorization: `Bearer ${token}` });
-const stats = (session: string) => w.app.request(`/api/stats?${RANGE}`, { headers: { Cookie: session } });
-const registerAs = (who: typeof newcomer, code: string) => postFromPage(w.app, "/api/register", goodReg({ inviteCode: code, ...who }));
 const inviteToken = async (who: Who, team: ManagedTeam, role: "admin" | "viewer") => (await newInvite(w, who, team, role)).token;
 const linkToken = (token: string) => dashboardLinkToken(w.app, token);
 const countOf = (table: string, teamId: number) => (w.db.prepare(`select count(*) as n from ${table} where team_id = ?`).get(teamId) as { n: number }).n;
@@ -63,7 +44,6 @@ const teamRow = (teamId: number) => teamRowOf(w.db, teamId);
 const userRow = (githubId: number) => userRowOf(w.db, githubId);
 const usageRows = (teamId: number) => usageRowsOf(w.db, teamId);
 const rowsOfModel = (model: string) => w.db.prepare("select * from usage where model = ?").all(model);
-const countIsRight = () => expect(usageCounts(w.db, w.B.id, TODAY).rows).toBe(usageRows(w.B.id));
 const createAs = (v: ManageWorld, who: Who, name: string) => asUser(v, who, "/api/teams", { method: "POST", body: { name, dashboardAccess: "members" } });
 /** The id, public id and code of the team a creation answered with. */
 async function created(v: ManageWorld, res: Response): Promise<{ id: number; publicId: string; code: string }> {
@@ -82,9 +62,9 @@ test("the owner deletes the team: everything that was the team's is gone at once
   for (const [table, left] of Object.entries(held)) expect(left, table).toEqual([]);
   expect(everythingOf(w.db, w.A.id)).toEqual(before);
   expect(w.db.pragma("foreign_key_check")).toEqual([]);
-  expect((await upload(w.B.tia.one.token, [record()])).status).toBe(401);
-  expect((await stats(w.B.tia.session)).status).toBe(401);
-  expect((await registerAs(newcomer, w.B.code)).status).toBe(403);
+  expect((await uploadAs(w, w.B.tia.one.token, [record()])).status).toBe(401);
+  expect((await statsAs(w, w.B.tia.session)).status).toBe(401);
+  expect((await registerAs(w, NEWCOMER, w.B.code)).status).toBe(403);
   expect(await (await as("bob", "/api/me")).json()).toEqual({ kind: "user", login: "bob", teams: [] });
   expect(userRow(2202)).toBeUndefined();
   expect((await as("bob", `/api/teams/${w.B.publicId}`)).status).toBe(404);
@@ -92,14 +72,14 @@ test("the owner deletes the team: everything that was the team's is gone at once
 });
 test("the usage goes in slices, with the count right and uploads answered at each pause", async () => {
   const seen: number[] = [];
-  atPause = async () => {
-    expect(usageCounts(w.db, w.B.id, TODAY).rows).toBe(usageRows(w.B.id));
-    seen.push((await upload(w.A.members[0]!.one.token, [record({ model: `during-${seen.length}` })])).status);
+  w.pace.atPause = async () => {
+    w.countIsRight();
+    seen.push((await uploadAs(w, w.A.members[0]!.one.token, [record({ model: `during-${seen.length}` })])).status);
   };
   expect((await post("bob", deletePath(w.B), { name: w.B.name })).status).toBe(204);
   expect(seen.length).toBeGreaterThanOrEqual(2);
   expect(seen.every((s) => s === 200)).toBe(true);
-  expect(pauses).toBe(3);                                             // one after each full slice of B's 9 rows, none after the last
+  expect(w.pace.pauses).toBe(3);                                      // one after each full slice of B's 9 rows, none after the last
 });
 test("the answer to a deletion is 204 with no body and no-store", async () => {
   const res = await deleteAs(w, "bob", w.B);
@@ -126,7 +106,7 @@ test("a wrong name, one that differs only in case, an empty one and a missing on
   ];
   for (const [body, error] of refused) await expectAnswer(await post("bob", deletePath(w.B), body), 400, error);
   expect(everythingOf(w.db, w.B.id)).toEqual(before);
-  expect(pauses).toBe(0);
+  expect(w.pace.pauses).toBe(0);
 });
 test(`a team renamed to "${CAFE}" is deleted when the name is sent decomposed (NFD) with spaces around it`, async () => {
   expect((await asUser(w, "bob", `/api/teams/${w.B.publicId}`, { method: "PATCH", body: { name: CAFE } })).status).toBe(200);
@@ -150,7 +130,7 @@ test("an admin and a viewer get 403, and a user with no role in B the 404 of a t
     await expectAnswer(await post("bob", path, { name: w.B.name }), 404, "team not found");
   }
   expect(everythingOf(w.db, w.B.id)).toEqual(before);
-  expect(pauses).toBe(0);
+  expect(w.pace.pauses).toBe(0);
 });
 test("no credential, a machine token and a member's session get 401; without the server's Origin 403; B is whole", async () => {
   const before = everythingOf(w.db, w.B.id);
@@ -164,15 +144,15 @@ test("no credential, a machine token and a member's session get 401; without the
 
 test("the owner's role handed over while the deletion pauses: 403, and the team is whole but for the slice removed, its count right", async () => {
   const { usage, usage_counts, team_roles, ...rest } = everythingOf(w.db, w.B.id);
-  atPause = async () => {
-    atPause = undefined;
+  w.pace.atPause = async () => {
+    w.pace.atPause = undefined;
     handOver(w.db, w.B.id, PEOPLE.bob.githubId, PEOPLE.cyd.githubId);
   };
   await expectAnswer(await deleteAs(w, "bob", w.B), 403, ROLE_NOT_ALLOWED);
   const after = everythingOf(w.db, w.B.id);
   expect(after).toMatchObject(rest);                                  // the team's row, members, machines, sessions, links, invites
   expect(usageRows(w.B.id)).toBe(usage!.length - 3);                  // one slice of 3 ran
-  countIsRight();
+  w.countIsRight();
 });
 test("two deletions open together: one answers 204, the other finds no team at its next step and answers 404", async () => {
   const answers = await Promise.all([deleteAs(w, "bob", w.B), deleteAs(w, "bob", w.B)]);
@@ -183,10 +163,10 @@ test("two deletions open together: one answers 204, the other finds no team at i
   expect(w.db.pragma("foreign_key_check")).toEqual([]);
 });
 test("what B's machine uploads at a pause is answered 200 and goes with the team", async () => {
-  atPause = async () => {
-    atPause = undefined;
-    expect((await upload(w.B.tia.one.token, [record({ model: "at-a-pause" })])).status).toBe(200);
-    countIsRight();
+  w.pace.atPause = async () => {
+    w.pace.atPause = undefined;
+    expect((await uploadAs(w, w.B.tia.one.token, [record({ model: "at-a-pause" })])).status).toBe(200);
+    w.countIsRight();
   };
   expect((await deleteAs(w, "bob", w.B)).status).toBe(204);
   expect(rowsOfModel("at-a-pause")).toEqual([]);
@@ -197,8 +177,8 @@ test("invites of B accepted while B's deletion pauses: 200, then B goes with tho
   const forZoe = await inviteToken("bob", w.B, "viewer");
   const a = everythingOf(w.db, w.A.id);
   const accepted: number[] = [];
-  atPause = async () => {
-    atPause = undefined;
+  w.pace.atPause = async () => {
+    w.pace.atPause = undefined;
     accepted.push((await post("eve", "/api/invites/accept", { token: forEve })).status);
     accepted.push((await post("zoe", "/api/invites/accept", { token: forZoe })).status);
     expect(countOf("team_roles", w.B.id)).toBe(5);
@@ -222,11 +202,11 @@ test("an upload of B's machine held while B is deleted is refused when its body 
   expect(rowsOfModel("late")).toEqual([]);
   expect(countOf("usage_counts", w.B.id)).toBe(0);
   expect(everythingOf(w.db, w.A.id)).toEqual(a);
-  expect(logged).toEqual([]);
+  expect(w.logged).toEqual([]);
 });
 test("a registration with B's code held while B is deleted is refused as for any unknown code, and nobody joins any team", async () => {
   const a = everythingOf(w.db, w.A.id);
-  const text = JSON.stringify(goodReg({ inviteCode: w.B.code, ...newcomer }));
+  const text = JSON.stringify(registration(NEWCOMER, w.B.code));
   const held = heldRequest(w.app, "/api/register", { method: "POST", text, headers: { "Content-Type": "application/json", Origin: PUBLIC } });
   await settle();                                                     // the handler now waits for the body
   expect((await deleteAs(w, "bob", w.B)).status).toBe(204);
@@ -266,7 +246,7 @@ test("a team created right after a deletion is answered 200 at its first upload 
   const limits = testLimits(testCaps(), { teamUploadRecordsPerMinute: 9, teamStatsMsPerMinute: 100 });
   const v = await manageWorld({ limits, stopwatch: () => (reading += 60) });
   const statsAsBob = (publicId: string) => asUser(v, "bob", `/api/stats?${RANGE}&team=${publicId}`);
-  const uploadOne = (token: string) => postFromPage(v.app, "/api/usage", { records: recordsOf(1) }, { Authorization: `Bearer ${token}` });
+  const uploadOne = (token: string) => uploadAs(v, token, recordsOf(1));
   expect((await uploadOne(v.B.tia.one.token)).status).toBe(429);
   for (const status of [200, 200, 429]) expect((await statsAsBob(v.B.publicId)).status).toBe(status);
   expect((await deleteAs(v, "bob", v.B)).status).toBe(204);

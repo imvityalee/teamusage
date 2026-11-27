@@ -1,6 +1,6 @@
 import { beforeEach, expect, test } from "vitest";
-import { goodReg, record } from "./app.fixture.js";
-import { heldUpload, machineIdOf, postFromPage, PUBLIC, settle } from "./hosted.fixture.js";
+import { record } from "./app.fixture.js";
+import { askForLink, heldUpload, machineIdOf, PUBLIC, settle } from "./hosted.fixture.js";
 import { rowsOf } from "./hosted.two-teams.fixture.js";
 import {
   asUser,
@@ -8,51 +8,23 @@ import {
   everythingOf,
   manageWorld,
   notGithubSessions,
-  RANGE,
   removeRoleRow,
   send,
-  T0,
   usageRowsOf,
   type ManagedTeam,
-  type ManageWorld,
   type Who,
 } from "./manage.fixture.js";
-import { usageCounts } from "./usage-counts.js";
+import { NEWCOMER, pacedWorld, registerAs, statsAs, uploadAs, type PacedWorld } from "./manage.requests.fixture.js";
 
-const TODAY = T0.slice(0, 10);
-
-let w: ManageWorld;
-/** What the next pause of a removal runs; a test sets it. */
-let atPause: (() => Promise<void>) | undefined;
-let pauses: number;
-let logged: string[];
-const pause = async () => {
-  pauses++;
-  await atPause?.();
-};
+let w: PacedWorld;
 beforeEach(async () => {
-  atPause = undefined;
-  pauses = 0;
-  logged = [];
-  w = await manageWorld({ removal: { sliceRows: 3, pause }, logError: (line) => logged.push(line) });
+  w = await pacedWorld();
 });
-
-type Joiner = { name: string; email: string; one: { id: string; label: string } };
-/** Someone who never joined `B`. */
-const newcomer: Joiner = { name: "Uma", email: "uma@example.com", one: { id: machineIdOf(0xc1), label: "uma-laptop" } };
 
 const removalsPath = (team: ManagedTeam) => `/api/teams/${team.publicId}/removals`;
 const removals = (who: Who, team: ManagedTeam, body: unknown) => asUser(w, who, removalsPath(team), { method: "POST", body });
-const stats = (session: string) => w.app.request(`/api/stats?${RANGE}`, { headers: { Cookie: session } });
-const upload = (token: string, records: unknown[]) => postFromPage(w.app, "/api/usage", { records }, { Authorization: `Bearer ${token}` });
-const link = (token: string) => w.app.request("/api/dashboard-link", { method: "POST", headers: { Authorization: `Bearer ${token}` } });
-/** Registers `who`'s machine `one` with `code`, as their installed client does when it joins. */
-const registerAs = (who: Joiner, code: string) =>
-  postFromPage(w.app, "/api/register", goodReg({ inviteCode: code, name: who.name, email: who.email, machineId: who.one.id, machineLabel: who.one.label }));
-const usageRows = (teamId: number) => usageRowsOf(w.db, teamId);
 const usageRowsOfMember = (teamId: number, memberId: number) => usageRowsOf(w.db, teamId, memberId);
 const memberIds = (teamId: number) => rowsOf(w.db, teamId).members.map((m) => m.id);
-const countIsRight = () => expect(usageCounts(w.db, w.B.id, TODAY).rows).toBe(usageRows(w.B.id));
 
 test("the colleague who was laid off: removed with a new code, he is out everywhere and nobody else notices", async () => {
   const rowsA = rowsOf(w.db, w.A.id);
@@ -62,21 +34,21 @@ test("the colleague who was laid off: removed with a new code, he is out everywh
   const body = (await res.json()) as { removed: unknown; code: string };
   expect(body.removed).toEqual({ members: 1, machines: 2 });
   expect(body.code).toMatch(/^[a-f0-9]{24}$/);
-  expect((await stats(w.B.sam.session)).status).toBe(401);            // his browser
-  expect((await upload(w.B.sam.one.token, [record()])).status).toBe(401);   // his machine
-  expect((await link(w.B.sam.one.token)).status).toBe(401);
-  expect((await registerAs(w.B.sam, w.B.code)).status).toBe(403);     // his client joining again with the code it holds
-  expect((await stats(w.B.tia.session)).status).toBe(200);            // a colleague's browser
-  expect((await upload(w.B.tia.one.token, [record()])).status).toBe(200);
-  expect((await registerAs(newcomer, body.code)).status).toBe(200);
-  countIsRight();
+  expect((await statsAs(w, w.B.sam.session)).status).toBe(401);                 // his browser
+  expect((await uploadAs(w, w.B.sam.one.token, [record()])).status).toBe(401);  // his machine
+  expect((await askForLink(w.app, w.B.sam.one.token)).status).toBe(401);
+  expect((await registerAs(w, w.B.sam, w.B.code)).status).toBe(403);            // his client joining again with the code it holds
+  expect((await statsAs(w, w.B.tia.session)).status).toBe(200);                 // a colleague's browser
+  expect((await uploadAs(w, w.B.tia.one.token, [record()])).status).toBe(200);
+  expect((await registerAs(w, NEWCOMER, body.code)).status).toBe(200);
+  w.countIsRight();
   expect(rowsOf(w.db, w.A.id)).toEqual(rowsA);
 });
 test("without a new code the answer carries none and the code still joins", async () => {
   const res = await removals("bob", w.B, { members: [], machines: [w.B.sam.two.id], rotateCode: false });
   expect(await res.json()).toEqual({ removed: { members: 0, machines: 1 } });
-  expect((await registerAs(newcomer, w.B.code)).status).toBe(200);
-  expect((await stats(w.B.sam.session)).status).toBe(200);            // opened from machine one, which stays
+  expect((await registerAs(w, NEWCOMER, w.B.code)).status).toBe(200);
+  expect((await statsAs(w, w.B.sam.session)).status).toBe(200);         // opened from machine one, which stays
 });
 test("a new code is given whatever was removed, also when nothing the request names is the team's", async () => {
   const before = codeRow(w.db, w.B.id);
@@ -84,34 +56,34 @@ test("a new code is given whatever was removed, also when nothing the request na
   const body = (await res.json()) as { removed: unknown; code: string };
   expect(body.removed).toEqual({ members: 0, machines: 0 });
   expect(codeRow(w.db, w.B.id)).not.toEqual(before);
-  expect((await registerAs(newcomer, body.code)).status).toBe(200);
+  expect((await registerAs(w, NEWCOMER, body.code)).status).toBe(200);
 });
 test("a removal of more rows than a slice pauses between slices, with the count right and other teams answered at each pause", async () => {
   const seen: number[] = [];                                           // sam holds 7 rows: slices of 3, 3, 1
-  atPause = async () => {
-    countIsRight();
-    seen.push((await upload(w.A.members[0]!.one.token, [record({ model: `during-${seen.length}` })])).status);
+  w.pace.atPause = async () => {
+    w.countIsRight();
+    seen.push((await uploadAs(w, w.A.members[0]!.one.token, [record({ model: `during-${seen.length}` })])).status);
   };
   expect((await removals("bob", w.B, { members: [w.B.sam.memberId], machines: [], rotateCode: false })).status).toBe(200);
   expect(seen).toEqual([200, 200]);
 });
 test("what a machine being removed uploads at a pause goes with it", async () => {
-  atPause = async () => {
-    atPause = undefined;
-    expect((await upload(w.B.sam.two.token, [record({ model: "at-a-pause" })])).status).toBe(200);
+  w.pace.atPause = async () => {
+    w.pace.atPause = undefined;
+    expect((await uploadAs(w, w.B.sam.two.token, [record({ model: "at-a-pause" })])).status).toBe(200);
   };
   expect((await removals("bob", w.B, { members: [w.B.sam.memberId], machines: [], rotateCode: false })).status).toBe(200);
   expect(usageRowsOfMember(w.B.id, w.B.sam.memberId)).toBe(0);
-  countIsRight();
+  w.countIsRight();
 });
 test("an admin whose role goes while their removal pauses removes nothing more", async () => {
   const codeBefore = codeRow(w.db, w.B.id);
-  atPause = async () => { atPause = undefined; removeRoleRow(w, "cyd"); };
+  w.pace.atPause = async () => { w.pace.atPause = undefined; removeRoleRow(w, "cyd"); };
   const res = await removals("cyd", w.B, { members: [w.B.sam.memberId], machines: [], rotateCode: true });
   expect(res.status).toBe(404);
   expect(memberIds(w.B.id)).toContain(w.B.sam.memberId);
   expect(usageRowsOfMember(w.B.id, w.B.sam.memberId)).toBe(4);        // one slice of 3 ran
-  countIsRight();
+  w.countIsRight();
   expect(codeRow(w.db, w.B.id)).toEqual(codeBefore);                  // not rotated; read before the request
 });
 
@@ -163,8 +135,8 @@ test("two removals of sam open together: one reports him, the other nothing, and
   const answers = await Promise.all([removals("bob", w.B, what), removals("cyd", w.B, what)]);
   const removed = await Promise.all(answers.map(async (res) => ((await res.json()) as { removed: { members: number } }).removed));
   expect(removed.sort((x, y) => y.members - x.members)).toEqual([{ members: 1, machines: 2 }, { members: 0, machines: 0 }]);
-  expect(pauses).toBeGreaterThanOrEqual(2);                            // each ran at least one full slice
-  countIsRight();
+  expect(w.pace.pauses).toBeGreaterThanOrEqual(2);                      // each ran at least one full slice
+  w.countIsRight();
 });
 
 test("a viewer gets 403, and a user with no role in the team the 404 of a team that does not exist; nothing is removed", async () => {
@@ -179,7 +151,7 @@ test("a viewer gets 403, and a user with no role in the team the 404 of a team t
     expect(await res.json()).toEqual({ error: "team not found" });
   }
   expect([everythingOf(w.db, w.B.id), everythingOf(w.db, w.A.id)]).toEqual(before);
-  expect(pauses).toBe(0);
+  expect(w.pace.pauses).toBe(0);
 });
 test("no credential, a machine token and a member's session get 401; without the server's Origin 403; nothing is removed", async () => {
   const before = everythingOf(w.db, w.B.id);
@@ -207,8 +179,8 @@ test("an upload held while its machine's member is removed is refused when its b
   expect(res.status).toBe(401);
   expect(await res.json()).toEqual({ error: "unauthorized" });
   expect(usageRowsOfMember(w.B.id, w.B.sam.memberId)).toBe(0);
-  countIsRight();
-  expect(logged).toEqual([]);
+  w.countIsRight();
+  expect(w.logged).toEqual([]);
 });
 
 test("at the default pace a member is removed in one slice", async () => {

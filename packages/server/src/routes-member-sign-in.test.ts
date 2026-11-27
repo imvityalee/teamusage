@@ -5,7 +5,20 @@ import { goodReg, record } from "./app.fixture.js";
 import { DASHBOARD_LINK_SECONDS } from "./dashboard-links.js";
 import { sha256, type Db } from "./db.js";
 import type { TeamInfo } from "./hosted-teams.js";
-import { cookieOf, hostedApp, hostedTeam, machineIdOf, memberSignIn, postFromPage, PUBLIC, signIn, testCaps, testLimits } from "./hosted.fixture.js";
+import {
+  askForLink,
+  cookieOf,
+  dashboardLinkToken,
+  hostedApp,
+  hostedTeam,
+  machineIdOf,
+  memberSignIn,
+  postFromPage,
+  PUBLIC,
+  signIn,
+  testCaps,
+  testLimits,
+} from "./hosted.fixture.js";
 import { MAX_MEMBER_SESSIONS } from "./sessions.js";
 import { forTeam } from "./team-data.js";
 
@@ -51,8 +64,8 @@ beforeEach(async () => {
   expect([b.team.id, sam.memberId, tia.memberId]).toEqual([2, 6, 7]);
 });
 
-const link = (token: string) => app.request("/api/dashboard-link", { method: "POST", headers: bearer(token) });
-const linkToken = async (token: string) => ((await (await link(token)).json()) as { path: string }).path.slice("/open#".length);
+const link = (token: string) => askForLink(app, token);
+const linkToken = (token: string) => dashboardLinkToken(app, token);
 const open = (token: unknown) => postFromPage(app, OPEN, { token });
 const stats = (cookie: string, more = "") => app.request(`/api/stats?${RANGE}${more}`, { headers: { Cookie: cookie } });
 const me = (cookie: string) => app.request("/api/me", { headers: { Cookie: cookie } });

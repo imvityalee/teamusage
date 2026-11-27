@@ -107,9 +107,13 @@ export async function signIn(app: Hono, code: string): Promise<string> {
   return session;
 }
 
+/** Asks for a sign-in link as the machine `token`. */
+export const askForLink = async (app: Hono, token: string): Promise<Response> =>
+  app.request("/api/dashboard-link", { method: "POST", headers: { Authorization: `Bearer ${token}` } });
+
 /** Asks for a sign-in link as the machine `token`; returns the link's token. */
 export async function dashboardLinkToken(app: Hono, token: string): Promise<string> {
-  const linked = await app.request("/api/dashboard-link", { method: "POST", headers: { Authorization: `Bearer ${token}` } });
+  const linked = await askForLink(app, token);
   if (linked.status !== 200) throw new Error(`asking for a sign-in link answered ${linked.status}`);
   return ((await linked.json()) as { path: string }).path.slice("/open#".length);
 }

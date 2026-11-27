@@ -1,6 +1,7 @@
 import { beforeEach, expect, test } from "vitest";
 import { dashboardLinkToken, heldRequest, postFromPage, PUBLIC, settle } from "./hosted.fixture.js";
 import { asUser, expectAnswer, manageWorld, RANGE, removeRoleRow, teamRow, type Machine, type ManagedTeam, type ManageWorld, type Who } from "./manage.fixture.js";
+import { statsAs } from "./manage.requests.fixture.js";
 
 let w: ManageWorld;
 beforeEach(async () => {
@@ -9,7 +10,6 @@ beforeEach(async () => {
 
 const as = (who: Who, path: string) => asUser(w, who, path);
 const patch = (who: Who, team: ManagedTeam, body: unknown) => asUser(w, who, `/api/teams/${team.publicId}`, { method: "PATCH", body });
-const stats = (session: string) => w.app.request(`/api/stats?${RANGE}`, { headers: { Cookie: session } });
 const linkToken = (machine: Machine) => dashboardLinkToken(w.app, machine.token);
 const open = (token: string) => postFromPage(w.app, "/api/dashboard-link/open", { token });
 
@@ -43,11 +43,11 @@ test("an admin renames the team; only the owner sets dashboard access, and an ad
 test("switching to admins signs the team's members out and drops their links; switching back does not sign them in again", async () => {
   const pending = await linkToken(w.B.sam.one);
   expect((await patch("bob", w.B, { dashboardAccess: "admins" })).status).toBe(200);
-  expect((await stats(w.B.sam.session)).status).toBe(401);
-  expect((await stats(w.A.memberSession)).status).toBe(200);           // another team's member stays signed in
+  expect((await statsAs(w, w.B.sam.session)).status).toBe(401);
+  expect((await statsAs(w, w.A.memberSession)).status).toBe(200);       // another team's member stays signed in
   expect((await as("dee", `/api/stats?${RANGE}&team=${w.B.publicId}`)).status).toBe(200);
   expect((await patch("bob", w.B, { dashboardAccess: "members" })).status).toBe(200);
-  expect((await stats(w.B.sam.session)).status).toBe(401);
+  expect((await statsAs(w, w.B.sam.session)).status).toBe(401);
   expect((await open(pending)).status).toBe(403);
 });
 
@@ -62,8 +62,8 @@ test("the owner changes the name and the access in one request; the answer is th
 test("setting the access the team already has changes nothing else: its members stay signed in and a pending link still opens", async () => {
   const pending = await linkToken(w.B.tia.one);
   expect((await patch("bob", w.B, { dashboardAccess: "members" })).status).toBe(200);
-  expect((await stats(w.B.sam.session)).status).toBe(200);
-  expect((await stats(w.B.tia.session)).status).toBe(200);
+  expect((await statsAs(w, w.B.sam.session)).status).toBe(200);
+  expect((await statsAs(w, w.B.tia.session)).status).toBe(200);
   expect((await open(pending)).status).toBe(204);
 });
 test("a name of 60 characters once trimmed is accepted; every other refused body is 400 and changes nothing", async () => {
