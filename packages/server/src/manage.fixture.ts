@@ -14,6 +14,7 @@ import {
   signIn,
   type HostedAppOptions,
 } from "./hosted.fixture.js";
+import { removeRole } from "./team-roles.js";
 
 /** The moment the world's clock stands at until a test moves it; the default `record()` date is the day before. */
 export const T0 = "2026-11-02T09:30:00.000Z";
@@ -30,6 +31,8 @@ export const PEOPLE: Record<Who, { githubId: number; login: Who }> = {
   eve: { githubId: 5505, login: "eve" },
   zoe: { githubId: 6606, login: "zoe" },
 };
+/** A GitHub user the world has no role or session for; a test gives her a role with `grantRole`. */
+export const FAY = { githubId: 7707, login: "fay" };
 
 export type Machine = { id: string; label: string; token: string };
 export type ManagedTeam = { id: number; publicId: string; name: string; code: string };
@@ -183,7 +186,7 @@ export function everythingOf(db: Db, teamId: number): Record<string, unknown[]> 
   return rows;
 }
 
-/** Removes `who`'s role, the only one they have in the world; their `users` row stays. */
+/** Removes the role of `who`, an admin or a viewer, in each team of the world, as the product does: with the last role their `users` row goes. */
 export function removeRoleRow(w: ManageWorld, who: Who): void {
-  w.db.prepare("delete from team_roles where user_id = (select id from users where github_id = ?)").run(PEOPLE[who].githubId);
+  for (const team of [w.A, w.B]) removeRole(w.db, team.id, PEOPLE[who].githubId);
 }

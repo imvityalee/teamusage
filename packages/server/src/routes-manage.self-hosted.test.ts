@@ -12,6 +12,9 @@ const MANAGEMENT_ROUTES: [string, string, unknown][] = [
   ["POST", `${TEAM}/code/rotate`, undefined],
   ["GET", `${TEAM}/members`, undefined],
   ["POST", `${TEAM}/removals`, { members: [6], machines: [], rotateCode: false }],
+  ["GET", `${TEAM}/roles`, undefined],
+  ["DELETE", `${TEAM}/roles/3303`, undefined],
+  ["POST", `${TEAM}/owner`, { user: 3303 }],
 ];
 
 test.each(MANAGEMENT_ROUTES)("a self-hosted server has no route %s %s", async (method, path, body) => {

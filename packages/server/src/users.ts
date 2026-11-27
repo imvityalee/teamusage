@@ -10,6 +10,11 @@ export function findUser(db: Db, githubId: number): User | null {
   return (db.prepare(`select ${USER_COLUMNS} from users where github_id = ?`).get(githubId) as User | undefined) ?? null;
 }
 
+/** Deletes the users that have no role in any team. */
+export function dropUsersWithoutRole(db: Db): void {
+  db.prepare("delete from users where not exists (select 1 from team_roles r where r.user_id = users.id)").run();
+}
+
 /** The user's row, created on first use; a changed login is stored. */
 export function ensureUser(db: Db, who: { githubId: number; login: string }): User {
   return db
