@@ -2,8 +2,10 @@ import { initials } from "../format.js";
 import type { Lang } from "../lang.js";
 import { request } from "../site/http.js";
 import { applyText, languageSwitch } from "../site/i18n.js";
+import { tokenOf } from "../site/fragment-token.js";
 import { me } from "../site/session.js";
-import { opener, tokenOf, type OpenView } from "./open.js";
+import { listsView } from "../site/views.js";
+import { opener, type OpenView } from "./open.js";
 import { strings } from "./strings.js";
 
 /** `/open`: reads the link's token, takes it out of the address before any request, and draws what the opener decides. */
@@ -54,7 +56,7 @@ function timeOpening(view: OpenView): void {
 
 /** A part of the page is shown in the views it names; of the two sign-in lines, the one this server offers. */
 function partShown(el: HTMLElement, view: OpenView): boolean {
-  if (!(el.dataset.views ?? "").split(" ").includes(view)) return false;
+  if (!listsView(el, view)) return false;
   if (el === ui.githubLine) return !state.noAccounts;
   if (el === ui.codeLine) return state.noAccounts;
   return true;

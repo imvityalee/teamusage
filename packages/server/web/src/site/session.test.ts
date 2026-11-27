@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { me, signOut, SIGN_IN_PATH, type Me } from "./session.js";
+import { me, signInDidNotFinish, signOut, SIGN_IN_PATH, type Me } from "./session.js";
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 
@@ -89,4 +89,14 @@ describe("signOut", () => {
 
 test("sign-in starts at GitHub's start path", () => {
   expect(SIGN_IN_PATH).toBe("/auth/github/start");
+});
+
+test.each([
+  ["?error=signin", true],
+  ["?error=signin&x=1", true],
+  ["", false],
+  ["?error=other", false],
+  ["?error=SIGNIN", false],
+])("signInDidNotFinish(%j) is %s", (search, expected) => {
+  expect(signInDidNotFinish(search)).toBe(expected);
 });

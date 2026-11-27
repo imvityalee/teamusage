@@ -14,7 +14,6 @@
 .lead { margin: 20px auto 0; max-width: 660px; font-size: 19px; color: var(--muted); }
 .cta { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin-top: 28px; }
 .note { margin: 14px 0 0; font-size: 13px; color: var(--muted); }
-.gh { flex-shrink: 0; fill: currentColor; }
 
 /* The sample card: made-up numbers drawn as static markup */
 .sample { max-width: 1000px; margin: 48px auto 0; padding: 20px; border-radius: 20px; text-align: left;

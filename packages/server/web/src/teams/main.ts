@@ -2,7 +2,8 @@ import { initials } from "../format.js";
 import type { Lang } from "../lang.js";
 import { request } from "../site/http.js";
 import { applyText, languageSwitch, translator } from "../site/i18n.js";
-import { me, signOut, type MeAnswer } from "../site/session.js";
+import { me, signInDidNotFinish, signOut, type MeAnswer } from "../site/session.js";
+import { showView } from "../site/views.js";
 import { formView } from "./form-view.js";
 import { drawTeams, paintOwned } from "./list-view.js";
 import { strings } from "./strings.js";
@@ -29,7 +30,7 @@ const ui = {
 };
 
 /** The notice of a sign-in that did not finish is read once and then taken out of the address, so a reload does not repeat it. */
-const signInFailed = new URLSearchParams(location.search).get("error") === "signin";
+const signInFailed = signInDidNotFinish(location.search);
 if (location.search !== "") history.replaceState(null, "", location.pathname + location.hash);
 
 let lang: Lang = languageSwitch(document, (next) => {
@@ -68,7 +69,7 @@ function paintAccount(): void {
 
 function paint(): void {
   applyText(document, strings, lang, "title");
-  for (const el of ui.views) el.hidden = el.dataset.view !== view;
+  showView(ui.views, view);
   ui.signInNotice.hidden = !(signInFailed && view === "signedOut");
   ui.memberText.textContent =
     session?.kind === "me" && session.me.kind === "member" ? t(lang, "memberText", { team: session.me.team.name }) : "";

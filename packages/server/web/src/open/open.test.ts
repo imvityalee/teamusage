@@ -1,7 +1,7 @@
 import { describe, expect, test, vi, type Mock } from "vitest";
 import type { ApiResult } from "../site/http.js";
 import type { Me, me as meOf } from "../site/session.js";
-import { opener, tokenOf, type Opener } from "./open.js";
+import { opener, type Opener } from "./open.js";
 
 const TOKEN = "0123456789abcdef".repeat(4);
 const BOB: Me = { kind: "user", githubId: 7_310_442, login: "bob", teams: [] };
@@ -198,17 +198,4 @@ describe("no token", () => {
     expect(spy).not.toHaveBeenCalled();
     expect(go).not.toHaveBeenCalled();
   });
-});
-
-describe("tokenOf", () => {
-  test("reads 64 hex characters after #", () => {
-    expect(tokenOf(`#${TOKEN}`)).toBe(TOKEN);
-  });
-
-  test.each(["", "#", "#abc", `#${"g".repeat(64)}`, `#${"a".repeat(63)}`, `#${"a".repeat(65)}`, `#/x/${"a".repeat(64)}`, `#${"A".repeat(64)}`, `${"a".repeat(64)}`])(
-    "tokenOf(%j) is null",
-    (hash) => {
-      expect(tokenOf(hash)).toBeNull();
-    },
-  );
 });

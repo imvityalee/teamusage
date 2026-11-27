@@ -13,6 +13,9 @@ export type MeAnswer = { kind: "me"; me: Me } | { kind: "none" } | { kind: "noAc
 
 export const SIGN_IN_PATH = "/auth/github/start";
 
+/** True when the address carries `?error=signin`: the server's answer to a GitHub sign-in that did not finish. */
+export const signInDidNotFinish = (search: string): boolean => new URLSearchParams(search).get("error") === "signin";
+
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const ROLES: readonly unknown[] = ["owner", "admin", "viewer"];
 const ACCESS: readonly unknown[] = ["members", "admins"];

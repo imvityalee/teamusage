@@ -6,12 +6,6 @@ export type OpenView = "how" | "opening" | "confirm" | "expired" | "adminsOnly" 
 /** The server's refusal of a link whose team shows its dashboard only to admins (src/stats-access.ts). */
 const DASHBOARD_ADMINS_ONLY = "this team's dashboard is limited to its admins";
 const OPEN_PATH = "/api/dashboard-link/open";
-const TOKEN = /^#([a-f0-9]{64})$/;
-
-/** The token of `#<64 hex>`; null for anything else. */
-export function tokenOf(hash: string): string | null {
-  return TOKEN.exec(hash)?.[1] ?? null;
-}
 
 /**
  * `noAccounts`: the server has no GitHub sign-in (self-hosted), so the page offers the invite code instead.

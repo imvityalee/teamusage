@@ -12,8 +12,9 @@ body.site { font-size: 16px; line-height: 1.5; }
 .page { max-width: 520px; margin: 0 auto; padding: 56px 24px 64px; min-width: 0; }
 .page h1 { margin: 0; font-size: 30px; line-height: 1.15; letter-spacing: -0.02em; font-weight: 700; overflow-wrap: anywhere; }
 .page .badge + h1 { margin-top: 16px; }
+.page .small + h1 { margin-top: 6px; }
 .page .card { margin-top: 24px; }
-.lede { margin: 10px 0 0; color: var(--muted); }
+.lede { margin: 10px 0 0; color: var(--muted); overflow-wrap: anywhere; }
 .lede + .actions { margin-top: 24px; }
 .aside { margin: 18px 0 0; font-size: 14px; color: var(--muted); }
 /* The link's hit area grows to a finger's height without moving the line. */
@@ -37,6 +38,8 @@ body.site { font-size: 16px; line-height: 1.5; }
 .site-head .brand:active, .aside a:active { opacity: .6; }
 .actions { display: flex; flex-wrap: wrap; gap: 10px; }
 .actions .btn { flex: 1 1 200px; }
+/* The GitHub mark inside a sign-in button */
+.gh { flex-shrink: 0; fill: currentColor; }
 
 /* Cards and what goes in them */
 .card { display: flex; flex-direction: column; gap: 16px; min-width: 0; padding: 22px;
@@ -53,6 +56,10 @@ body.site { font-size: 16px; line-height: 1.5; }
   border-radius: 50%; background: var(--text); color: var(--card); font-size: 12px; font-weight: 600; }
 .identity-text { min-width: 0; }
 .identity-name { font-weight: 600; overflow-wrap: anywhere; }
+/* An identity with an action at its end (/invite): the action moves under the name when the row is narrow. */
+.identity.with-action { flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; }
+.identity-who { display: flex; align-items: center; gap: 12px; flex: 1 1 200px; min-width: 0; }
+.with-action .link-button { font-size: 14px; }
 
 /* The header's right side: the signed-in account, then the language switch */
 .head-tools { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; font-size: 14px; }

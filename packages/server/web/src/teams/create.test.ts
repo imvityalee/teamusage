@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
+import { json, nobody, user, type Page } from "../site/page.fixture.js";
 import { worstCase } from "../site/worst-case.fixture.js";
-import { boot, json, nobody, user, type Page } from "./page.fixture.js";
+import { boot } from "./page.fixture.js";
 import { strings } from "./strings.js";
 
 const NEW_ID = "abcdef0123456789";

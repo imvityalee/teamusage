@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
+import { json, member, nobody, user, type Page } from "../site/page.fixture.js";
 import { SIGN_IN_PATH } from "../site/session.js";
 import { worstCase } from "../site/worst-case.fixture.js";
-import { boot, json, member, nobody, user, type Page } from "./page.fixture.js";
+import { boot } from "./page.fixture.js";
 import { strings } from "./strings.js";
 
 const OWNER = { id: "1111111111111111", name: "Acme", role: "owner" as const };
