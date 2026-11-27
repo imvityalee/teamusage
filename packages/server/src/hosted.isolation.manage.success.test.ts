@@ -21,8 +21,7 @@ import { RANGE } from "./manage.fixture.js";
 // renaming, the code, invites, roles, removals, deletion. After each, the team it did not act on is as it was. The
 // refused cells are in hosted.isolation.manage.test.ts.
 
-/** The routes whose answer to an outsider names B's team, because the outsider holds an invite's token. */
-const INVITE_ROUTES = ["POST /api/invites/preview", "POST /api/invites/accept"];
+const PREVIEW = "POST /api/invites/preview";
 
 let s: Scene;
 let rowsOfA: ReturnType<typeof rowsOfBoth>["A"];
@@ -65,8 +64,11 @@ test.each(SUCCESS_ORDER)("%s as %s", async (route, caller) => {
   }
   expect(res.status).toBe(statusOf(r, caller));
   expect(res.headers.get("cache-control")).toBe("no-store");
-  // The answers to an outsider that name B are those of its invite: the preview of whoever holds the token, and eve's acceptance of it.
-  if (OUTSIDERS.includes(caller) && !INVITE_ROUTES.includes(route)) expectNothingOf(await res.clone().text(), markersOfB(s), `the answer to ${caller}`);
+  // An outsider's acceptance of an invite names B's team to her; the preview names only its name, to whoever holds the token.
+  if (OUTSIDERS.includes(caller) && route !== "POST /api/invites/accept") {
+    const markers = route === PREVIEW ? markersOfB(s).filter((m) => m !== s.w.B.name) : markersOfB(s);
+    expectNothingOf(await res.clone().text(), markers, `the answer to ${caller}`);
+  }
   const untouched = (r.actsOn?.(caller) ?? "B") === "B" ? "A" : "B";
   expect(rowsOfBoth(s.w)[untouched], `team ${untouched}'s rows`).toEqual(before[untouched]);
   await ANSWERS[route]?.(res, caller);

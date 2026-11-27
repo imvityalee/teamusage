@@ -1,4 +1,5 @@
 import { beforeEach, expect, test } from "vitest";
+import { goodReg } from "./app.fixture.js";
 import { postFromPage } from "./hosted.fixture.js";
 import { CALLERS, routeNamed, statusOf } from "./hosted.isolation.manage.fixture.js";
 import { asUser, DAY_MS, everythingOf, expectAnswer, manageWorld, newInvite, roleRows, send, type ManageWorld } from "./manage.fixture.js";
@@ -38,10 +39,11 @@ test("a preview changes nothing: the invite is then accepted", async () => {
   expect((await accept(token)).status).toBe(200);
 });
 
-test("an unknown token counts no attempt: more of them than the limit allows, and a real invite still answers 200", async () => {
-  const { token } = await newInvite(w, "bob", w.B, "viewer");
+test("an unknown token counts no attempt: after more of them than the limit allows, a wrong team code is 403 and not 429", async () => {
   for (let i = 0; i < MORE_THAN_THE_LIMIT; i++) await expectAnswer(await preview(String(i).padStart(64, "0")), 404, NO_LONGER_VALID);
-  expect((await preview(token)).status).toBe(200);
+  const wrongCode = await postFromPage(w.app, "/api/register", goodReg({ inviteCode: "wrong-code" }));
+  expect(wrongCode.status).toBe(403);
+  expect(await wrongCode.json()).toEqual({ error: "invalid invite code" });
 });
 
 test("an accepted invite, a cancelled one, one seven days old and a token nobody made are the same 404 in status, headers and body", async () => {

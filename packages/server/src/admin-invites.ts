@@ -74,10 +74,16 @@ function inviteOfToken(db: Db, token: string): InviteOfToken | undefined {
     .get(sha256(token)) as InviteOfToken | undefined;
 }
 
+/** The invite whose token is `token` while it can still be accepted; undefined when there is none or it has expired. */
+function liveInvite(db: Db, token: string, now: number): InviteOfToken | undefined {
+  const invite = inviteOfToken(db, token);
+  return invite !== undefined && iso(now) < invite.expiresAt ? invite : undefined;
+}
+
 /** What the invite with this token gives, while it can still be accepted; null when there is none or it has expired. Changes nothing. */
 export function previewInvite(db: Db, token: string, now: number): { teamName: string; role: InviteRole; expiresAt: string } | null {
-  const invite = inviteOfToken(db, token);
-  if (invite === undefined || iso(now) >= invite.expiresAt) return null;
+  const invite = liveInvite(db, token, now);
+  if (invite === undefined) return null;
   return { teamName: invite.name, role: invite.role, expiresAt: invite.expiresAt };
 }
 
@@ -85,8 +91,8 @@ export function previewInvite(db: Db, token: string, now: number): { teamName: s
 export function acceptInvite(db: Db, token: string, user: { githubId: number; login: string }, now: number): UserTeam {
   // Immediate, so that of two accepts open together the second reads what the first wrote: the invite gone, a role more.
   return db.transaction(() => {
-    const invite = inviteOfToken(db, token);
-    if (invite === undefined || iso(now) >= invite.expiresAt) throw new InviteError("not-valid");
+    const invite = liveInvite(db, token, now);
+    if (invite === undefined) throw new InviteError("not-valid");
     if (roleIn(db, invite.teamId, user.githubId) !== null) throw new InviteError("has-role");
     const adminsAndViewers = countOf(db, "select count(*) as n from team_roles where team_id = ? and role <> 'owner'", invite.teamId);
     if (adminsAndViewers >= MAX_ADMINS_AND_VIEWERS) throw new InviteError("team-full");
