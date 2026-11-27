@@ -34,3 +34,8 @@ export function takeDashboardLink(db: Db, token: string, now: number): MachineId
 export function dropDashboardLinks(db: Db, teamId: number): void {
   db.prepare("delete from dashboard_links where team_id = ?").run(teamId);
 }
+
+/** Drops the pending link of machine `machineId` of team `teamId`. */
+export function dropMachineLink(db: Db, teamId: number, machineId: string): void {
+  db.prepare("delete from dashboard_links where team_id = ? and machine_id = ?").run(teamId, machineId);
+}

@@ -131,3 +131,8 @@ export function replaceSession(db: Db, replaced: string | undefined, open: () =>
 export function endTeamSessions(db: Db, teamId: number): void {
   db.prepare("delete from sessions where kind in ('team', 'member') and team_id = ?").run(teamId);
 }
+
+/** Ends the member sessions opened from machine `machineId` of team `teamId`; code sessions and user sessions are left alone. */
+export function endMachineSessions(db: Db, teamId: number, machineId: string): void {
+  db.prepare("delete from sessions where kind = 'member' and team_id = ? and machine_id = ?").run(teamId, machineId);
+}

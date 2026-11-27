@@ -1,6 +1,8 @@
 import { randomBytes } from "node:crypto";
 import type { UsageRecord } from "@teamusage/shared";
+import { dropMachineLink } from "./dashboard-links.js";
 import { now, sha256, type Db } from "./db.js";
+import { endMachineSessions } from "./sessions.js";
 import { refuseBeyondLimits, type TeamLimits } from "./team-limits.js";
 import { dropExpiredUsage, oldestDateKept } from "./team-retention.js";
 import { remove, removeAnyUsageSlice, removeMachine, removeMember, removeUsageSlice, type Removal } from "./team-removal.js";
@@ -109,12 +111,7 @@ function registerMachine(
       throw new MachineOwnedError();
     }
     if (existing) {
-      db.prepare("update machines set label = ?, token_hash = ? where team_id = ? and id = ?").run(
-        a.machineLabel,
-        tokenHash,
-        teamId,
-        a.machineId,
-      );
+      renewMachine(db, teamId, { machineId: a.machineId, label: a.machineLabel, tokenHash });
     } else {
       refuseNewMachine(db, teamId, memberId, o.limits);
       db.prepare(
@@ -123,6 +120,16 @@ function registerMachine(
     }
     return { token, memberId };
   })();
+}
+
+/**
+ * Gives the registered machine `m.machineId` of team `teamId` its new label and token: the member sessions its browsers
+ * opened and the link it asked for end with the old token.
+ */
+function renewMachine(db: Db, teamId: number, m: { machineId: string; label: string; tokenHash: string }): void {
+  db.prepare("update machines set label = ?, token_hash = ? where team_id = ? and id = ?").run(m.label, m.tokenHash, teamId, m.machineId);
+  endMachineSessions(db, teamId, m.machineId);
+  dropMachineLink(db, teamId, m.machineId);
 }
 
 /**
