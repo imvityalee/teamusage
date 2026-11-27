@@ -29,3 +29,27 @@ export async function copyWith(button: HTMLButtonElement, text: string, done: st
   showDone(button, done);
   return true;
 }
+
+/** True when the browser takes a clipboard item whose text is still a promise (Safari, Chrome). */
+const takesPromisedText = (): boolean => typeof ClipboardItem === "function" && typeof navigator.clipboard?.write === "function";
+
+/**
+ * `copyWith` for a text still on its way (asked for by this press). Safari takes a clipboard write only inside the
+ * press, so where the browser has `ClipboardItem` the write starts now, holding the promise; elsewhere the text is
+ * written once it came. A `text` that rejects writes nothing and gives false, as does a refusal.
+ */
+export async function copyWhenReady(button: HTMLButtonElement, text: Promise<string>, done: string): Promise<boolean> {
+  try {
+    if (takesPromisedText()) {
+      const blob = text.then((value) => new Blob([value], { type: "text/plain" }));
+      blob.catch(() => {}); // a text that does not come is answered by `write` rejecting, below
+      await navigator.clipboard.write([new ClipboardItem({ "text/plain": blob })]);
+    } else {
+      await navigator.clipboard.writeText(await text);
+    }
+  } catch {
+    return false; // the text did not come, or the browser refused
+  }
+  showDone(button, done);
+  return true;
+}

@@ -21,6 +21,13 @@ function focusInside(el: HTMLDialogElement): void {
   target.focus();
 }
 
+/** True when a press on `el` is outside its box: on its backdrop. */
+function onBackdrop(el: HTMLDialogElement, e: MouseEvent): boolean {
+  const box = el.getBoundingClientRect();
+  const outside = e.clientX < box.left || e.clientX > box.right || e.clientY < box.top || e.clientY > box.bottom;
+  return e.target === el && outside;
+}
+
 /** Takes `el` out of the document once its closing motion has run; at once when the browser runs none. */
 function removeAfterMotion(el: HTMLDialogElement): void {
   const running = typeof el.getAnimations === "function" ? el.getAnimations({ subtree: true }) : [];
@@ -52,11 +59,11 @@ export function openDialog(doc: Document, o: { title: string; content: Node[]; o
   el.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && busy) e.preventDefault();
   });
-  // The backdrop is the dialog element itself: its content sits in `.dialog-body`. A press that began inside (a drag
-  // out of the field) is not a press on the backdrop.
-  el.addEventListener("pointerdown", (e) => (pressStartedOnBackdrop = e.target === el));
+  // A press on the backdrop targets the dialog element, as does one on the dialog's own scrollbar: only a press outside
+  // its box is on the backdrop. One that began inside (a drag out of the field) is not.
+  el.addEventListener("pointerdown", (e) => (pressStartedOnBackdrop = onBackdrop(el, e)));
   el.addEventListener("click", (e) => {
-    if (e.target === el && pressStartedOnBackdrop) close();
+    if (pressStartedOnBackdrop && onBackdrop(el, e)) close();
   });
   el.addEventListener("close", () => {
     o.onClose?.();

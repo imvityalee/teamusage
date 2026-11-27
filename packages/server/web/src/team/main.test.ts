@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "vitest";
 import { json, nobody, type Page } from "../site/page.fixture.js";
 import { worstCase } from "../site/worst-case.fixture.js";
-import { bootAt, bootTeam, LOGIN, T, teamInfo, teamReply, visible } from "./page.fixture.js";
+import { bootAt, bootTeam, dialogButton, expectNowhereIn, LOGIN, openDialogOf, T, teamInfo, teamReply, typeInto, visible } from "./page.fixture.js";
 
 let page: Page;
 afterEach(async () => page?.close());
@@ -145,5 +145,27 @@ describe("the frame", () => {
     page.press("#sign-out");
     await page.flush();
     expect(page.assign).toHaveBeenCalledWith("/");
+  });
+});
+
+describe("a 401 from any card", () => {
+  const CODE = "9f8e7d6c5b4a39281706f5e4";
+  const field = () => openDialogOf(page)?.querySelector("input") as HTMLInputElement;
+
+  test.each<[string, () => void]>([
+    ["Rename", () => (page.press("#rename"), typeInto(page, field(), "Beta"))],
+    ["Dashboard access", () => (page.press("#access-change"), (openDialogOf(page)?.querySelector("input[value=admins]") as HTMLInputElement).click())],
+    ["Delete", () => (page.press("#delete-open"), typeInto(page, field(), "Acme Engineering"))],
+  ])("%s: the shown code leaves the page with the cards", async (_name, openAndFill) => {
+    page = await bootTeam(teamInfo("owner"), json({ code: CODE }), nobody());
+    page.press("#code-show");
+    await page.flush();
+    expect(page.$("#code-value").textContent).toBe(CODE);
+    openAndFill();
+    dialogButton(page, "confirm").click();
+    await page.flush();
+    expect(page.shownViews()).toEqual(["signedOut"]);
+    expect(page.$("#cards").childElementCount).toBe(0);
+    expectNowhereIn(page, CODE);
   });
 });

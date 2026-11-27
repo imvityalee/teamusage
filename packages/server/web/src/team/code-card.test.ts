@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "vitest";
 import { json } from "../site/page.fixture.js";
 import { cardWorld, type World } from "./card.fixture.js";
 import { codeCard, CODE_NOT_SHOWN, HIDDEN_CODE } from "./code-card.js";
-import { teamInfo, T } from "./page.fixture.js";
+import { expectNowhereIn, teamInfo, T } from "./page.fixture.js";
 
 const CODE = "9f8e7d6c5b4a39281706f5e4";
 const NEW_CODE = "0123456789abcdef01234567";
@@ -24,21 +24,7 @@ const shownText = () => $("#code-value").textContent;
 const dialogOpen = () => world.doc.querySelector<HTMLDialogElement>("dialog[open]");
 const dialogButton = (action: string) => $<HTMLButtonElement>(`dialog[open] [data-action="${action}"]`);
 
-/** Fails if `secret` is anywhere the page may not put it; `inText` allows the card's own text (while it is shown). */
-function expectNowhere(secret: string, inText = false): void {
-  const { doc, win } = world;
-  const attributes = [...doc.querySelectorAll("*")].flatMap((el) => [...el.attributes].map((a) => a.value));
-  expect(attributes.join(" ")).not.toContain(secret);
-  if (!inText) expect(doc.documentElement.outerHTML).not.toContain(secret);
-  expect(doc.title).not.toContain(secret);
-  expect(win.location.href).not.toContain(secret);
-  expect(doc.cookie).not.toContain(secret);
-  const stored = (s: Storage) => Array.from({ length: s.length }, (_, n) => `${s.key(n)}=${s.getItem(s.key(n) ?? "")}`).join(" ");
-  expect(stored(win.localStorage as unknown as Storage)).not.toContain(secret);
-  expect(stored(win.sessionStorage as unknown as Storage)).not.toContain(secret);
-  expect(JSON.stringify(world.logged)).not.toContain(secret);
-  expect(world.sent()).not.toContain(secret);
-}
+const expectNowhere = (secret: string, inText = false) => expectNowhereIn(world, secret, inText);
 
 test("nothing asks for the code until someone presses Show or Copy", async () => {
   const card = render();
@@ -171,6 +157,19 @@ test("after a replacement the card shows the new code and the old one is nowhere
     [`/api/teams/${T}/code/rotate`, "POST"],
   ]);
   card.replaced(NEW_CODE);
+  expect(card.shown).toBe(NEW_CODE);
+  expect(shownText()).toBe(NEW_CODE);
+  expectNowhere(CODE);
+});
+
+test("a replacement whose answer comes while the old code is shown leaves the old code nowhere", async () => {
+  const card = render(code(CODE), code(NEW_CODE));
+  $("#code-show").click();
+  await world.flush();
+  expect(shownText()).toBe(CODE);
+  $("#code-replace").click();
+  dialogButton("confirm").click();
+  await world.flush();
   expect(card.shown).toBe(NEW_CODE);
   expect(shownText()).toBe(NEW_CODE);
   expectNowhere(CODE);

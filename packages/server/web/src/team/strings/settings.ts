@@ -11,7 +11,7 @@ export const en = {
   accessAdmins: "Admins only",
   accessMembersText: "Every member can open the dashboard from their coding agent. Only the owner can change this.",
   accessAdminsText:
-    "Only you, the admins and the viewers can open the dashboard. Members still see their own numbers in their agent. Only the owner can change this.",
+    "Only the owner, the admins and the viewers can open the dashboard. Members still see their own numbers in their agent. Only the owner can change this.",
   change: "Change…",
   accessDialogTitle: "Who can open the dashboard?",
   optMembersNote: "Members open the dashboard from their coding agent.",
@@ -33,7 +33,7 @@ export const en = {
 export const ru: Record<keyof typeof en, string> = {
   rename: "Переименовать команду",
   nameLabel: "Название команды",
-  nameError: "Название должно быть от 1 до 60 символов, без переносов строк.",
+  nameError: "Название должно содержать от 1 до 60 символов, без переносов строк.",
   save: "Сохранить",
   saving: "Сохраняем…",
   accessTitle: "Доступ к дашборду",
@@ -41,21 +41,21 @@ export const ru: Record<keyof typeof en, string> = {
   accessAdmins: "Только администраторы",
   accessMembersText: "Каждый участник может открыть дашборд из своего агента. Изменить это может только владелец.",
   accessAdminsText:
-    "Дашборд открывают только вы, администраторы и наблюдатели. Участники по-прежнему видят свою статистику в агенте. Изменить это может только владелец.",
+    "Дашборд открывают только владелец, администраторы и наблюдатели. Участники по-прежнему видят свою статистику в агенте. Изменить это может только владелец.",
   change: "Изменить…",
   accessDialogTitle: "Кто может открыть дашборд?",
   optMembersNote: "Участники открывают дашборд из своего агента.",
   optAdminsNote: "Только вы, а также администраторы и наблюдатели, которых вы добавите. Участники по-прежнему видят свою статистику в агенте.",
-  optAdminsSignOut: "Участники, которые сейчас вошли в дашборд, будут из него выведены.",
+  optAdminsSignOut: "Сеансы участников в дашборде будут завершены.",
   deleteTitle: "Удалить команду",
   deleteText: "Удаляет команду, всех участников и всю историю расхода. Отменить это нельзя.",
   deleteOpen: "Удалить команду…",
-  deleteDialogTitle: "Удалить команду {team}?",
+  deleteDialogTitle: "Удалить команду «{team}»?",
   deleteDialogText: "Команда, все её участники и вся история расхода будут удалены. Отменить это нельзя. Чтобы подтвердить, введите название команды.",
   deleteConfirm: "Удалить команду",
   deleting: "Удаляем…",
   nameMismatch: "Название не совпадает. Возможно, команду переименовали: обновите страницу.",
   deleteStopped:
-    "Удаление остановилось, не завершившись. Часть истории расхода уже удалена, а команда ещё существует. Запустите удаление ещё раз, чтобы завершить его.",
+    "Удаление прервалось. Часть истории расхода уже удалена, но команда ещё существует. Запустите удаление ещё раз, чтобы завершить его.",
   runAgain: "Запустить ещё раз",
 };

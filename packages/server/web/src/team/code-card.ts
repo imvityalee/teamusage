@@ -1,5 +1,5 @@
 import { h } from "../dom.js";
-import { copyWith } from "../site/copy.js";
+import { copyWhenReady, copyWith } from "../site/copy.js";
 import type { ApiResult } from "../site/http.js";
 import { getCode, replaceCode } from "./api.js";
 import type { Card, TeamContext } from "./card.js";
@@ -99,15 +99,28 @@ export function codeCard(ctx: TeamContext): CodeCard & Card {
     paint();
   }
 
-  async function copy(pressed: HTMLButtonElement): Promise<void> {
-    if (busy) return;
-    const code = shown ?? (await fetchCode());
-    paint();
-    pressed.focus();
-    if (code === null) return;
-    if (await copyWith(pressed, code, tt(ctx.lang(), "copied"))) return;
+  /** After a copy of a code that came: a clipboard that refused is said in the card. */
+  function copied(ok: boolean): void {
+    if (ok) return;
     problem = "copyCodeFailed";
     paint();
+  }
+
+  /**
+   * Copies the shown code; a hidden one is asked for and copied without being shown. The clipboard write starts inside
+   * the press, before the code's answer (Safari takes no write after it); a code that does not come writes nothing.
+   */
+  async function copy(pressed: HTMLButtonElement): Promise<void> {
+    if (busy) return;
+    const done = tt(ctx.lang(), "copied");
+    if (shown !== null) return copied(await copyWith(pressed, shown, done));
+    const asked = fetchCode();
+    const copying = copyWhenReady(pressed, asked.then((code) => code ?? Promise.reject(new Error("no code"))), done);
+    const code = await asked;
+    paint();
+    pressed.focus();
+    const ok = await copying;
+    if (code !== null) copied(ok);
   }
 
   function replaced(code: string): void {

@@ -32,24 +32,37 @@ test("the English message is board 3's, with this server's address and step 5 as
       "     /plugin install teamusage@teamusage",
       "3. When it asks for the settings, enter:",
       "     Server URL: http://localhost:8787",
-      "     Team code: the code I sent you privately",
+      "     Invite code: the team code I sent you privately",
       "     Your name and Your email: your work name and work email",
       "4. Start a new Claude Code session. Your usage is sent automatically from now on.",
       '5. Check it: ask Claude "send my usage", then "open the team dashboard".',
       "",
-      "Using Codex? Run once in a terminal: npx -y teamusage setup",
+      "Using Codex? Run once in a terminal: npx -y teamusage@0.3.1 setup",
     ].join("\n"),
   );
 });
 
-test("the install step is the README's two commands, in both languages", () => {
-  const readme = readFileSync(new URL("../../../../../README.md", import.meta.url), "utf8");
-  const commands = ["/plugin marketplace add imvityalee/teamusage", "/plugin install teamusage@teamusage"];
-  for (const command of commands) {
-    expect(readme).toContain(`     ${command}\n`);
-    expect(messageText("en", ORIGIN)).toContain(`     ${command}\n`);
-    expect(messageText("ru", ORIGIN)).toContain(`     ${command}\n`);
-  }
+const repoFile = (path: string) => readFileSync(new URL(`../../../../../${path}`, import.meta.url), "utf8");
+
+/** The settings fields the message names: the titles before ":" in step 3, "Your name and Your email" being two. */
+function namedFields(message: string): string[] {
+  const lines = message.split("\n");
+  const step3 = lines.slice(lines.findIndex((l) => l.startsWith("3.")) + 1, lines.findIndex((l) => l.startsWith("4.")));
+  return step3.flatMap((l) => (l.split(":")[0] ?? "").trim().split(/ and | и /));
+}
+
+/** The message's commands: the two `/plugin` lines and the `npx` command of the Codex line. */
+const commandsOf = (message: string): string[] => [...message.matchAll(/(\/plugin [^\n]+|npx -y [^\n]+)/g)].map((m) => (m[1] ?? "").trim());
+
+test.each(["en", "ru"] as const)("the %s message names only fields the plugin asks for, and only commands of the README", (lang) => {
+  const plugin = JSON.parse(repoFile("plugin/.claude-plugin/plugin.json")) as { userConfig: Record<string, { title: string }> };
+  const titles = Object.values(plugin.userConfig).map((field) => field.title);
+  const message = messageText(lang, ORIGIN);
+  expect(namedFields(message)).toEqual(["Server URL", "Invite code", "Your name", "Your email"]);
+  for (const field of namedFields(message)) expect(titles).toContain(field);
+  const readme = repoFile("README.md");
+  expect(commandsOf(message)).toEqual(["/plugin marketplace add imvityalee/teamusage", "/plugin install teamusage@teamusage", "npx -y teamusage@0.3.1 setup"]);
+  for (const command of commandsOf(message)) expect(readme).toContain(`     ${command}\n`);
 });
 
 test.each(["en", "ru"] as const)("the %s message never holds a team code", (lang) => {

@@ -2,9 +2,8 @@ import { afterEach, describe, expect, test } from "vitest";
 import { NAME_DOES_NOT_MATCH as SERVER_NAME_DOES_NOT_MATCH } from "../../../src/routes-team-settings.js";
 import { json, nobody, type Page } from "../site/page.fixture.js";
 import { worstCase } from "../site/worst-case.fixture.js";
-import { NAME_DOES_NOT_MATCH } from "./delete-card.js";
+import { NAME_DOES_NOT_MATCH, namesMatch } from "./delete-card.js";
 import { bootTeam, dialogButton, openDialogOf, pressEscape, T, teamInfo, typeInto } from "./page.fixture.js";
-import { namesMatch } from "./settings.js";
 
 let page: Page;
 afterEach(async () => page?.close());
@@ -46,6 +45,7 @@ describe("deleting", () => {
     const input = await openDelete("Acme");
     expect(openDialogOf(page)?.querySelector("h2")?.textContent).toBe("Delete Acme?");
     expect(openDialogOf(page)?.textContent).toContain("Type the team's name to confirm.");
+    expect(["autocapitalize", "autocorrect", "spellcheck"].map((a) => input.getAttribute(a))).toEqual(["none", "off", "false"]);
     typeInto(page, input, "Acm");
     page.fire("dialog[open] form", "submit");
     await page.flush();
@@ -98,8 +98,32 @@ describe("deleting", () => {
     expect(page.doc.activeElement).toBe(dialogButton(page, "confirm"));
     dialogButton(page, "confirm").click();
     await page.flush();
-    expect(page.calls.filter((c) => c.url.endsWith("/delete"))).toHaveLength(2);
+    const runs = page.calls.filter((c) => c.url.endsWith("/delete"));
+    expect(runs).toHaveLength(2);
+    expect(runs[1]?.init.body).toBe(runs[0]?.init.body);
     expect(page.replace).toHaveBeenCalledWith("/teams#all");
+  });
+
+  test("a 404 to the run again means nothing is left to delete: the list of teams", async () => {
+    const input = await openDelete("Acme", json({ error: "internal" }, 500), json({ error: "team not found" }, 404));
+    typeInto(page, input, "Acme");
+    dialogButton(page, "confirm").click();
+    await page.flush();
+    dialogButton(page, "confirm").click();
+    await page.flush();
+    expect(page.replace).toHaveBeenCalledWith("/teams#all");
+  });
+
+  test("the field edited while the request is out decides the button afterwards", async () => {
+    let answer: (res: Response) => void = () => {};
+    const input = await openDelete("Acme", new Promise<Response>((resolve) => (answer = resolve)));
+    typeInto(page, input, "Acme");
+    dialogButton(page, "confirm").click();
+    typeInto(page, input, "Acm");
+    answer(json({ error: "internal" }, 500));
+    await page.flush();
+    expect(errorText()).toBe(STOPPED);
+    expect(dialogButton(page, "confirm").disabled).toBe(true);
   });
 
   test.each([
@@ -115,11 +139,11 @@ describe("deleting", () => {
   });
 
   test("another refusal is said in the page's sentence, and the dialog stays", async () => {
-    const input = await openDelete("Acme", json({ error: "team not found" }, 404));
+    const input = await openDelete("Acme", json({ error: "invalid name" }, 400));
     typeInto(page, input, "Acme");
     dialogButton(page, "confirm").click();
     await page.flush();
-    expect(errorText()).toBe("The server refused this request: team not found");
+    expect(errorText()).toBe("The server refused this request: invalid name");
     expect(dialogButton(page, "confirm").textContent).toBe("Delete team");
   });
 

@@ -4,7 +4,8 @@ import { vi } from "vitest";
 
 /** Boots one of the new pages in happy-dom with its own static markup and stubbed answers (tests only). */
 
-export type Reply = Response | Error | "pending";
+/** An answer: a response, a network error, one that never comes, or one the test gives later (a promise). */
+export type Reply = Response | Error | "pending" | Promise<Response>;
 export type Page = ReturnType<typeof makePage>;
 /** A request the page sent, with the address the page showed at that moment. */
 export type Call = { url: string; init: RequestInit; href: string };
@@ -86,6 +87,7 @@ export function stubBrowser(win: Window, replies: Reply[]): { calls: Call[]; log
       const next = queue.shift();
       if (next === undefined) throw new Error(`unexpected request ${url}`);
       if (next === "pending") return new Promise<Response>(() => {});
+      if (next instanceof Promise) return next;
       if (next instanceof Error) throw next;
       return next;
     }),

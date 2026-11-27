@@ -1,11 +1,11 @@
 import { h } from "../dom.js";
 import { uniqueId } from "../site/dialog.js";
+import { NAME_FIELD } from "../site/team-name.js";
 import type { ApiResult } from "../site/http.js";
 import { deleteTeam } from "./api.js";
 import type { Card, TeamContext } from "./card.js";
 import { openFlow, type Flow } from "./dialog-flow.js";
 import { failureText } from "./failure.js";
-import { namesMatch } from "./settings.js";
 import { tt } from "./strings.js";
 
 /**
@@ -16,8 +16,14 @@ import { tt } from "./strings.js";
 /** The server's refusal of a name that is not the team's (`src/routes-team-settings.ts`, which a test compares). */
 export const NAME_DOES_NOT_MATCH = "the name does not match";
 
+/** True when `typed`, trimmed, is the team's `name`; both are compared in Unicode form NFC, as the server compares them. */
+export const namesMatch = (typed: string, name: string): boolean => typed.trim().normalize("NFC") === name.normalize("NFC");
+
 /** Where the person goes once the team is deleted. */
 const YOUR_TEAMS = "/teams#all";
+
+/** The deletion is over: a 204, or a 404, which leaves nothing to delete here (a run that stopped but finished, or a role gone). */
+const finished = (result: ApiResult<unknown>): boolean => result.kind === "ok" || (result.kind === "refused" && result.status === 404);
 
 /** An answer that may come after part of the usage was deleted: a 403 (the role went midway), a 5xx or the network. */
 const stoppedMidway = (result: ApiResult<unknown>): boolean =>
@@ -40,12 +46,12 @@ export function deleteCard(ctx: TeamContext): Card {
     open.textContent = tt(lang, "deleteOpen");
   }
 
-  async function remove(flow: Flow, typed: string, name: string): Promise<void> {
+  async function remove(flow: Flow, input: HTMLInputElement, name: string): Promise<void> {
     const lang = ctx.lang();
-    const result = await flow.send(() => deleteTeam(ctx.team().id, typed.trim().normalize("NFC")));
+    const result = await flow.send(() => deleteTeam(ctx.team().id, input.value.trim().normalize("NFC")));
     if (result === null) return;
-    if (result.kind === "ok") return ctx.go(YOUR_TEAMS);
-    flow.confirm.disabled = !namesMatch(typed, name);
+    if (finished(result)) return ctx.go(YOUR_TEAMS);
+    flow.confirm.disabled = !namesMatch(input.value, name);
     if (result.kind === "refused" && result.status === 400 && result.error === NAME_DOES_NOT_MATCH) return flow.fail(tt(lang, "nameMismatch"));
     if (stoppedMidway(result)) return flow.fail(tt(lang, "deleteStopped"), tt(lang, "runAgain"));
     flow.fail(failureText(lang, result));
@@ -55,7 +61,7 @@ export function deleteCard(ctx: TeamContext): Card {
     const lang = ctx.lang();
     const name = ctx.team().name;
     const id = uniqueId("delete-name");
-    const input = h(doc, "input", { id, type: "text", autocomplete: "off", spellcheck: "false", autofocus: "" }) as HTMLInputElement;
+    const input = h(doc, "input", { id, type: "text", ...NAME_FIELD, autofocus: "" }) as HTMLInputElement;
     const flow: Flow = openFlow(ctx, {
       title: tt(lang, "deleteDialogTitle", { team: name }),
       content: [h(doc, "p", {}, tt(lang, "deleteDialogText")), h(doc, "div", { class: "field" }, h(doc, "label", { for: id }, tt(lang, "nameLabel")), input)],
@@ -64,7 +70,7 @@ export function deleteCard(ctx: TeamContext): Card {
       tone: "danger",
       opener: open,
       onConfirm: () => {
-        if (namesMatch(input.value, name)) void remove(flow, input.value, name);
+        if (namesMatch(input.value, name)) void remove(flow, input, name);
       },
     });
     flow.confirm.disabled = true;

@@ -1,7 +1,7 @@
 import { MAX_TEAM_NAME_CHARS } from "@teamusage/shared";
 import { h } from "../dom.js";
 import { uniqueId } from "../site/dialog.js";
-import { isTeamNameInput } from "../site/team-name.js";
+import { INVALID_NAME, isTeamNameInput, NAME_FIELD } from "../site/team-name.js";
 import { isTeamInfo, patchTeam } from "./api.js";
 import type { Card, TeamContext } from "./card.js";
 import { openFlow, type Flow } from "./dialog-flow.js";
@@ -10,13 +10,10 @@ import { tt } from "./strings.js";
 
 /** The page's heading: the team's name, drawn as text, and "Rename team", which renames it in a dialog. */
 
-/** The server's refusal of a name it does not take (`src/routes-team-settings.ts`). */
-const INVALID_NAME = "invalid name";
-
 /** The name field of the dialog, with its label and the line of its own rule. */
 function nameField(doc: Document, value: string, label: string) {
   const id = uniqueId("team-name");
-  const input = h(doc, "input", { id, type: "text", maxlength: String(MAX_TEAM_NAME_CHARS), autocomplete: "off", autofocus: "" }) as HTMLInputElement;
+  const input = h(doc, "input", { id, type: "text", maxlength: String(MAX_TEAM_NAME_CHARS), ...NAME_FIELD, autofocus: "" }) as HTMLInputElement;
   input.value = value;
   return { input, field: h(doc, "div", { class: "field" }, h(doc, "label", { for: id }, label), input) };
 }

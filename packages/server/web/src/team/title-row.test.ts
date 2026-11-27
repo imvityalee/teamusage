@@ -15,6 +15,7 @@ test("Rename team opens a dialog with the name in a field of 60 characters, focu
   expect(openDialogOf(page)?.querySelector("h2")?.textContent).toBe("Rename team");
   expect(field().value).toBe("Acme Engineering");
   expect(field().maxLength).toBe(60);
+  expect(["autocapitalize", "autocorrect", "spellcheck"].map((a) => field().getAttribute(a))).toEqual(["none", "off", "false"]);
   expect(page.doc.activeElement).toBe(field());
   expect(openDialogOf(page)?.querySelector(`label[for="${field().id}"]`)?.textContent).toBe("Team name");
 });

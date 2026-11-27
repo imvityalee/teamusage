@@ -22,16 +22,23 @@ function setUp(onClose = vi.fn()) {
   input.setAttribute("autofocus", "");
   const cancel = doc.createElement("button");
   const dialog = openDialog(doc, { title: "Replace the team code?", content: [input, dialogActions(doc, cancel)], opener, onClose });
+  // happy-dom lays nothing out: the dialog's box is given, 300 × 200 at (100, 100).
+  dialog.element.getBoundingClientRect = () => ({ left: 100, top: 100, right: 400, bottom: 300, width: 300, height: 200, x: 100, y: 100 }) as DOMRect;
   return { doc, opener, input, cancel, dialog, onClose };
 }
 
 const cancelEvent = () => new win.Event("cancel", { cancelable: true }) as unknown as Event;
 const escape = () => new win.KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }) as unknown as Event;
 
-/** A press that starts and ends on `target`: on the dialog itself, that is the backdrop. */
-function pressOn(target: Element): void {
-  target.dispatchEvent(new win.PointerEvent("pointerdown", { bubbles: true }) as unknown as Event);
-  target.dispatchEvent(new win.MouseEvent("click", { bubbles: true }) as unknown as Event);
+const INSIDE = { clientX: 200, clientY: 200 };
+const OUTSIDE = { clientX: 20, clientY: 20 };
+/** The dialog's own scrollbar: the dialog element is the target, inside its box. */
+const SCROLLBAR = { clientX: 395, clientY: 200 };
+
+/** A press that starts and ends on `target` at `at`: on the dialog element outside its box, that is the backdrop. */
+function pressOn(target: Element, at: { clientX: number; clientY: number } = INSIDE): void {
+  target.dispatchEvent(new win.PointerEvent("pointerdown", { bubbles: true, ...at }) as unknown as Event);
+  target.dispatchEvent(new win.MouseEvent("click", { bubbles: true, ...at }) as unknown as Event);
 }
 
 const isOpen = (d: Dialog) => d.element.open && d.element.isConnected;
@@ -65,14 +72,20 @@ test("a press on the backdrop closes it; a press inside does not", () => {
   const { input, dialog } = setUp();
   pressOn(input);
   expect(isOpen(dialog)).toBe(true);
-  pressOn(dialog.element);
+  pressOn(dialog.element, OUTSIDE);
   expect(dialog.element.open).toBe(false);
+});
+
+test("a press on the dialog's own scrollbar, inside its box, does not close it", () => {
+  const { dialog } = setUp();
+  pressOn(dialog.element, SCROLLBAR);
+  expect(isOpen(dialog)).toBe(true);
 });
 
 test("a drag that starts inside and ends on the backdrop does not close it", () => {
   const { input, dialog } = setUp();
-  input.dispatchEvent(new win.PointerEvent("pointerdown", { bubbles: true }) as unknown as Event);
-  dialog.element.dispatchEvent(new win.MouseEvent("click", { bubbles: true }) as unknown as Event);
+  input.dispatchEvent(new win.PointerEvent("pointerdown", { bubbles: true, ...INSIDE }) as unknown as Event);
+  dialog.element.dispatchEvent(new win.MouseEvent("click", { bubbles: true, ...OUTSIDE }) as unknown as Event);
   expect(isOpen(dialog)).toBe(true);
 });
 
@@ -85,7 +98,7 @@ test("a busy dialog is closed by neither Escape nor the backdrop, and focus retu
   const key = escape();
   dialog.element.dispatchEvent(key);
   expect(key.defaultPrevented).toBe(true);
-  pressOn(dialog.element);
+  pressOn(dialog.element, OUTSIDE);
   dialog.close();
   expect(isOpen(dialog)).toBe(true);
   expect(dialog.element.getAttribute("aria-busy")).toBe("true");

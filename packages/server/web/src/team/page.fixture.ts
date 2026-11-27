@@ -1,4 +1,6 @@
-import { bootPage, json, user, type Page, type Reply } from "../site/page.fixture.js";
+import type { Window } from "happy-dom";
+import { expect } from "vitest";
+import { bootPage, json, user, type Call, type Page, type Reply } from "../site/page.fixture.js";
 import type { TeamInfo } from "./api.js";
 
 /** Opens `/team` in happy-dom for the page's tests (tests only). */
@@ -48,3 +50,22 @@ export const visible = (page: Page, sel: string) => {
   const el = page.doc.querySelector<HTMLElement>(sel);
   return el !== null && !el.hidden && el.closest("[hidden]") === null;
 };
+
+/**
+ * Fails if `secret` is anywhere a page may not put it: an attribute, the document (unless `inText`: the page's own
+ * text while it is shown), the title, the address, a cookie, either storage, the console, a request's address or body.
+ */
+export function expectNowhereIn(where: { doc: Document; win: Window; logged: unknown[][]; calls: Call[] }, secret: string, inText = false): void {
+  const { doc, win } = where;
+  const attributes = [...doc.querySelectorAll("*")].flatMap((el) => [...el.attributes].map((a) => a.value));
+  expect(attributes.join(" ")).not.toContain(secret);
+  if (!inText) expect(doc.documentElement.outerHTML).not.toContain(secret);
+  expect(doc.title).not.toContain(secret);
+  expect(win.location.href).not.toContain(secret);
+  expect(doc.cookie).not.toContain(secret);
+  const stored = (s: Storage) => Array.from({ length: s.length }, (_, n) => `${s.key(n)}=${s.getItem(s.key(n) ?? "")}`).join(" ");
+  expect(stored(win.localStorage as unknown as Storage)).not.toContain(secret);
+  expect(stored(win.sessionStorage as unknown as Storage)).not.toContain(secret);
+  expect(JSON.stringify(where.logged)).not.toContain(secret);
+  expect(where.calls.map((c) => `${c.url} ${String(c.init.body ?? "")}`).join(" ")).not.toContain(secret);
+}

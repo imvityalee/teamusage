@@ -16,7 +16,7 @@ test.each([
   [
     "admins",
     "Admins only",
-    "Only you, the admins and the viewers can open the dashboard. Members still see their own numbers in their agent. Only the owner can change this.",
+    "Only the owner, the admins and the viewers can open the dashboard. Members still see their own numbers in their agent. Only the owner can change this.",
   ],
 ] as const)("the card shows the current choice: %s", async (access, badge, text) => {
   page = await bootTeam(teamInfo("admin", { dashboardAccess: access }));

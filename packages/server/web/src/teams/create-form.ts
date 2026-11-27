@@ -1,5 +1,5 @@
 import type { ApiResult } from "../site/http.js";
-import { isTeamNameInput } from "../site/team-name.js";
+import { INVALID_NAME, isTeamNameInput } from "../site/team-name.js";
 import { isTeamId } from "../site/team-param.js";
 import { MAX_OWNED } from "./teams.js";
 
@@ -8,7 +8,6 @@ import { MAX_OWNED } from "./teams.js";
 /** The server's own texts of the refusals the page knows (`src/routes-teams.ts`). */
 const OWNS_MOST = `you already own ${MAX_OWNED} teams`;
 const SIGN_UPS_PAUSED = "sign-ups are paused";
-const INVALID_NAME = "invalid name";
 
 /** What is wrong with the form before it is sent: the name (empty or over the server's limit once trimmed), the choice (none made), or nothing. */
 export function checkForm(name: string, access: string | null): "name" | "access" | null {
