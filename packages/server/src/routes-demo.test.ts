@@ -1,21 +1,23 @@
 import { beforeEach, expect, test } from "vitest";
 import type { Stats } from "@teamusage/shared";
-import { goodReg, record } from "./app.fixture.js";
-import { createApp } from "./app.js";
+import { record } from "./app.fixture.js";
 import { openDb } from "./db.js";
-import { DEMO_NAMES as NAMES_IN_ORDER, seedDemo } from "./demo.js";
+import { DEMO_NAMES } from "./demo.js";
 import { createDemoStats } from "./demo-stats.js";
-import { hostedApp, hostedTeam, machineClient, signIn } from "./hosted.fixture.js";
-import { ensureSingleTeam, singleTeamCodes } from "./teams.js";
+import { hostedApp, hostedTeam, machineClient, machineIdOf, signIn } from "./hosted.fixture.js";
+import { buildServer } from "./main.js";
+import { serverConfig } from "./main.fixture.js";
 
 const DAY_MS = 86_400_000;
 const TODAY = "2026-11-27";
 const TOMORROW = "2026-11-28";
-const DEMO_NAMES = [...NAMES_IN_ORDER].sort();
+const SORTED_DEMO_NAMES = [...DEMO_NAMES].sort();
 const clock = { t: Date.parse(`${TODAY}T12:00:00Z`), advance(ms: number) { this.t += ms; } };
 const daysBefore = (n: number, day = TODAY): string => new Date(Date.parse(`${day}T00:00:00Z`) - n * DAY_MS).toISOString().slice(0, 10);
 const demoRange = (day: string): string => `/api/demo/stats?from=${daysBefore(29, day)}&to=${day}`;
 const DEMO = demoRange(TODAY);
+/** More than the demo has, so that the real team holds a member id the demo lacks. */
+const REAL_MEMBERS = DEMO_NAMES.length + 2;
 
 let world: ReturnType<typeof hostedApp>;
 let team: { id: number; publicId: string };
@@ -29,6 +31,7 @@ beforeEach(async () => {
   const machine = machineClient(() => world.app, () => created.code);
   machineToken = await machine.join({ name: "Real Person", email: "real@corp.test" });
   await machine.upload(machineToken, [record({ date: TODAY, model: "real-model" })]);
+  for (let i = 2; i <= REAL_MEMBERS; i++) await machine.join({ name: `Real Colleague ${i}`, email: `real${i}@corp.test`, machineId: machineIdOf(i) });
   ownerSession = await signIn(world.app, "code-ann");
 });
 
@@ -43,7 +46,7 @@ test("anyone reads the demo, and it holds the demo's six people and nobody real"
   expect(res.status).toBe(200);
   expect(res.headers.get("cache-control")).toBe("no-store");
   const stats = (await res.json()) as Stats;
-  expect(stats.members.map((m) => m.name).sort()).toEqual(DEMO_NAMES);
+  expect(stats.members.map((m) => m.name).sort()).toEqual(SORTED_DEMO_NAMES);
   expect(JSON.stringify(stats)).not.toContain("Real Person");
 });
 
@@ -60,11 +63,15 @@ test("the demo ends today: a day later its last day has moved", async () => {
   const next = await statsOf(demoRange(TOMORROW));
   expect(first.daily.at(-1)?.date).toBe(TODAY);
   expect(next.daily.at(-1)?.date).toBe(TOMORROW);
+  expect(Object.keys(first.daily.at(-1)!.byAgent).length).toBeGreaterThan(0);
+  expect(Object.keys(next.daily.at(-1)!.byAgent).length).toBeGreaterThan(0);
 });
 
 test("one millisecond before UTC midnight the last day is still today, at midnight it is tomorrow", async () => {
   clock.t = Date.parse(`${TOMORROW}T00:00:00Z`) - 1;
-  expect((await statsOf(demoRange(TODAY))).daily.at(-1)?.date).toBe(TODAY);
+  const today = (await statsOf(demoRange(TODAY))).daily.at(-1);
+  expect(today?.date).toBe(TODAY);
+  expect(Object.keys(today!.byAgent).length).toBeGreaterThan(0);
   const wide = `/api/demo/stats?from=${daysBefore(1)}&to=${TOMORROW}`;
   const before = await statsOf(wide);
   expect(before.daily.at(-1)).toEqual({ date: TOMORROW, byAgent: {} });
@@ -73,14 +80,21 @@ test("one millisecond before UTC midnight the last day is still today, at midnig
   expect(Object.keys(after.daily.at(-1)?.byAgent ?? {}).length).toBeGreaterThan(0);
 });
 
-test("a member of the demo answers with machines, and never the real team's member", async () => {
-  const [first] = (await statsOf(DEMO)).members;
-  const res = await getDemo(`${DEMO}&member=${first!.id}`);
-  expect(res.status).toBe(200);
-  const stats = (await res.json()) as Stats;
-  expect(stats.members.map((m) => m.name)).toEqual([first!.name]);
-  expect(stats.machines?.length).toBeGreaterThan(0);
-  expect(JSON.stringify(stats)).not.toContain("Real Person");
+test("every member of the demo answers by id with the demo's name; an id only the real team has is 404", async () => {
+  const demoMembers = (await statsOf(DEMO)).members;
+  for (const m of demoMembers) {
+    const res = await getDemo(`${DEMO}&member=${m.id}`);
+    expect(res.status).toBe(200);
+    const stats = (await res.json()) as Stats;
+    expect(stats.members.map((x) => x.name)).toEqual([m.name]);
+    expect(stats.machines?.length).toBeGreaterThan(0);
+    expect(JSON.stringify(stats)).not.toContain("Real");
+  }
+  const demoIds = new Set(demoMembers.map((m) => m.id));
+  const realIds = (world.db.prepare("select id from members").all() as { id: number }[]).map((r) => r.id);
+  const onlyReal = realIds.filter((id) => !demoIds.has(id));
+  expect(onlyReal.length).toBeGreaterThan(0);
+  for (const id of onlyReal) expect(await errorOf(await getDemo(`${DEMO}&member=${id}`))).toEqual({ status: 404, body: { error: "member not found" } });
 });
 
 test("member=me is 400, a malformed member is 400, an id nobody has is 404", async () => {
@@ -102,15 +116,16 @@ test("the real team's rows are unchanged after ten demo requests", async () => {
   expect(rowsOfRealTeam()).toEqual(before);
 });
 
-test("a self-hosted server has no demo route, and its --demo start still opens /api/stats to everyone", async () => {
-  const db = openDb(":memory:");
-  const teamId = ensureSingleTeam(db);
-  seedDemo(db, teamId, TODAY);
-  const app = createApp(db, { teamForCode: singleTeamCodes(teamId, () => goodReg().inviteCode), demoTeamId: teamId, now: () => clock.t });
-  expect(await errorOf(await app.request(DEMO))).toEqual({ status: 404, body: { error: "not found" } });
-  const open = await app.request(`/api/stats?from=${daysBefore(29)}&to=${TODAY}`);
-  expect(open.status).toBe(200);
-  expect(((await open.json()) as Stats).members).toHaveLength(NAMES_IN_ORDER.length);
+test("a self-hosted --demo start has no demo route, and still opens /api/stats to everyone", async () => {
+  const server = buildServer(serverConfig({ demo: true }), { now: () => clock.t });
+  try {
+    expect(await errorOf(await server.app.request(DEMO))).toEqual({ status: 404, body: { error: "not found" } });
+    const open = await server.app.request(`/api/stats?from=${daysBefore(29)}&to=${TODAY}`);
+    expect(open.status).toBe(200);
+    expect(((await open.json()) as Stats).members).toHaveLength(DEMO_NAMES.length);
+  } finally {
+    server.close();
+  }
 });
 
 test("seeding again on a new day closes the database it replaces, and a request on the same day opens none", () => {
