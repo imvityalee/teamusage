@@ -1,0 +1,59 @@
+/* Shared by every page: the tokens, element defaults, the header, the segmented control and the phone baseline. */
+
+:root {
+  --page: #f5f5f7; --card: #ffffff; --hairline: #e5e5ea; --line: #e5e5ea; --axis: #d2d2d7;
+  --control: #e9e9eb; --thumb: #ffffff; --thumb-text: #1d1d1f; --soft: #f2f2f7;
+  --text: #1d1d1f; --muted: #6e6e73; --link: #0066cc; --link-hover: #004a99;
+  --sel-bg: #e5f1ff; --sel-text: #004a99; --wash: #f2f7ff;
+  --good-bg: #e3f6e8; --good-text: #14622b; --warn-bg: #fff1dc; --warn-text: #8a4a00; --stale: #b25000;
+  --danger: #b42318; --danger-line: #e3c2be; --shadow: 0 12px 32px rgba(0, 0, 0, .16);
+  /* Agent colours: fixed per agent, validated as an ordered set. Never used for text. */
+  --ag-claude: #007aff; --ag-codex: #ff9500; --ag-gemini: #30b0c7; --ag-opencode: #af52de; --ag-copilot: #ff2d55; --ag-other: #8e8e93;
+  --logo-filter: none;
+  /* The curve of a pressed control and of a dialog. */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --page: #000000; --card: #1c1c1e; --hairline: #38383a; --line: #38383a; --axis: #48484a;
+    --control: #2c2c2e; --thumb: #636366; --thumb-text: #ffffff; --soft: #2c2c2e;
+    --text: #f5f5f7; --muted: #aeaeb2; --link: #4da3ff; --link-hover: #86b6ef;
+    --sel-bg: #0f3a66; --sel-text: #d6e9ff; --wash: #16263a;
+    --good-bg: #12351f; --good-text: #7ee2a0; --warn-bg: #3d2a0d; --warn-text: #ffcf87; --stale: #ffb454;
+    --danger: #ff8a80; --danger-line: #5c2b26; --shadow: 0 12px 32px rgba(0, 0, 0, .6);
+    --ag-claude: #0a84ff; --ag-codex: #d9730a; --ag-gemini: #2aa5bd; --ag-opencode: #bf5af2; --ag-copilot: #ff375f; --ag-other: #8e8e93;
+    /* The logos are single-colour black: show them white. */
+    --logo-filter: invert(1);
+  }
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--page); color: var(--text);
+  font: 14px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", system-ui, sans-serif; }
+
+/* Header and segmented controls */
+header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; }
+.brand { font-size: 20px; font-weight: 600; letter-spacing: -0.01em; margin: 0; }
+.seg { display: inline-flex; background: var(--control); border-radius: 10px; padding: 2px; max-width: 100%; }
+.seg button { min-height: 40px; padding: 0 14px; border: 0; border-radius: 8px; background: transparent; color: var(--text); font: inherit; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--thumb); color: var(--thumb-text); font-weight: 600; box-shadow: 0 1px 3px rgba(0, 0, 0, .14); }
+
+button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+a { color: var(--link); text-decoration: none; border-radius: 2px; }
+@media (hover: hover) and (pointer: fine) { a:hover { color: var(--link-hover); } }
+input { font: inherit; color: var(--text); background: var(--soft); border: 0; border-radius: 8px; padding: 6px 8px; min-width: 0; }
+input::placeholder { color: var(--muted); opacity: 1; }
+
+/* The phone baseline */
+/* No grey flash on a tap (each control has its own :active state) and no font inflation in landscape. */
+html { -webkit-tap-highlight-color: transparent; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+/* With viewport-fit=cover the page paints edge to edge; its content stays clear of the notch and the home bar. */
+body { padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px); }
+/* A tap is a click at once: no wait for a double tap. */
+button, a, input, select, textarea, label, summary, [role="button"] { touch-action: manipulation; }
+/* A long press on a control does not select its label. */
+button, [role="button"] { -webkit-user-select: none; user-select: none; }
+/* A field under 16 px makes a phone zoom into it. */
+@media (pointer: coarse) { input, select, textarea { font-size: max(16px, 1em); } }

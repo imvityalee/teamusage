@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#f5f5f7">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#000000">
+<title>Open the dashboard · teamusage</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="./site.css">
+<script type="module" src="./src/open/main.ts"></script>
+</head>
+<body class="site">
+<header class="site-head">
+  <a class="brand" href="/">teamusage</a>
+  <div class="seg" id="lang" role="group" aria-label="Language" data-i18n-label="language">
+    <button type="button" data-lang="en" lang="en" aria-pressed="true">EN</button><button type="button" data-lang="ru" lang="ru" aria-pressed="false">RU</button>
+  </div>
+</header>
+<main class="page">
+  <section data-view="how">
+    <h1 data-i18n="howTitle">Open the dashboard from your coding agent</h1>
+    <p class="lede" data-i18n="howIntro">Your own machine asks for a one-time link and opens it here. There is no code to type and no account to create.</p>
+  </section>
+
+  <p data-view="opening" class="lede" role="status" data-i18n="opening" hidden>Opening your team's dashboard…</p>
+
+  <section data-view="confirm" hidden>
+    <h1 data-i18n="confirmTitle">Open the dashboard as a team member?</h1>
+    <div class="card">
+      <div class="identity">
+        <span class="identity-mark" id="initials" aria-hidden="true"></span>
+        <div class="identity-text">
+          <div class="identity-name" id="login"></div>
+          <div class="small" data-i18n="signedInGithub">This browser is signed in with GitHub</div>
+        </div>
+      </div>
+      <p data-i18n="confirmText">A browser holds one sign-in. Opening this link replaces the GitHub one: you will see the dashboard as a member, and the team page will ask you to sign in with GitHub again.</p>
+      <div class="actions">
+        <button type="button" class="btn primary" id="open-member" data-i18n="openAsMember">Open as a member</button>
+        <button type="button" class="btn quiet" id="stay" data-i18n="stayGithub">Stay signed in with GitHub</button>
+      </div>
+      <p class="small" data-i18n="confirmNote">The link works once and stops working 5 minutes after your agent made it.</p>
+    </div>
+  </section>
+
+  <section data-view="expired" hidden>
+    <span class="chip warn" data-i18n="expiredChip">Link not opened</span>
+    <h1 role="alert" data-i18n="expiredTitle">This link no longer works</h1>
+    <p class="lede" data-i18n="expiredText">A link opens the dashboard once, within 5 minutes of being made. Ask for a new one:</p>
+  </section>
+
+  <section data-view="adminsOnly" hidden>
+    <h1 role="alert" data-i18n="adminsOnlyTitle">This team's dashboard is limited to its admins</h1>
+    <p class="lede" data-i18n="adminsOnlyText">Your own numbers are available in your agent.</p>
+  </section>
+
+  <section data-view="failed" hidden>
+    <h1 role="alert" data-i18n="failedTitle">Could not open the link</h1>
+    <p class="lede" data-i18n="failedText">The server could not be reached. The link may still work if you try again within 5 minutes of making it.</p>
+    <div class="actions">
+      <button type="button" class="btn primary" id="retry" data-i18n="tryAgain">Try again</button>
+    </div>
+  </section>
+
+  <div class="card" data-views="how expired">
+    <div class="group">
+      <h2 data-i18n="askAgent">Ask your agent, in Claude Code or Codex</h2>
+      <code class="code" data-i18n="agentPhrase">open the team dashboard</code>
+    </div>
+    <div class="group">
+      <h2 data-i18n="orTerminal">Or run in a terminal</h2>
+      <code class="code">teamusage dashboard</code>
+    </div>
+    <p class="small" data-views="how" data-i18n="howNote">The link works once and for 5 minutes. This browser then stays signed in for 30 days. Needs teamusage 0.4.0 or newer.</p>
+  </div>
+
+  <p class="aside" data-views="how" data-i18n="adminsNote">Some teams limit the dashboard to their admins. Your own numbers are always available in your agent.</p>
+  <p class="aside" id="gh-line" data-views="how expired adminsOnly"><span data-i18n="ownerPrompt">Owner, admin or viewer?</span> <a href="/auth/github/start" data-i18n="signInGithub">Sign in with GitHub</a></p>
+  <p class="aside" id="code-line" data-views="how expired adminsOnly" hidden><a href="/" data-i18n="signInCode">Sign in with the invite code</a></p>
+</main>
+</body>
+</html>

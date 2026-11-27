@@ -1,0 +1,18 @@
+{
+  "people": [
+    { "name": "Aleksandra Wiśniewska-Kowalczyk", "email": "aleksandra.wisniewska-kowalczyk@example.com" },
+    { "name": "Jo", "email": "jo@example.com" },
+    { "name": "Данияр Жумабеков", "email": "daniyar.zhumabekov@example.kz" },
+    {
+      "name": "Maximiliana Alessandra Konstantinopoulou-Vanderbilt de la Cruz y Montenegro-Fitzwilliam Ravensworthy",
+      "email": "bartholomew.fitzgerald@northwind-industries-holdings.example.com"
+    },
+    {
+      "name": "🦊 Kitsune Tanaka",
+      "email": "christopher-alexander-montgomery-worthington-fitzgerald-hamilton@engineering-platform-infrastructure-and-developer-productivity.northwind-industries-holdings-international-subsidiaries-europe.corporate-mail-gateways-and-identity-services-emea.example.com"
+    }
+  ],
+  "teamName": "Платформенная команда развития инфраструктуры и инструментов",
+  "machineLabel": "MAXIMILIAN-WORKSTATION-LINUX-01.engineering.corp.example",
+  "login": "maximilian-konstantinopoulou-vanderbilt"
+}

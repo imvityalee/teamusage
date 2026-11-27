@@ -1,0 +1,81 @@
+@import "./base.css";
+
+/* The new pages: a header, then one narrow column of headings, cards, buttons and notices. */
+
+body.site { font-size: 16px; line-height: 1.5; }
+
+.site-head { max-width: 1120px; margin: 0 auto; padding: 18px 24px; gap: 12px 20px; }
+.site-head .brand { display: inline-flex; align-items: center; min-height: 44px; color: var(--text); }
+.site-head .seg button { min-height: 44px; }
+
+/* The narrow centred column */
+.page { max-width: 520px; margin: 0 auto; padding: 56px 24px 64px; min-width: 0; }
+.page h1 { margin: 0; font-size: 30px; line-height: 1.15; letter-spacing: -0.02em; font-weight: 700; overflow-wrap: anywhere; }
+.page .chip + h1 { margin-top: 16px; }
+.page .card { margin-top: 24px; }
+.lede { margin: 10px 0 0; color: var(--muted); }
+.lede + .actions { margin-top: 24px; }
+.aside { margin: 18px 0 0; font-size: 14px; color: var(--muted); }
+/* The link's hit area grows to a finger's height without moving the line. */
+.aside a { padding: 12px 0; }
+.small { margin: 0; font-size: 13px; color: var(--muted); }
+
+/* Buttons: pressed, every one scales a little. */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 50px; padding: 10px 22px;
+  border: 1px solid transparent; border-radius: 12px; font: inherit; font-weight: 600; text-align: center; overflow-wrap: anywhere;
+  cursor: pointer; transition: transform 160ms var(--ease-out); }
+.btn.primary { background: var(--text); border-color: var(--text); color: var(--card); }
+.btn.quiet { background: var(--card); border-color: var(--axis); color: var(--text); }
+.btn.danger { background: var(--danger); border-color: var(--danger); color: var(--card); }
+.btn.quiet.danger { background: var(--card); border-color: var(--danger-line); color: var(--danger); }
+.btn:disabled { opacity: .5; cursor: default; }
+.btn:active:not(:disabled), .site-head .seg button:active { transform: scale(0.97); }
+.site-head .seg button { transition: transform 160ms var(--ease-out); }
+@media (hover: hover) and (pointer: fine) { .btn.quiet:hover:not(:disabled) { background: var(--soft); } }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.actions .btn { flex: 1 1 200px; }
+
+/* Cards and what goes in them */
+.card { display: flex; flex-direction: column; gap: 18px; min-width: 0; padding: 22px;
+  background: var(--card); border: 1px solid var(--hairline); border-radius: 16px; }
+.card h2 { margin: 0; font-size: 14px; font-weight: 600; }
+.card > p { margin: 0; }
+.group { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.code { display: block; margin: 0; padding: 13px 14px; border-radius: 12px; background: var(--soft);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; overflow-wrap: anywhere; }
+
+/* A GitHub account: its mark, its login and a line about it */
+.identity { display: flex; align-items: center; gap: 12px; min-width: 0; padding: 12px 14px; border-radius: 12px; background: var(--soft); }
+.identity-mark { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 34px; height: 34px;
+  border-radius: 50%; background: var(--text); color: var(--card); font-size: 12px; font-weight: 600; }
+.identity-text { min-width: 0; }
+.identity-name { font-weight: 600; overflow-wrap: anywhere; }
+
+/* Fields */
+.field { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.field label { font-size: 14px; font-weight: 600; }
+.field input, .field select, .field textarea { width: 100%; min-height: 48px; padding: 0 14px; border: 1px solid var(--axis); border-radius: 12px;
+  background: var(--card); color: var(--text); font: inherit; font-size: max(16px, 1em); }
+.field textarea { padding: 12px 14px; }
+
+/* Notices and chips */
+.notice { display: flex; gap: 12px; align-items: flex-start; min-width: 0; padding: 14px; border-radius: 12px;
+  background: var(--soft); color: var(--text); overflow-wrap: anywhere; }
+.notice > * { margin: 0; min-width: 0; }
+.chip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 6px 12px; border-radius: 999px;
+  background: var(--soft); color: var(--muted); font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.notice.warn, .chip.warn { background: var(--warn-bg); color: var(--warn-text); }
+.notice.good, .chip.good { background: var(--good-bg); color: var(--good-text); }
+
+@media (max-width: 520px) {
+  .site-head { padding: 12px 16px; }
+  .page { padding: 32px 16px 48px; }
+  .page h1 { font-size: 26px; }
+  .card { padding: 18px; }
+}
+
+/* Reduced motion: a press shows at once, without scaling. */
+@media (prefers-reduced-motion: reduce) {
+  .btn, .site-head .seg button { transition: none; }
+  .btn:active:not(:disabled), .site-head .seg button:active { transform: none; opacity: .8; }
+}
