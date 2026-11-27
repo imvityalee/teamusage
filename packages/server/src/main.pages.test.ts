@@ -53,12 +53,12 @@ describe("pages by path and by mode", () => {
     await expectPage(await get(selfHosted(), path), file);
   });
 
-  test.each(["/teams", "/team", "/invite", "/dashboard", "/demo", "/privacy", "/terms", "/landing.html", "/open.html", "/teams.html"])(
+  test.each(["/teams", "/team", "/invite", "/dashboard", "/demo", "/privacy", "/terms", "/landing.html", "/open.html", "/teams.html", "/Teams.HTML"])(
     "a self-hosted server has no page %s", async (path) => {
       expect((await get(selfHosted(), path)).status).toBe(404);
     });
 
-  test.each(["/index.html", "/landing.html", "/open.html", "/open/", "/OPEN", "/team/", "/assets/"])(
+  test.each(["/index.html", "/INDEX.HTML", "/landing.html", "/open.html", "/open/", "/OPEN", "/team/", "/assets/"])(
     "a hosted server has no page %s", async (path) => {
       expect((await get(hostedServer(), path)).status).toBe(404);
     });
@@ -66,6 +66,12 @@ describe("pages by path and by mode", () => {
   test("a path that ends in / is never the file before the slash", async () => {
     expect((await get(hostedServer(), "/assets/app.js/")).status).toBe(404);
     expect((await get(selfHosted(), "/assets/app.js/")).status).toBe(404);
+  });
+
+  test("a file whose own name ends in .HTML is not served by its name, in either mode", async () => {
+    const files = [...EVERY_FILE, "Upper.HTML"];
+    expect((await get(hostedServer(files), "/Upper.HTML")).status).toBe(404);
+    expect((await get(selfHosted(files), "/Upper.HTML")).status).toBe(404);
   });
 
   test("a page is matched without its query", async () => {
