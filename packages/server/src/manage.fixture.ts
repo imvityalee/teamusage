@@ -23,6 +23,8 @@ import { removeRole } from "./team-roles.js";
 export const T0 = "2026-11-02T09:30:00.000Z";
 /** A day in milliseconds, for moving the world's clock. */
 export const DAY_MS = 24 * 60 * 60 * 1000;
+/** When an invite made at `T0` stops being valid: 7 days later. */
+export const T0_PLUS_7_DAYS = "2026-11-09T09:30:00.000Z";
 /** The date range of a stats request that holds every upload of the world. */
 export const RANGE = "from=2026-11-01&to=2026-11-02";
 
@@ -150,6 +152,20 @@ export const asUser = async (w: Pick<ManageWorld, "app" | "cookies">, who: Who, 
     headers: { "Content-Type": "application/json", Origin: PUBLIC, Cookie: w.cookies[who] },
   });
 
+/** A request with only the JSON content type and `headers`; a body other than undefined is sent as JSON. */
+export const send = async (w: Pick<ManageWorld, "app">, method: string, path: string, body: unknown, headers: Record<string, string>): Promise<Response> =>
+  w.app.request(path, { method, body: body === undefined ? undefined : JSON.stringify(body), headers: { "Content-Type": "application/json", ...headers } });
+
+/** Credentials that are not a GitHub session, as headers: none, the token of Sam's machine `one`, and Sam's member session. */
+export const notGithubSessions = (w: ManageWorld): Record<string, string>[] => [{}, { Authorization: `Bearer ${w.B.sam.one.token}` }, { Cookie: w.B.sam.session }];
+
+/** The path that deletes `team`. */
+export const deletePath = (team: { publicId: string }): string => `/api/teams/${team.publicId}/delete`;
+
+/** Asks to delete `team` as the GitHub user `who`, confirming with its name. */
+export const deleteAs = (w: Pick<ManageWorld, "app" | "cookies">, who: Who, team: { publicId: string; name: string }): Promise<Response> =>
+  asUser(w, who, deletePath(team), { method: "POST", body: { name: team.name } });
+
 /** Checks a refusal: its status, `Cache-Control: no-store` and the body `{ error }`. */
 export async function expectAnswer(res: Response, status: number, error: string): Promise<void> {
   expect(res.status).toBe(status);
@@ -192,6 +208,9 @@ export const roleRows = (db: Db, teamId: number): unknown[] => db.prepare("selec
 
 /** Every row of `users`, by id. */
 export const userRows = (db: Db): unknown[] => db.prepare("select * from users order by id").all();
+
+/** The `users` row of the GitHub user; undefined when they have none. */
+export const userRow = (db: Db, githubId: number): unknown => db.prepare("select * from users where github_id = ?").get(githubId);
 
 /** Gives `n` GitHub users the world has no session for a viewer's role in team `teamId`; their GitHub ids start at 800001. */
 export function addViewers(db: Db, teamId: number, n: number): void {

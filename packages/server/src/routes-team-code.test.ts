@@ -1,7 +1,7 @@
 import { beforeEach, expect, test } from "vitest";
 import { goodReg, record } from "./app.fixture.js";
 import { postFromPage, PUBLIC } from "./hosted.fixture.js";
-import { appOnSameDatabase, asUser, codeRow, manageWorld, RANGE, type ManageWorld, type Who } from "./manage.fixture.js";
+import { appOnSameDatabase, asUser, codeRow, manageWorld, notGithubSessions, RANGE, send, type ManageWorld, type Who } from "./manage.fixture.js";
 
 let w: ManageWorld;
 let logged: string[];
@@ -64,10 +64,9 @@ test("a user with no role in the team gets the 404 of a team that does not exist
 });
 test("no credential, a machine token and a member's session get 401 on both routes", async () => {
   const before = codeRow(w.db, w.B.id);
-  const credentials: Record<string, string>[] = [{}, { Authorization: `Bearer ${w.B.sam.one.token}` }, { Cookie: w.B.sam.session }];
-  for (const headers of credentials) {
-    const got = await w.app.request(codePath(), { headers });
-    const posted = await w.app.request(rotatePath(), { method: "POST", headers: { ...headers, Origin: PUBLIC } });
+  for (const headers of notGithubSessions(w)) {
+    const got = await send(w, "GET", codePath(), undefined, headers);
+    const posted = await send(w, "POST", rotatePath(), undefined, { ...headers, Origin: PUBLIC });
     expect([got.status, posted.status]).toEqual([401, 401]);
   }
   expect(codeRow(w.db, w.B.id)).toEqual(before);

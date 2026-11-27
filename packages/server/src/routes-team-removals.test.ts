@@ -7,8 +7,10 @@ import {
   codeRow,
   everythingOf,
   manageWorld,
+  notGithubSessions,
   RANGE,
   removeRoleRow,
+  send,
   T0,
   usageRowsOf,
   type ManagedTeam,
@@ -181,20 +183,15 @@ test("a viewer gets 403, and a user with no role in the team the 404 of a team t
 });
 test("no credential, a machine token and a member's session get 401; without the server's Origin 403; nothing is removed", async () => {
   const before = everythingOf(w.db, w.B.id);
-  const send = (headers: Record<string, string>) =>
-    w.app.request(removalsPath(w.B), {
-      method: "POST",
-      body: JSON.stringify({ members: [w.B.sam.memberId], machines: [], rotateCode: true }),
-      headers: { "Content-Type": "application/json", ...headers },
-    });
-  const credentials: Record<string, string>[] = [{}, { Authorization: `Bearer ${w.B.sam.one.token}` }, { Cookie: w.B.sam.session }];
-  for (const headers of credentials) {
-    const res = await send({ ...headers, Origin: PUBLIC });
+  const removeSam = (headers: Record<string, string>) =>
+    send(w, "POST", removalsPath(w.B), { members: [w.B.sam.memberId], machines: [], rotateCode: true }, headers);
+  for (const headers of notGithubSessions(w)) {
+    const res = await removeSam({ ...headers, Origin: PUBLIC });
     expect(res.status).toBe(401);
     expect(await res.json()).toEqual({ error: "unauthorized" });
   }
   for (const origin of [{}, { Origin: "https://elsewhere.example" }] as Record<string, string>[]) {
-    const res = await send({ ...origin, Cookie: w.cookies.bob });
+    const res = await removeSam({ ...origin, Cookie: w.cookies.bob });
     expect(res.status).toBe(403);
     expect(res.headers.get("cache-control")).toBe("no-store");
     expect(await res.json()).toEqual({ error: "cross-site request refused" });

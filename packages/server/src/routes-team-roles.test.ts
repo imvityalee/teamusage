@@ -1,7 +1,22 @@
 import { beforeEach, expect, test } from "vitest";
 import { grantRole, PUBLIC } from "./hosted.fixture.js";
 import { roleIn } from "./hosted-teams.js";
-import { asUser, everythingOf, expectAnswer, FAY, manageWorld, PEOPLE, roleRows, userRows, type ManagedTeam, type ManageWorld, type Who } from "./manage.fixture.js";
+import {
+  asUser,
+  everythingOf,
+  expectAnswer,
+  FAY,
+  manageWorld,
+  notGithubSessions,
+  PEOPLE,
+  roleRows,
+  send,
+  userRow as userRowOf,
+  userRows,
+  type ManagedTeam,
+  type ManageWorld,
+  type Who,
+} from "./manage.fixture.js";
 
 let w: ManageWorld;
 beforeEach(async () => {
@@ -12,7 +27,7 @@ beforeEach(async () => {
 const as = (who: Who, path: string) => asUser(w, who, path);
 const del = (who: Who, path: string) => asUser(w, who, path, { method: "DELETE" });
 const rolePath = (team: ManagedTeam, who: string) => `/api/teams/${team.publicId}/roles/${who}`;
-const userRow = (githubId: number) => w.db.prepare("select * from users where github_id = ?").get(githubId);
+const userRow = (githubId: number) => userRowOf(w.db, githubId);
 
 test("owner and admins see who has a role; a viewer does not", async () => {
   expect(await (await as("cyd", `/api/teams/${w.B.publicId}/roles`)).json()).toEqual({
@@ -87,15 +102,12 @@ test("no credential, a machine token and a member's session get 401 on the three
     ["DELETE", rolePath(w.B, "3303"), undefined],
     ["POST", `/api/teams/${w.B.publicId}/owner`, { user: 3303 }],
   ];
-  const send = (method: string, path: string, body: unknown, headers: Record<string, string>) =>
-    w.app.request(path, { method, body: body === undefined ? undefined : JSON.stringify(body), headers: { "Content-Type": "application/json", ...headers } });
-  const credentials: Record<string, string>[] = [{}, { Authorization: `Bearer ${w.B.sam.one.token}` }, { Cookie: w.B.sam.session }];
   for (const [method, path, body] of routes) {
-    for (const headers of credentials) await expectAnswer(await send(method, path, body, { ...headers, Origin: PUBLIC }), 401, "unauthorized");
+    for (const headers of notGithubSessions(w)) await expectAnswer(await send(w, method, path, body, { ...headers, Origin: PUBLIC }), 401, "unauthorized");
   }
   for (const [method, path, body] of routes.slice(1)) {
     for (const origin of [{}, { Origin: "https://elsewhere.example" }] as Record<string, string>[]) {
-      await expectAnswer(await send(method, path, body, { ...origin, Cookie: w.cookies.bob }), 403, "cross-site request refused");
+      await expectAnswer(await send(w, method, path, body, { ...origin, Cookie: w.cookies.bob }), 403, "cross-site request refused");
     }
   }
   expect({ b: everythingOf(w.db, w.B.id), users: userRows(w.db) }).toEqual(before);

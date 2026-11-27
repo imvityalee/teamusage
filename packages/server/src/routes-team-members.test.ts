@@ -1,7 +1,7 @@
 import { beforeEach, expect, test } from "vitest";
 import { goodReg } from "./app.fixture.js";
 import { machineIdOf, postFromPage, PUBLIC } from "./hosted.fixture.js";
-import { asUser, manageWorld, T0, type ManageWorld, type Who } from "./manage.fixture.js";
+import { asUser, manageWorld, notGithubSessions, send, T0, type ManageWorld, type Who } from "./manage.fixture.js";
 import { forTeam } from "./team-data.js";
 
 const JOINED = T0;
@@ -80,9 +80,8 @@ test("a user with no role in the team gets the 404 of a team that does not exist
 });
 
 test("no credential, a machine token and a member's session get 401", async () => {
-  const credentials: Record<string, string>[] = [{}, { Authorization: `Bearer ${w.B.sam.one.token}` }, { Cookie: w.B.sam.session }, { Cookie: w.A.memberSession }];
-  for (const headers of credentials) {
-    const res = await w.app.request(membersPath(), { headers: { ...headers, Origin: PUBLIC } });
+  for (const headers of [...notGithubSessions(w), { Cookie: w.A.memberSession }]) {
+    const res = await send(w, "GET", membersPath(), undefined, { ...headers, Origin: PUBLIC });
     expect(res.status).toBe(401);
     expect(await res.json()).toEqual({ error: "unauthorized" });
   }

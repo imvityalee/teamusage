@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { isDisplayName, MAX_TEAM_NAME_CHARS } from "@teamusage/shared";
 import { codeHash, isTeamCode, newTeamCode, sealCode } from "./codes.js";
 import { now, type Db } from "./db.js";
-import { ensureUser } from "./users.js";
+import { dropUsersWithoutRole, ensureUser } from "./users.js";
 
 export type Role = "owner" | "admin" | "viewer";
 export type DashboardAccess = "members" | "admins";
@@ -103,6 +103,19 @@ export function roleIn(db: Db, teamId: number, githubId: number): Role | null {
     .prepare("select r.role from team_roles r join users u on u.id = r.user_id where r.team_id = ? and u.github_id = ?")
     .get(teamId, githubId) as { role: Role } | undefined;
   return row?.role ?? null;
+}
+
+/**
+ * Deletes the team and everything that carries its id: members, machines, usage and its count, sessions, sign-in links,
+ * roles and invites; then the users left without a role. One transaction. False when there is no such team.
+ */
+export function deleteTeam(db: Db, teamId: number): boolean {
+  // The database's cascades take every row that refers to the team.
+  return db.transaction(() => {
+    const deleted = db.prepare("delete from teams where id = ?").run(teamId).changes > 0;
+    if (deleted) dropUsersWithoutRole(db);
+    return deleted;
+  })();
 }
 
 /** The teams the GitHub user has a role in, by name, then public id. */

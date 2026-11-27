@@ -4,6 +4,7 @@ import { codeHash, openCode } from "./codes.js";
 import { openDb, type Db } from "./db.js";
 import {
   createHostedTeam,
+  deleteTeam,
   hostedTeamCodes,
   MAX_TEAMS_PER_USER,
   membersSeeTeam,
@@ -13,7 +14,10 @@ import {
   teamByPublicId,
   teamsOf,
 } from "./hosted-teams.js";
-import { grantRole, KEY } from "./hosted.fixture.js";
+import { grantRole, KEY, machineIdOf } from "./hosted.fixture.js";
+import { everythingOf } from "./manage.fixture.js";
+import { forTeam } from "./team-data.js";
+import { reg, rows } from "./team-data.fixture.js";
 import { createTeam } from "./teams.js";
 import { findUser } from "./users.js";
 
@@ -148,4 +152,30 @@ test("teamsOf lists the user's teams with each role, by name and then public id"
 test("a team name may be as long as MAX_TEAM_NAME_CHARS", () => {
   expect(MAX_TEAM_NAME_CHARS).toBe(60);
   expect(make({ name: "n".repeat(MAX_TEAM_NAME_CHARS) }).team.name).toHaveLength(MAX_TEAM_NAME_CHARS);
+});
+
+test("deleteTeam deletes the team with all it holds and the users left without a role; another team and its people stay", () => {
+  const cyd = { githubId: 33, login: "cyd" };
+  const other = make({ name: "Other" }).team;
+  const { team } = make({ name: "Doomed", owner: bob });
+  grantRole(db, team.id, cyd, "admin");
+  grantRole(db, team.id, ann, "viewer");
+  const data = forTeam(db, team.id);
+  const { memberId } = data.registerMachine(reg(machineIdOf(0xd1)));
+  data.upsertUsage({ memberId, machineId: machineIdOf(0xd1) }, rows(4));
+  const otherBefore = everythingOf(db, other.id);
+  expect(deleteTeam(db, team.id)).toBe(true);
+  const { teams, ...held } = everythingOf(db, team.id);
+  expect(teams).toEqual([undefined]);
+  for (const [table, left] of Object.entries(held)) expect(left, table).toEqual([]);
+  expect([findUser(db, bob.githubId), findUser(db, cyd.githubId)]).toEqual([null, null]);
+  expect(findUser(db, ann.githubId)).not.toBeNull();                 // she owns the other team
+  expect(everythingOf(db, other.id)).toEqual(otherBefore);
+  expect(db.pragma("foreign_key_check")).toEqual([]);
+});
+test("deleteTeam is false for an id that does not exist and for a second call", () => {
+  const { team } = make();
+  expect(deleteTeam(db, team.id + 1)).toBe(false);
+  expect(deleteTeam(db, team.id)).toBe(true);
+  expect(deleteTeam(db, team.id)).toBe(false);
 });

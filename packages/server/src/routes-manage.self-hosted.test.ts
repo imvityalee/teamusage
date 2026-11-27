@@ -10,6 +10,7 @@ const MANAGEMENT_ROUTES: [string, string, unknown][] = [
   ["PATCH", TEAM, { name: "Renamed" }],
   ["GET", `${TEAM}/code`, undefined],
   ["POST", `${TEAM}/code/rotate`, undefined],
+  ["POST", `${TEAM}/delete`, { name: "Renamed" }],
   ["GET", `${TEAM}/members`, undefined],
   ["POST", `${TEAM}/removals`, { members: [6], machines: [], rotateCode: false }],
   ["GET", `${TEAM}/roles`, undefined],

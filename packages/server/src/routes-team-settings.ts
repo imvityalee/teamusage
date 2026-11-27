@@ -1,12 +1,14 @@
 import type { Hono } from "hono";
 import type { RouteContext } from "./app-context.js";
 import type { Db } from "./db.js";
-import { isDashboardAccess, isTeamName, type DashboardAccess } from "./hosted-teams.js";
+import { deleteTeam, isDashboardAccess, isTeamName, type DashboardAccess } from "./hosted-teams.js";
 import { crossSite, fail, isObject, readJson } from "./http.js";
+import { removeInSlices } from "./sliced-removal.js";
 import { ANY_ROLE, githubSession, MANAGERS, OWNER_ONLY, teamAccess, userTeam } from "./team-access.js";
 import { renameTeam, rotateTeamCode, setDashboardAccess, teamCode } from "./team-settings.js";
 
 const CODE_NOT_SHOWN = "this code can no longer be shown; rotate it";
+const NAME_DOES_NOT_MATCH = "the name does not match";
 
 /** What a PATCH of a team asks to change; only the fields it names. */
 type Changes = { name?: string; dashboardAccess?: DashboardAccess };
@@ -25,6 +27,9 @@ function parseChanges(body: Record<string, unknown>): Changes | string {
   return Object.keys(changes).length === 0 ? "nothing to change" : changes;
 }
 
+/** True when `sent`, trimmed, is the stored team name; both are compared in Unicode form NFC. */
+const sameName = (sent: string, stored: string): boolean => sent.trim().normalize("NFC") === stored.normalize("NFC");
+
 /** Applies every change of `changes` to team `teamId` in one transaction. */
 function applyChanges(db: Db, teamId: number, changes: Changes): void {
   db.transaction(() => {
@@ -33,7 +38,7 @@ function applyChanges(db: Db, teamId: number, changes: Changes): void {
   })();
 }
 
-/** Reading a team, changing its name and dashboard access, and showing and rotating its code. Mounted only on a hosted server. */
+/** Reading a team, changing its name and dashboard access, showing and rotating its code, and deleting it. Mounted only on a hosted server. */
 export function teamSettingsRoutes(app: Hono, ctx: RouteContext): void {
   const hosted = ctx.opts.hosted;
   if (hosted === undefined) return;
@@ -84,5 +89,30 @@ export function teamSettingsRoutes(app: Hono, ctx: RouteContext): void {
     const access = teamAccess(ctx, c, user, MANAGERS);
     if (access instanceof Response) return access;
     return c.json({ code: rotateTeamCode(ctx.db, access.team.id, hosted.codeKey) });
+  });
+
+  app.post("/api/teams/:team/delete", async (c) => {
+    c.header("Cache-Control", "no-store");
+    const refused = crossSite(c, hosted.publicUrl);
+    if (refused) return refused;
+    const user = githubSession(ctx, c);
+    if (user instanceof Response) return user;
+    const body = await readJson(c);
+    if (body === undefined) return fail(c, 400, "invalid JSON body");
+    if (!isObject(body)) return fail(c, 400, "body must be an object");
+    if (typeof body.name !== "string") return fail(c, 400, "invalid name");
+    // The name is compared once the role is read, so that a caller with no role gets the 404 and learns nothing of the
+    // team. Nothing is awaited from here to the first slice.
+    const access = teamAccess(ctx, c, user, OWNER_ONLY);
+    if (access instanceof Response) return access;
+    if (!sameName(body.name, access.team.name)) return fail(c, 400, NAME_DOES_NOT_MATCH);
+    // The usage goes in slices, the role read again before each; the team and the rest go in the turn of the last slice.
+    return removeInSlices(ctx, c, user, OWNER_ONLY, {
+      slice: (team, most) => team.removeAnyUsageSlice(most),
+      finish: (last) => {
+        deleteTeam(ctx.db, last.team.id);
+        return c.body(null, 204);
+      },
+    });
   });
 }

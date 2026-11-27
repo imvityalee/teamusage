@@ -3,11 +3,28 @@ import { INVITE_DAYS, MAX_PENDING_INVITES, type Invite, type InviteRole } from "
 import { sha256 } from "./db.js";
 import { PUBLIC } from "./hosted.fixture.js";
 import { roleIn } from "./hosted-teams.js";
-import { asUser, DAY_MS, everythingOf, expectAnswer, manageWorld, newInvite, PEOPLE, RANGE, roleRows, T0, userRows, type ManagedTeam, type ManageWorld, type Who } from "./manage.fixture.js";
+import {
+  asUser,
+  DAY_MS,
+  everythingOf,
+  expectAnswer,
+  manageWorld,
+  newInvite,
+  notGithubSessions,
+  PEOPLE,
+  RANGE,
+  roleRows,
+  send,
+  T0,
+  T0_PLUS_7_DAYS,
+  userRows,
+  type ManagedTeam,
+  type ManageWorld,
+  type Who,
+} from "./manage.fixture.js";
 import { createUserSession } from "./sessions.js";
 import { listRoles } from "./team-roles.js";
 
-const T0_PLUS_7_DAYS = "2026-11-09T09:30:00.000Z";
 const ACCEPT = "/api/invites/accept";
 const NOT_VALID = "this invite is no longer valid";
 const ROLE_NOT_ALLOWED = "your role does not allow this";
@@ -131,15 +148,12 @@ test("no credential, a machine token and a member's session get 401 on all four;
     ["DELETE", invitePath(w.B, pending.invite.id), undefined, w.cookies.bob],
     ["POST", ACCEPT, { token: pending.token }, w.cookies.eve],
   ];
-  const send = (method: string, path: string, body: unknown, headers: Record<string, string>) =>
-    w.app.request(path, { method, body: body === undefined ? undefined : JSON.stringify(body), headers: { "Content-Type": "application/json", ...headers } });
-  const credentials: Record<string, string>[] = [{}, { Authorization: `Bearer ${w.B.sam.one.token}` }, { Cookie: w.B.sam.session }];
   for (const [method, path, body] of routes) {
-    for (const headers of credentials) await expectAnswer(await send(method, path, body, { ...headers, Origin: PUBLIC }), 401, "unauthorized");
+    for (const headers of notGithubSessions(w)) await expectAnswer(await send(w, method, path, body, { ...headers, Origin: PUBLIC }), 401, "unauthorized");
   }
   for (const [method, path, body, cookie] of routes.filter(([method]) => method !== "GET")) {
     for (const origin of [{}, { Origin: "https://elsewhere.example" }] as Record<string, string>[]) {
-      await expectAnswer(await send(method, path, body, { ...origin, Cookie: cookie }), 403, "cross-site request refused");
+      await expectAnswer(await send(w, method, path, body, { ...origin, Cookie: cookie }), 403, "cross-site request refused");
     }
   }
   expect({ b: everythingOf(w.db, w.B.id), users: userRows(w.db) }).toEqual(before);

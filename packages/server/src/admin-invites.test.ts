@@ -3,7 +3,7 @@ import { acceptInvite, cancelInvite, createInvite, InviteError, listInvites, MAX
 import { sha256 } from "./db.js";
 import { grantRole } from "./hosted.fixture.js";
 import { roleIn } from "./hosted-teams.js";
-import { addViewers, DAY_MS, FAY, manageWorld, PEOPLE, roleRows, T0, type ManageWorld } from "./manage.fixture.js";
+import { addViewers, DAY_MS, FAY, manageWorld, PEOPLE, roleRows, T0, T0_PLUS_7_DAYS, type ManageWorld } from "./manage.fixture.js";
 import { MAX_ADMINS_AND_VIEWERS } from "./team-roles.js";
 
 const NOW = Date.parse(T0);
@@ -31,9 +31,9 @@ const refusal = (call: () => unknown): string | null => {
 test("createInvite gives a 16-hex id, the role and 7 days from the clock, and a 64-hex token stored only as its hash", () => {
   const made = invite(w.B.id, "admin");
   expect(made.token).toMatch(/^[a-f0-9]{64}$/);
-  expect(made.invite).toEqual({ id: expect.stringMatching(/^[a-f0-9]{16}$/), role: "admin", createdAt: T0, expiresAt: "2026-11-09T09:30:00.000Z" });
+  expect(made.invite).toEqual({ id: expect.stringMatching(/^[a-f0-9]{16}$/), role: "admin", createdAt: T0, expiresAt: T0_PLUS_7_DAYS });
   expect(inviteRows(w.B.id)).toEqual([
-    { id: made.invite.id, team_id: w.B.id, role: "admin", token_hash: sha256(made.token), created_at: T0, expires_at: "2026-11-09T09:30:00.000Z" },
+    { id: made.invite.id, team_id: w.B.id, role: "admin", token_hash: sha256(made.token), created_at: T0, expires_at: T0_PLUS_7_DAYS },
   ]);
 });
 test("listInvites gives the team's invites that can still be accepted, oldest first, and only that team's", () => {
