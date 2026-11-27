@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#f5f5f7">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#000000">
+<title>teamusage · See how your team uses coding agents</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="./site.css">
+<link rel="stylesheet" href="./landing.css">
+<script type="module" src="./src/landing/main.ts"></script>
+</head>
+<body class="site">
+<header class="site-head">
+  <a class="brand" href="/">teamusage</a>
+  <nav class="top-nav" aria-label="Main" data-i18n-label="navMain">
+    <a href="#how" data-i18n="navHow">How it works</a>
+    <a href="#sent" data-i18n="navSent">What is sent</a>
+    <a href="https://github.com/imvityalee/teamusage" rel="noopener" data-i18n="github">GitHub</a>
+    <div class="seg" id="lang" role="group" aria-label="Language" data-i18n-label="language">
+      <button type="button" data-lang="en" lang="en" aria-pressed="true">EN</button><button type="button" data-lang="ru" lang="ru" aria-pressed="false">RU</button>
+    </div>
+    <a class="btn quiet compact" href="/open" data-i18n="openDashboard">Open dashboard</a>
+  </nav>
+</header>
+
+<main class="landing" id="top">
+  <section class="hero">
+    <span class="badge good" data-i18n="betaBadge">Free while in beta</span>
+    <h1 data-i18n="heroTitle">See how your team uses coding agents</h1>
+    <p class="lead" data-i18n="heroText">Each person's machine reads its own usage logs and sends token counts to one dashboard. You see tokens and estimated cost by person, agent, model and day. Prompts and code never leave the machine.</p>
+    <div class="cta">
+      <a class="btn primary" href="/auth/github/start"><svg class="gh" width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg><span data-i18n="createTeam">Create a team with GitHub</span></a>
+      <a class="btn quiet" href="/demo" data-i18n="viewDemo">View the demo dashboard</a>
+    </div>
+    <p class="note" data-i18n="heroNote">Team members do not need an account. They join with the team code.</p>
+
+    <div class="card sample">
+      <div class="sample-head">
+        <div class="sample-title">Acme Engineering <span data-i18n="sampleRange">last 30 days</span></div>
+        <span class="badge" data-i18n="sampleBadge">Sample data</span>
+      </div>
+      <div class="tiles">
+        <div class="tile"><div class="tile-label" data-i18n="sampleTokensLabel">Total tokens</div><div class="tile-value" data-i18n="sampleTokens">6.2B</div></div>
+        <div class="tile"><div class="tile-label" data-i18n="sampleCostLabel">Estimated cost</div><div class="tile-value" data-i18n="sampleCost">$13,840</div></div>
+        <div class="tile"><div class="tile-label" data-i18n="sampleActiveLabel">Active members</div><div class="tile-value">471 <span class="of" data-i18n="sampleOf">of 512</span></div></div>
+        <div class="tile"><div class="tile-label" data-i18n="sampleAgentLabel">Top agent</div><div class="tile-value">Claude Code</div></div>
+      </div>
+      <svg class="chart" role="img" data-i18n-label="chartLabel" aria-label="Sample chart: tokens per day for 30 days, high on weekdays and low at weekends" viewBox="0 0 600 160">
+        <g class="bars"><rect x="3" y="58" width="14" height="92" rx="3"/><rect x="23" y="46" width="14" height="104" rx="3"/><rect x="43" y="40" width="14" height="110" rx="3"/><rect x="63" y="52" width="14" height="98" rx="3"/><rect x="83" y="62" width="14" height="88" rx="3"/><rect x="103" y="128" width="14" height="22" rx="3"/><rect x="123" y="136" width="14" height="14" rx="3"/><rect x="143" y="54" width="14" height="96" rx="3"/><rect x="163" y="38" width="14" height="112" rx="3"/><rect x="183" y="30" width="14" height="120" rx="3"/><rect x="203" y="42" width="14" height="108" rx="3"/><rect x="223" y="56" width="14" height="94" rx="3"/><rect x="243" y="124" width="14" height="26" rx="3"/><rect x="263" y="132" width="14" height="18" rx="3"/><rect x="283" y="46" width="14" height="104" rx="3"/><rect x="303" y="32" width="14" height="118" rx="3"/><rect x="323" y="24" width="14" height="126" rx="3"/><rect x="343" y="38" width="14" height="112" rx="3"/><rect x="363" y="52" width="14" height="98" rx="3"/><rect x="383" y="126" width="14" height="24" rx="3"/><rect x="403" y="134" width="14" height="16" rx="3"/><rect x="423" y="40" width="14" height="110" rx="3"/><rect x="443" y="26" width="14" height="124" rx="3"/><rect x="463" y="18" width="14" height="132" rx="3"/><rect x="483" y="32" width="14" height="118" rx="3"/><rect x="503" y="46" width="14" height="104" rx="3"/><rect x="523" y="122" width="14" height="28" rx="3"/><rect x="543" y="130" width="14" height="20" rx="3"/><rect x="563" y="36" width="14" height="114" rx="3"/><rect x="583" y="22" width="14" height="128" rx="3"/></g>
+        <line class="axis" x1="0" y1="150.5" x2="600" y2="150.5"/>
+      </svg>
+    </div>
+  </section>
+
+  <section class="block" id="how">
+    <h2 data-i18n="howTitle">How it works</h2>
+    <div class="panels">
+      <div class="card step">
+        <span class="num" aria-hidden="true">1</span>
+        <h3 data-i18n="step1Title">Create a team</h3>
+        <p data-i18n="step1Text">Sign in with GitHub, name your team and get its team code on the site.</p>
+      </div>
+      <div class="card step">
+        <span class="num" aria-hidden="true">2</span>
+        <h3 data-i18n="step2Title">Send the code to your team</h3>
+        <p data-i18n="step2Text">Each person installs the plugin for Claude Code or Codex and enters the team code, their name and their email.</p>
+        <code class="code">/plugin install teamusage@teamusage</code>
+      </div>
+      <div class="card step">
+        <span class="num" aria-hidden="true">3</span>
+        <h3 data-i18n="step3Title">See the numbers</h3>
+        <p data-i18n="step3Text">Usage is sent when a session starts and when it ends. The dashboard shows it by person, agent, model and day.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="block" id="sent">
+    <h2 data-i18n="sentTitle">What is sent, and what is not</h2>
+    <p class="lede" data-i18n="sentLede">One small record per day, agent and model. You can print the exact payload before anything is sent.</p>
+    <div class="panels pair">
+      <div class="card">
+        <h3 data-i18n="sentHeading">Sent</h3>
+        <ul class="points yes">
+      <li><svg class="mark" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg><span data-i18n="sent1">Date, agent and model</span></li>
+      <li><svg class="mark" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg><span data-i18n="sent2">Token counts: input, output and cache</span></li>
+      <li><svg class="mark" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg><span data-i18n="sent3">Estimated cost in US dollars</span></li>
+      <li><svg class="mark" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg><span data-i18n="sent4">Your name and email, once, when the machine joins</span></li>
+      <li><svg class="mark" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg><span data-i18n="sent5">The machine's hostname, as a label</span></li>
+      <li><svg class="mark" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg><span data-i18n="sent6">Account kind, organisation name and plan, for Claude and Codex</span></li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3 data-i18n="neverHeading">Never sent</h3>
+        <ul class="points no">
+      <li><svg class="mark" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg><span data-i18n="never1">Prompts or replies</span></li>
+      <li><svg class="mark" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg><span data-i18n="never2">Code, file paths, project or repository names</span></li>
+      <li><svg class="mark" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg><span data-i18n="never3">Session contents</span></li>
+      <li><svg class="mark" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg><span data-i18n="never4">Account emails, account IDs or sign-in tokens</span></li>
+        </ul>
+        <p class="small"><span data-i18n="checkBefore">Check it yourself:</span> <code class="inline-code">teamusage sync --dry-run</code> <span data-i18n="checkAfter">prints the payload and sends nothing.</span></p>
+      </div>
+    </div>
+  </section>
+
+  <section class="block tight">
+    <div class="card data-card">
+      <div class="data-text">
+        <h3 data-i18n="dataTitle">Where the data lives</h3>
+        <p data-i18n="dataText">On this site your team's numbers are stored on our server in Frankfurt. The team's owner chooses who can open the dashboard: every member, or only its admins. The owner can delete the team and all its data at any time. To hold the data yourself, run the open-source server in one container.</p>
+      </div>
+      <a class="btn quiet compact" href="https://github.com/imvityalee/teamusage/blob/main/SELF-HOSTING.md" rel="noopener" data-i18n="selfHost">Self-host from GitHub</a>
+    </div>
+  </section>
+
+  <section class="block start">
+    <h2 data-i18n="startTitle">Start with your team</h2>
+    <div class="cta"><a class="btn primary" href="/auth/github/start" data-i18n="createTeam">Create a team with GitHub</a></div>
+    <p class="note" data-i18n="startNote">Free while in beta. Paid plans may come later, with notice.</p>
+  </section>
+</main>
+
+<footer class="site-foot landing-foot">
+  <span>teamusage</span>
+  <nav aria-label="Footer" data-i18n-label="navFooter">
+    <a href="/privacy" data-i18n="footerPrivacy">Privacy</a>
+    <a href="/terms" data-i18n="footerTerms">Terms</a>
+    <a href="https://github.com/imvityalee/teamusage" rel="noopener" data-i18n="github">GitHub</a>
+  </nav>
+</footer>
+</body>
+</html>
