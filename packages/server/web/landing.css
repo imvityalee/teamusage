@@ -6,7 +6,6 @@
 .top-nav { display: flex; flex-wrap: wrap; gap: 8px 22px; align-items: center; font-size: 14px; }
 .top-nav > a:not(.btn) { display: inline-flex; align-items: center; min-height: 44px; color: var(--text); }
 .top-nav > a:not(.btn):active { opacity: .6; }
-.btn.compact { min-height: 44px; padding: 0 16px; }
 
 /* The hero */
 .hero { padding-top: 64px; text-align: center; }

@@ -38,7 +38,8 @@ export async function me(): Promise<MeAnswer> {
   return { kind: "failed" };
 }
 
-/** Ends this browser's session: POST /api/logout. The caller then navigates, whatever the answer. */
-export async function signOut(): Promise<void> {
-  await request("POST", "/api/logout");
+/** Ends this browser's session: POST /api/logout. True when the session is over (a 401 means it already was); false when it may still be there. */
+export async function signOut(): Promise<boolean> {
+  const answer = await request("POST", "/api/logout");
+  return answer.kind === "ok" || answer.kind === "unauthorized";
 }

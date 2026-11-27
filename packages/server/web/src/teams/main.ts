@@ -23,6 +23,9 @@ const ui = {
   ownedLine: byId("owned-line"),
   createLink: byId("create-link"),
   backToTeams: byId("back-to-teams"),
+  signOut: byId<HTMLButtonElement>("sign-out"),
+  signOutError: byId("signout-error"),
+  retry: byId("retry"),
 };
 
 /** The notice of a sign-in that did not finish is read once and then taken out of the address, so a reload does not repeat it. */
@@ -36,6 +39,8 @@ let lang: Lang = languageSwitch(document, (next) => {
 /** Null until `me()` has answered. */
 let session: MeAnswer | null = null;
 let view: TeamsView | "loading" = "loading";
+let signingOut = false;
+let signOutFailed = false;
 
 const form = formView({
   doc: document,
@@ -72,6 +77,9 @@ function paint(): void {
   paintOwned(ui.ownedLine, ui.createLink, teams.filter((team) => team.role === "owner").length, t, lang);
   ui.backToTeams.hidden = teams.length === 0;
   paintAccount();
+  ui.signOut.disabled = signingOut;
+  ui.signOut.setAttribute("aria-busy", String(signingOut));
+  ui.signOutError.hidden = !signOutFailed;
   form.paint();
 }
 
@@ -95,7 +103,25 @@ async function load(): Promise<void> {
   route();
 }
 
-byId("sign-out").addEventListener("click", () => void signOut().then(() => location.assign("/")));
-byId("retry").addEventListener("click", () => void load());
+/** One request at a time: the button is disabled while it is out. If the session may still be there the person stays, with the button back and a sentence saying so. */
+async function leave(): Promise<void> {
+  signingOut = true;
+  signOutFailed = false;
+  paint();
+  if (await signOut()) return location.assign("/");
+  signingOut = false;
+  signOutFailed = true;
+  paint();
+  ui.signOut.focus();
+}
+
+/** A second failure hides the button that was pressed, which a browser answers by dropping focus, so it is put back. */
+async function retry(): Promise<void> {
+  await load();
+  if (view === "failed") ui.retry.focus();
+}
+
+ui.signOut.addEventListener("click", () => void leave());
+ui.retry.addEventListener("click", () => void retry());
 window.addEventListener("hashchange", route);
 void load();

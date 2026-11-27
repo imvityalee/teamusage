@@ -2,6 +2,7 @@
 
 .page.teams { max-width: 560px; }
 .page.teams .create { max-width: 480px; }
+.page.teams .create h1 { font-size: 34px; line-height: 1.12; }
 .page.teams h1 + .actions { margin-top: 24px; }
 .page.teams .small + h1 { margin-top: 6px; }
 
@@ -15,14 +16,14 @@
 .team-links { display: flex; flex-wrap: wrap; gap: 8px; flex-shrink: 0; }
 .team-links .btn { min-height: 44px; padding: 0 14px; font-size: 14px; }
 .list-foot { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between; margin-top: 18px; }
-.list-foot .btn { min-height: 44px; padding: 0 16px; font-size: 14px; }
+.list-foot .btn { font-size: 14px; }
 
 /* The form: field errors sit under their field */
 .field-error { color: var(--danger); overflow-wrap: anywhere; }
 .field input[aria-invalid="true"] { border-color: var(--danger); }
 .options { display: flex; flex-direction: column; gap: 8px; min-width: 0; margin: 0; padding: 0; border: 0; }
 .options legend { padding: 0; margin: 0 0 6px; font-size: 14px; font-weight: 600; }
-.option { display: flex; gap: 12px; align-items: flex-start; min-width: 0; padding: 12px 14px; border: 1px solid var(--axis); border-radius: 12px; cursor: pointer; }
+.option { -webkit-user-select: none; user-select: none; display: flex; gap: 12px; align-items: flex-start; min-width: 0; padding: 12px 14px; border: 1px solid var(--axis); border-radius: 12px; cursor: pointer; }
 .option input { flex-shrink: 0; width: 18px; height: 18px; margin: 3px 0 0; accent-color: var(--text); }
 .option-text { display: flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }
 .option-title { font-weight: 600; }

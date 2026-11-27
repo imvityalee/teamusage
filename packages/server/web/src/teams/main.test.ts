@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { SIGN_IN_PATH } from "../site/session.js";
 import { worstCase } from "../site/worst-case.fixture.js";
 import { boot, json, member, nobody, user, type Page } from "./page.fixture.js";
@@ -56,6 +56,18 @@ describe("who is asking", () => {
     await page.flush();
     expect(page.calls.map((c) => c.url)).toEqual(["/api/me", "/api/me"]);
     expect(page.shownViews()).toEqual(["list"]);
+  });
+
+  test("when the server fails again, focus stays on Try again instead of falling to the page", async () => {
+    page = await boot("", json({ error: "internal error" }, 500), new TypeError("Failed to fetch"));
+    page.$("#retry").focus();
+    // A browser drops focus from a control that is hidden; happy-dom does not, so the call itself is what is asserted.
+    const focus = vi.spyOn(page.$("#retry"), "focus");
+    page.press("#retry");
+    await page.flush();
+    expect(page.shownViews()).toEqual(["failed"]);
+    expect(focus).toHaveBeenCalledTimes(1);
+    expect(page.doc.activeElement).toBe(page.$("#retry"));
   });
 });
 
@@ -154,6 +166,39 @@ describe("the header", () => {
     expect(page.calls.map((c) => [c.init.method, c.url])).toEqual([["GET", "/api/me"], ["POST", "/api/logout"]]);
     expect(page.assign).toHaveBeenCalledExactlyOnceWith("/");
   });
+
+  test("a double press sends one POST /api/logout, and the button is busy until the answer", async () => {
+    page = await boot("", user([OWNER, VIEWER]), "pending");
+    page.press("#sign-out");
+    page.press("#sign-out");
+    await page.flush();
+    expect(page.calls.filter((c) => c.url === "/api/logout")).toHaveLength(1);
+    expect(page.$<HTMLButtonElement>("#sign-out").disabled).toBe(true);
+    expect(page.$("#sign-out").getAttribute("aria-busy")).toBe("true");
+  });
+
+  test.each([
+    ["a network error", new TypeError("Failed to fetch")],
+    ["a 500", json({ error: "internal error" }, 500)],
+    ["a refusal", json({ error: "forbidden" }, 403)],
+  ])("%s keeps the person here: the button works again with focus, and a sentence says it did not happen", async (_what, reply) => {
+    page = await boot("", user([OWNER, VIEWER]), reply, json({}, 200));
+    expect(page.$("#signout-error").hidden).toBe(true);
+    page.press("#sign-out");
+    await page.flush();
+    expect(page.assign).not.toHaveBeenCalled();
+    expect(page.$<HTMLButtonElement>("#sign-out").disabled).toBe(false);
+    expect(page.$("#sign-out").getAttribute("aria-busy")).toBe("false");
+    expect(page.doc.activeElement).toBe(page.$("#sign-out"));
+    expect(page.$("#signout-error").hidden).toBe(false);
+    expect(page.$("#signout-error").textContent).toBe("Could not sign out. Try again.");
+    page.press('#lang [data-lang="ru"]');
+    expect(page.$("#signout-error").textContent).toBe(strings.ru.signOutFailed);
+    page.press("#sign-out");
+    await page.flush();
+    expect(page.assign).toHaveBeenCalledExactlyOnceWith("/");
+    expect(page.$("#signout-error").hidden).toBe(true);
+  });
 });
 
 describe("language", () => {
@@ -162,7 +207,7 @@ describe("language", () => {
     page.press('#lang [data-lang="ru"]');
     expect(page.doc.documentElement.lang).toBe("ru");
     expect(page.doc.title).toBe(strings.ru.title);
-    expect(page.$("#owned-line").textContent).toBe("Вы владеете 1 из 5 команд.");
+    expect(page.$("#owned-line").textContent).toBe("Вы владеете 1 из 5 возможных команд.");
     expect(Array.from(page.doc.querySelectorAll("#team-list .badge")).map((b) => b.textContent)).toEqual(["Владелец", "Наблюдатель"]);
     expect(page.shownViews()).toEqual(["list"]);
   });

@@ -75,9 +75,15 @@ describe("signOut", () => {
     expect(init.credentials).toBe("same-origin");
   });
 
-  test("returns even when the server cannot be reached", async () => {
-    answer(new TypeError("Failed to fetch"));
-    await expect(signOut()).resolves.toBeUndefined();
+  test.each([
+    ["a 204", () => new Response(null, { status: 204 }), true],
+    ["a 401, which is signed out already", () => json({ error: "unauthorized" }, 401), true],
+    ["a 500", () => json({ error: "internal error" }, 500), false],
+    ["a refusal", () => json({ error: "forbidden" }, 403), false],
+    ["a network error", () => new TypeError("Failed to fetch"), false],
+  ])("answers whether the session ended: %s", async (_, reply, ended) => {
+    answer(reply());
+    expect(await signOut()).toBe(ended);
   });
 });
 

@@ -1,22 +1,19 @@
+import { MAX_TEAM_NAME_CHARS, NAME_CONTROL_CHARS } from "@teamusage/shared";
 import type { ApiResult } from "../site/http.js";
 import { isTeamId } from "../site/team-param.js";
 import { MAX_OWNED } from "./teams.js";
 
 /** The "Name your team" form: what is wrong with it before it is sent, and what the server's answer means. */
 
-/** The server's name rule (`isTeamName`, which a test compares): 1 to 60 characters once trimmed, no control characters. */
-const MAX_NAME_CHARS = 60;
-const CONTROL_CHARS = /[\x00-\x1f\x7f]/;
-
 /** The server's own texts of the refusals the page knows (`src/routes-teams.ts`). */
 const OWNS_MOST = `you already own ${MAX_OWNED} teams`;
 const SIGN_UPS_PAUSED = "sign-ups are paused";
 const INVALID_NAME = "invalid name";
 
-/** What is wrong with the form before it is sent: the name (empty or over 60 characters once trimmed), the choice (none made), or nothing. */
+/** What is wrong with the form before it is sent: the name (empty or over the server's limit once trimmed), the choice (none made), or nothing. */
 export function checkForm(name: string, access: string | null): "name" | "access" | null {
   const length = name.trim().length;
-  if (length < 1 || length > MAX_NAME_CHARS || CONTROL_CHARS.test(name)) return "name";
+  if (length < 1 || length > MAX_TEAM_NAME_CHARS || NAME_CONTROL_CHARS.test(name)) return "name";
   return access === "members" || access === "admins" ? null : "access";
 }
 
