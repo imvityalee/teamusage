@@ -71,6 +71,19 @@ describe("buildServer", () => {
     expect(dLog).not.toContain("invite code (shown");
   });
 
+  test("a start that knows its address says where sign-in is accepted from; one that does not says nothing of it", () => {
+    const known = serverConfig({ publicUrl: "http://10.0.0.5:8787" });
+    const withAddress = buildServer(known);
+    const lines = startupLines(known, withAddress, 8787);
+    withAddress.close();
+    expect(lines).toContain("sign-in is accepted only from pages at http://10.0.0.5:8787");
+    const plain = serverConfig();
+    const without = buildServer(plain);
+    const plainLines = startupLines(plain, without, 8787);
+    without.close();
+    expect(plainLines.join("\n")).not.toContain("sign-in is accepted");
+  });
+
   test("records whether the invite code is pinned by the environment", () => {
     const c = serverConfig();
     const pinned = buildServer({ ...c, inviteCodeFromEnv: "pinned-code-0123456789" });

@@ -31,6 +31,8 @@ export type AppOptions = {
   };
   /** Hosted mode: users sign in with GitHub and teams are created by them. Absent on a self-hosted server. */
   hosted?: { github: GithubClient; publicUrl: string; codeKey: Buffer; maxTeams: number };
+  /** A self-hosted server's own origin, when it knows it: signing in with the code and opening a member's link are then accepted only from pages at this origin. */
+  signInOrigin?: string;
   /** How a long removal is paced: usage rows a slice, and the pause between slices that lets other requests in. Defaults: REMOVAL_SLICE_ROWS and one turn of the event loop (`setImmediate`). */
   removal?: { sliceRows?: number; pause?: () => Promise<void> };
 };
@@ -55,6 +57,8 @@ export type RouteContext = {
   team(teamId: number): TeamData;
   /** The session the request's cookie opens; null when it has none, an unknown one or an expired one. */
   session(c: Context): Session | null;
+  /** A self-hosted server's own origin, when it knows it: signing in with the code and opening a member's link are then accepted only from pages at this origin. */
+  signInOrigin?: string;
   /** How a long removal is paced: `opts.removal` with its defaults filled in. */
   removal: { sliceRows: number; pause: () => Promise<void> };
 };

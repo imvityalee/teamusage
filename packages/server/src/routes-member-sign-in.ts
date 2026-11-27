@@ -4,7 +4,7 @@ import type { RouteContext } from "./app-context.js";
 import { createDashboardLink, DASHBOARD_LINK_SECONDS, takeDashboardLink } from "./dashboard-links.js";
 import type { Db } from "./db.js";
 import { membersSeeTeam } from "./hosted-teams.js";
-import { bearerToken, crossSite, fail, readObject, SESSION_COOKIE, setSessionCookie } from "./http.js";
+import { bearerToken, fail, readObject, SESSION_COOKIE, setSessionCookie, signInCrossSite } from "./http.js";
 import { createMemberSession, replaceSession } from "./sessions.js";
 import { DASHBOARD_ADMINS_ONLY } from "./stats-access.js";
 import { authenticate } from "./team-data.js";
@@ -43,8 +43,8 @@ export function memberSignInRoutes(app: Hono, ctx: RouteContext): void {
 
   app.post("/api/dashboard-link/open", async (c) => {
     c.header("Cache-Control", "no-store");
-    // A hosted server signs a browser in only from its own pages; a self-hosted one has no public URL to compare.
-    const crossSiteRefusal = opts.hosted ? crossSite(c, opts.hosted.publicUrl) : null;
+    // A server that knows its own address signs a browser in only from its own pages.
+    const crossSiteRefusal = signInCrossSite(c, opts);
     if (crossSiteRefusal) return crossSiteRefusal;
     const body = await readObject(c);
     if (body instanceof Response) return body;

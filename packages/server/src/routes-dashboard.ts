@@ -12,7 +12,7 @@ import {
   parsePlanKey,
 } from "@teamusage/shared";
 import type { RouteContext } from "./app-context.js";
-import { bearerToken, fail, setSessionCookie } from "./http.js";
+import { bearerToken, fail, setSessionCookie, signInCrossSite } from "./http.js";
 import { statsTooLargeAnswer, teamStatsBusyAnswer } from "./limit-answers.js";
 import { createTeamSession } from "./sessions.js";
 import { CODE_OPENS_NO_DASHBOARD, DASHBOARD_LIMITED, statsAccess, type StatsAccess } from "./stats-access.js";
@@ -116,6 +116,8 @@ export function dashboardRoutes(app: Hono, ctx: RouteContext): void {
     c.header("Cache-Control", "no-store");
     // On a hosted server the code only joins a team. The refusal reads no body and counts no attempt, so it tests no code.
     if (opts.hosted) return fail(c, 403, CODE_OPENS_NO_DASHBOARD);
+    const crossSiteRefusal = signInCrossSite(c, opts);
+    if (crossSiteRefusal) return crossSiteRefusal;
     const entry = await teamOfInvite(c);
     if (entry instanceof Response) return entry;
     setSessionCookie(c, createTeamSession(db, entry.teamId));

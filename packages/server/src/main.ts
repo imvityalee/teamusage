@@ -85,6 +85,7 @@ function selfHostedApi(db: Db, config: ServerConfig, wiring: Wiring): Api {
   const api = createApp(db, {
     teamForCode: singleTeamCodes(teamId, inviteCode),
     demoTeamId: config.demo ? teamId : undefined,
+    signInOrigin: config.publicUrl,
     ...wiring,
   });
   return { api, inviteCode, inviteGenerated };
@@ -164,6 +165,7 @@ export function startupLines(config: ServerConfig, built: BuiltServer, port: num
   else if (config.inviteCodeFromEnv) lines.push("invite code is set from the environment");
   else if (built.inviteGenerated && built.inviteCode) lines.push(`invite code (shown only now): ${built.inviteCode()}`);
   else lines.push("an invite code is stored; show it with: teamusage-admin show-invite");
+  if (config.publicUrl) lines.push(`sign-in is accepted only from pages at ${config.publicUrl}`);
   return lines;
 }
 

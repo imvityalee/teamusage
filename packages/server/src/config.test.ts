@@ -79,10 +79,14 @@ const publicUrl = (value: string): string => parseServerConfig({ ...HOSTED, TEAM
 describe("hosted settings", () => {
   test("no mode is self-hosted and reads no hosted setting", () => {
     expect(parseServerConfig({ TEAMUSAGE_GITHUB_CLIENT_ID: "x" }, [])).toMatchObject({ mode: "self-hosted", hosted: undefined });
-    const malformed = { TEAMUSAGE_PUBLIC_URL: "not a url", TEAMUSAGE_CODE_KEY: "!!", TEAMUSAGE_MAX_TEAMS: "0" };
+    const malformed = { TEAMUSAGE_CODE_KEY: "!!", TEAMUSAGE_MAX_TEAMS: "0" };
     expect(parseServerConfig(malformed, [])).toMatchObject({ mode: "self-hosted", hosted: undefined });
     expect(parseServerConfig({ TEAMUSAGE_MODE: "" }, []).mode).toBe("self-hosted");
     expect(parseServerConfig({ TEAMUSAGE_MODE: "self-hosted" }, []).mode).toBe("self-hosted");
+  });
+
+  test("a hosted config's own address is hosted.publicUrl; its top-level publicUrl is undefined", () => {
+    expect(parseServerConfig(HOSTED, []).publicUrl).toBeUndefined();
   });
 
   test("hosted mode reads its settings", () => {
@@ -185,5 +189,46 @@ describe("hosted settings", () => {
       expect(run, key).toThrow();
       expect(run, key).not.toThrow(secret);
     }
+  });
+});
+
+describe("a self-hosted server's own address", () => {
+  const SELF_MESSAGE = "TEAMUSAGE_PUBLIC_URL must be an origin such as https://usage.example.com, with no path";
+  const own = (value: string | undefined) => parseServerConfig({ TEAMUSAGE_PUBLIC_URL: value }, []).publicUrl;
+
+  test("unset or empty is no address", () => {
+    expect(own(undefined)).toBeUndefined();
+    expect(own("")).toBeUndefined();
+  });
+
+  test.each(["https://usage.example.com", "http://10.0.0.5:8787", "http://localhost:8787"])("%s is accepted as it is", (value) => {
+    expect(own(value)).toBe(value);
+  });
+
+  test("a trailing slash is dropped", () => {
+    expect(own("https://usage.example.com/")).toBe("https://usage.example.com");
+  });
+
+  test.each([
+    "https://usage.example.com/app",
+    "https://usage.example.com?a=1",
+    "https://usage.example.com#top",
+    "https://user@usage.example.com",
+    "https://user:pw@usage.example.com",
+    "https://usage .example.com",
+    "ftp://x",
+    "usage.example.com",
+  ])("%s is refused with a fixed message that does not contain it", (value) => {
+    let message = "";
+    try {
+      own(value);
+    } catch (err) {
+      message = (err as Error).message;
+    }
+    expect(message).toBe(SELF_MESSAGE);
+  });
+
+  test("hosted mode keeps its own rule and message for the same setting", () => {
+    expect(() => parseServerConfig({ ...HOSTED, TEAMUSAGE_PUBLIC_URL: "http://10.0.0.5:8787" }, [])).toThrow(URL_MESSAGE);
   });
 });

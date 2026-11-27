@@ -83,6 +83,9 @@ Set `TEAMUSAGE_TRUSTED_PROXIES=1` (the number of proxies in front of the server)
 limit counts each person by their real address. Leave it at 0 if nothing sits in front: the server
 then ignores `X-Forwarded-For`, which a client could otherwise forge.
 
+If you set `TEAMUSAGE_PUBLIC_URL` to the address people open (see the settings below), the dashboard accepts
+sign-in only from pages at that address. Scripts that sign in with `curl` then need `-H "Origin: <the address>"`.
+
 ### Server settings
 
 | Variable | Default | Meaning |
@@ -92,6 +95,7 @@ then ignores `X-Forwarded-For`, which a client could otherwise forge.
 | `TEAMUSAGE_DATA_DIR` | `/data` | Where the database is kept. |
 | `TEAMUSAGE_INVITE_CODE` | generated | The invite code, 16 to 128 characters, no spaces. |
 | `TEAMUSAGE_TRUSTED_PROXIES` | `0` | How many reverse proxies are in front (0 to 10). |
+| `TEAMUSAGE_PUBLIC_URL` | unset | The address people open, for example https://usage.example.com. When set, the dashboard accepts sign-in only from pages at this address, so another website cannot sign a visitor's browser in. Leave it unset if you are not sure of the address: sign-in then works as before. |
 | `TEAMUSAGE_DEMO` | unset | `1` starts demo mode. The `--demo` flag does the same when you run `node dist/main.js` directly; with Docker, set `TEAMUSAGE_DEMO=1`, because arguments to `docker run` replace the command. |
 | `TEAMUSAGE_MODE` | `self-hosted` | Leave unset. `hosted` runs the public multi-team service and needs more settings. |
 

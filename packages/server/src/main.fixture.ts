@@ -43,6 +43,7 @@ export const serverConfig = ({ dataDir = tempDataDir(), ...over }: Partial<Serve
   trustedProxies: 0,
   mode: "self-hosted",
   hosted: undefined,
+  publicUrl: undefined,
   ...over,
 });
 

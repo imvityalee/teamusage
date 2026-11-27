@@ -1,5 +1,6 @@
 import type { Context } from "hono";
 import { deleteCookie, setCookie } from "hono/cookie";
+import type { AppOptions } from "./app-context.js";
 
 export const MAX_BODY_BYTES = 2 * 1024 * 1024;
 export const SESSION_COOKIE = "tu_session";
@@ -56,6 +57,15 @@ export const clearSessionCookie = (c: Context): void => clearPrivateCookie(c, SE
 /** 403 "cross-site request refused" unless the Origin header equals `publicUrl`; otherwise null. */
 export function crossSite(c: Context, publicUrl: string): Response | null {
   return c.req.header("Origin") === publicUrl ? null : fail(c, 403, "cross-site request refused");
+}
+
+/**
+ * The 403 for a sign-in that does not come from the server's own pages, when the server knows its address (a hosted
+ * server's `publicUrl`, or a self-hosted operator's `signInOrigin`); otherwise null.
+ */
+export function signInCrossSite(c: Context, opts: Pick<AppOptions, "hosted" | "signInOrigin">): Response | null {
+  const origin = opts.hosted?.publicUrl ?? opts.signInOrigin;
+  return origin === undefined ? null : crossSite(c, origin);
 }
 
 /**

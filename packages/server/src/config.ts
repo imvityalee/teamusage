@@ -18,6 +18,8 @@ export interface ServerConfig {
   mode: "self-hosted" | "hosted";
   /** Set exactly when `mode` is "hosted". */
   hosted: HostedConfig | undefined;
+  /** A self-hosted server's own origin, from TEAMUSAGE_PUBLIC_URL when its operator set it; always undefined in hosted mode, whose origin is `hosted.publicUrl`. */
+  publicUrl: string | undefined;
 }
 
 type Env = Record<string, string | undefined>;
@@ -26,6 +28,7 @@ const LOOPBACK_HOSTS = ["localhost", "127.0.0.1", "[::1]"];
 const HAS_SPACE_OR_CONTROL = /[\s\x00-\x1f\x7f]/;
 
 const PUBLIC_URL_MESSAGE = "TEAMUSAGE_PUBLIC_URL must be an https origin such as https://example.com (http only for localhost)";
+const SELF_HOSTED_URL_MESSAGE = "TEAMUSAGE_PUBLIC_URL must be an origin such as https://usage.example.com, with no path";
 const GITHUB_MESSAGE = "hosted mode needs TEAMUSAGE_GITHUB_CLIENT_ID and TEAMUSAGE_GITHUB_CLIENT_SECRET";
 const CODE_KEY_MESSAGE = "TEAMUSAGE_CODE_KEY must be 32 random bytes in base64 (openssl rand -base64 32)";
 
@@ -36,9 +39,10 @@ function integer(v: string | undefined, def: number, min: number, max: number, m
   return n;
 }
 
-function parsePublicUrl(value: string | undefined): string {
+/** The origin of `value` when it is a bare origin whose scheme and host `allowed` accepts; otherwise `fail`'s error. */
+function parseOrigin(value: string | undefined, message: string, allowed: (url: URL) => boolean): string {
   const fail = (): never => {
-    throw new Error(PUBLIC_URL_MESSAGE);
+    throw new Error(message);
   };
   if (!value || HAS_SPACE_OR_CONTROL.test(value) || /[?#]/.test(value)) return fail();
   let url: URL;
@@ -47,9 +51,20 @@ function parsePublicUrl(value: string | undefined): string {
   } catch {
     return fail();
   }
-  const schemeAllowed = url.protocol === "https:" || (url.protocol === "http:" && LOOPBACK_HOSTS.includes(url.hostname));
-  if (!schemeAllowed || url.pathname !== "/" || url.username !== "" || url.password !== "") return fail();
+  if (!allowed(url) || url.pathname !== "/" || url.username !== "" || url.password !== "") return fail();
   return url.origin;
+}
+
+/** A hosted server's origin: https, or http only for the machine itself. */
+function parsePublicUrl(value: string | undefined): string {
+  const schemeAllowed = (url: URL) => url.protocol === "https:" || (url.protocol === "http:" && LOOPBACK_HOSTS.includes(url.hostname));
+  return parseOrigin(value, PUBLIC_URL_MESSAGE, schemeAllowed);
+}
+
+/** A self-hosted server's origin when its operator set one: http or https on any host; undefined when unset or empty. */
+function parseSelfHostedUrl(value: string | undefined): string | undefined {
+  if (value === undefined || value === "") return undefined;
+  return parseOrigin(value, SELF_HOSTED_URL_MESSAGE, (url) => url.protocol === "https:" || url.protocol === "http:");
 }
 
 function parseGithubSetting(value: string | undefined): string {
@@ -102,5 +117,6 @@ export function parseServerConfig(env: Env, argv: string[]): ServerConfig {
     trustedProxies: integer(env.TEAMUSAGE_TRUSTED_PROXIES, 0, 0, 10, "TEAMUSAGE_TRUSTED_PROXIES must be an integer from 0 to 10"),
     mode,
     hosted: mode === "hosted" ? parseHosted(env) : undefined,
+    publicUrl: mode === "hosted" ? undefined : parseSelfHostedUrl(env.TEAMUSAGE_PUBLIC_URL),
   };
 }
