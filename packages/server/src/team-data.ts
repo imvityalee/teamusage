@@ -3,8 +3,8 @@ import type { UsageRecord } from "@teamusage/shared";
 import { now, sha256, type Db } from "./db.js";
 import { refuseBeyondLimits, type TeamLimits } from "./team-limits.js";
 import { dropExpiredUsage, oldestDateKept } from "./team-retention.js";
+import { remove, removeAnyUsageSlice, removeMachine, removeMember, removeUsageSlice, type Removal } from "./team-removal.js";
 import { upsertUsage, type WriteOptions } from "./team-usage.js";
-import { countRemovedRows } from "./usage-counts.js";
 
 /** The machine id is already registered to a different member. */
 export class MachineOwnedError extends Error {
@@ -31,6 +31,18 @@ export interface TeamData {
     joinedAt: string;
     machines: { id: string; label: string; lastSyncAt: string | null }[];
   }[];
+  /**
+   * Removes up to `most` usage rows of the named members and machines, takes them off the team's count, and returns how
+   * many; fewer than `most` means they hold none now. One transaction.
+   */
+  removeUsageSlice(what: Removal, most: number): number;
+  /** The same for any of the team's usage rows. */
+  removeAnyUsageSlice(most: number): number;
+  /**
+   * Removes the named members with their machines, the named machines, and the usage they still hold, in one transaction;
+   * an id the team does not have is skipped. Returns how many members and machines it removed.
+   */
+  remove(what: Removal): { members: number; machines: number };
   removeMember(email: string): boolean;
   removeMachine(machineId: string): boolean;
   memberExists(memberId: number): boolean;
@@ -58,6 +70,9 @@ export function forTeam(
     registerMachine: (a) => registerMachine(db, teamId, writes, a),
     upsertUsage: uploadUnderRetention(db, teamId, writes, o?.daysKept),
     listMembers: () => listMembers(db, teamId),
+    removeUsageSlice: (what, most) => removeUsageSlice(db, teamId, what, most),
+    removeAnyUsageSlice: (most) => removeAnyUsageSlice(db, teamId, most),
+    remove: (what) => remove(db, teamId, what),
     removeMember: (email) => removeMember(db, teamId, email),
     removeMachine: (machineId) => removeMachine(db, teamId, machineId),
     memberExists: (memberId) => memberExists(db, teamId, memberId),
@@ -157,28 +172,6 @@ function listMembers(db: Db, teamId: number): Listed[] {
     .all(teamId) as { id: string; member_id: number; label: string; last_sync_at: string | null }[];
   for (const x of machines) byId.get(x.member_id)?.push({ id: x.id, label: x.label, lastSyncAt: x.last_sync_at });
   return members;
-}
-
-function removeMember(db: Db, teamId: number, email: string): boolean {
-  return db.transaction(() => {
-    const row = db
-      .prepare("select id from members where team_id = ? and email = ?")
-      .get(teamId, email.trim().toLowerCase()) as { id: number } | undefined;
-    if (!row) return false;
-    const usage = db.prepare("delete from usage where team_id = ? and member_id = ?").run(teamId, row.id);
-    countRemovedRows(db, teamId, usage.changes);
-    db.prepare("delete from machines where team_id = ? and member_id = ?").run(teamId, row.id);
-    db.prepare("delete from members where team_id = ? and id = ?").run(teamId, row.id);
-    return true;
-  })();
-}
-
-function removeMachine(db: Db, teamId: number, machineId: string): boolean {
-  return db.transaction(() => {
-    const usage = db.prepare("delete from usage where team_id = ? and machine_id = ?").run(teamId, machineId);
-    countRemovedRows(db, teamId, usage.changes);
-    return db.prepare("delete from machines where team_id = ? and id = ?").run(teamId, machineId).changes > 0;
-  })();
 }
 
 function memberExists(db: Db, teamId: number, memberId: number): boolean {
