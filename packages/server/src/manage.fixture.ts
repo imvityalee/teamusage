@@ -143,10 +143,10 @@ export const asUser = async (w: Pick<ManageWorld, "app" | "cookies">, who: Who, 
 
 /**
  * A second hosted app on the world's database with another code key, as a server whose operator replaced the key; its
- * GitHub users sign in again. `as` and `post` send requests to it as a GitHub user.
+ * GitHub users sign in again; its errors go to `logError`. `as` and `post` send requests to it as a GitHub user.
  */
-export async function appOnSameDatabase(db: Db, codeKey: Buffer) {
-  const { app } = hostedApp({ db, codeKey, users: githubUsers() });
+export async function appOnSameDatabase(db: Db, codeKey: Buffer, logError?: (line: string) => void) {
+  const { app } = hostedApp({ db, codeKey, logError, users: githubUsers() });
   const second = { app, cookies: await signInAll(app) };
   return {
     as: (who: Who, path: string) => asUser(second, who, path),

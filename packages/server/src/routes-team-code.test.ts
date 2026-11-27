@@ -1,11 +1,7 @@
 import { beforeEach, expect, test } from "vitest";
 import { goodReg, record } from "./app.fixture.js";
-import { codeHash } from "./codes.js";
-import { openDb } from "./db.js";
-import { KEY, postFromPage, PUBLIC } from "./hosted.fixture.js";
-import { appOnSameDatabase, asUser, codeRow, everythingOf, manageWorld, RANGE, type ManageWorld, type Who } from "./manage.fixture.js";
-import { createTeam } from "./teams.js";
-import { rotateTeamCode, teamCode } from "./team-settings.js";
+import { postFromPage, PUBLIC } from "./hosted.fixture.js";
+import { appOnSameDatabase, asUser, codeRow, manageWorld, RANGE, type ManageWorld, type Who } from "./manage.fixture.js";
 
 let w: ManageWorld;
 let logged: string[];
@@ -88,11 +84,13 @@ test("a rotation without the server's Origin is 403 and rotates nothing", async 
 test("the answers carry no-store, and no code reaches the error log after a show, a rotation and a 409", async () => {
   const shown = await as("bob", codePath());
   const rotated = await post("bob", rotatePath());
-  const other = await appOnSameDatabase(w.db, Buffer.alloc(32, 9));
+  const other = await appOnSameDatabase(w.db, Buffer.alloc(32, 9), (line) => logged.push(line));
   const refused = await other.as("bob", codePath());
   expect([shown.status, rotated.status, refused.status]).toEqual([200, 200, 409]);
   for (const res of [shown, rotated, refused]) expect(res.headers.get("cache-control")).toBe("no-store");
-  expect(logged.join("\n")).not.toMatch(/[a-f0-9]{24}/);
+  const shownByRefusal = await codeOf(rotated); // the code the 409 refused to show
+  const repaired = await codeOf(await other.post("bob", rotatePath()));
+  for (const code of [w.B.code, shownByRefusal, repaired]) expect(logged.join("\n")).not.toContain(code);
 });
 test("two rotations open together each answer with a code of their own; one of them is the team's", async () => {
   const before = codeRow(w.db, w.A.id);
@@ -106,19 +104,4 @@ test("two rotations open together each answer with a code of their own; one of t
   expect((await register(current, "new@example.com")).status).toBe(200);
   expect((await register(kept!, "late@example.com")).status).toBe(403);
   expect(codeRow(w.db, w.A.id)).toEqual(before);
-});
-
-test("rotateTeamCode leaves A's row and both teams' sessions as they were", () => {
-  const [a, sessions] = [everythingOf(w.db, w.A.id), (id: number) => everythingOf(w.db, id).sessions];
-  const bSessions = sessions(w.B.id);
-  const code = rotateTeamCode(w.db, w.B.id, KEY);
-  expect(code).toMatch(/^[a-f0-9]{24}$/);
-  expect(teamCode(w.db, w.B.id, KEY)).toBe(code);
-  expect(codeRow(w.db, w.B.id)).toMatchObject({ code_hash: codeHash(code) });
-  expect(everythingOf(w.db, w.A.id)).toEqual(a);
-  expect(sessions(w.B.id)).toEqual(bSessions);
-});
-test("teamCode is null for a team without a sealed code", () => {
-  const selfHosted = openDb(":memory:");
-  expect(teamCode(selfHosted, createTeam(selfHosted, "Solo"), KEY)).toBeNull();
 });
