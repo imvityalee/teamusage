@@ -44,7 +44,7 @@ export function memberSignInRoutes(app: Hono, ctx: RouteContext): void {
   app.post("/api/dashboard-link/open", async (c) => {
     c.header("Cache-Control", "no-store");
     // A server that knows its own address signs a browser in only from its own pages.
-    const crossSiteRefusal = signInCrossSite(c, opts);
+    const crossSiteRefusal = signInCrossSite(c, opts.hosted, opts.signInOrigin);
     if (crossSiteRefusal) return crossSiteRefusal;
     const body = await readObject(c);
     if (body instanceof Response) return body;

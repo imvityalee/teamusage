@@ -84,7 +84,7 @@ limit counts each person by their real address. Leave it at 0 if nothing sits in
 then ignores `X-Forwarded-For`, which a client could otherwise forge.
 
 If you set `TEAMUSAGE_PUBLIC_URL` to the address people open (see the settings below), the dashboard accepts
-sign-in only from pages at that address. Scripts that sign in with `curl` then need `-H "Origin: <the address>"`.
+sign-in only from pages at that address. Scripts that sign in with `curl` then need `-H "Origin: <the address, without a trailing slash>"`.
 
 ### Server settings
 

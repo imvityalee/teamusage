@@ -61,10 +61,11 @@ export function crossSite(c: Context, publicUrl: string): Response | null {
 
 /**
  * The 403 for a sign-in that does not come from the server's own pages, when the server knows its address (a hosted
- * server's `publicUrl`, or a self-hosted operator's `signInOrigin`); otherwise null.
+ * server's `hosted.publicUrl`, or a self-hosted operator's `signInOrigin`); otherwise null. Both are positional so
+ * that a caller cannot leave one out.
  */
-export function signInCrossSite(c: Context, opts: Pick<AppOptions, "hosted" | "signInOrigin">): Response | null {
-  const origin = opts.hosted?.publicUrl ?? opts.signInOrigin;
+export function signInCrossSite(c: Context, hosted: AppOptions["hosted"], signInOrigin: AppOptions["signInOrigin"]): Response | null {
+  const origin = hosted?.publicUrl ?? signInOrigin;
   return origin === undefined ? null : crossSite(c, origin);
 }
 

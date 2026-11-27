@@ -116,7 +116,7 @@ export function dashboardRoutes(app: Hono, ctx: RouteContext): void {
     c.header("Cache-Control", "no-store");
     // On a hosted server the code only joins a team. The refusal reads no body and counts no attempt, so it tests no code.
     if (opts.hosted) return fail(c, 403, CODE_OPENS_NO_DASHBOARD);
-    const crossSiteRefusal = signInCrossSite(c, opts);
+    const crossSiteRefusal = signInCrossSite(c, opts.hosted, opts.signInOrigin);
     if (crossSiteRefusal) return crossSiteRefusal;
     const entry = await teamOfInvite(c);
     if (entry instanceof Response) return entry;
