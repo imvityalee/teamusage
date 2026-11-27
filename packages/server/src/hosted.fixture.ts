@@ -121,8 +121,8 @@ export const testLimits = (team: TeamLimits, over: Partial<NonNullable<AppOption
   ...over,
 });
 
-/** A machine id of 32 hex digits made of `n`. */
-export const mid = (n: number): string => n.toString(16).repeat(32);
+/** A valid machine id for machine `n`: its hex digits padded with zeros to 32. */
+export const machineIdOf = (n: number): string => n.toString(16).padStart(32, "0");
 
 /** `n` records of different models, numbered from `from`. */
 export const recordsOf = (n: number, from = 0): ReturnType<typeof record>[] => Array.from({ length: n }, (_, i) => record({ model: `m${from + i}` }));

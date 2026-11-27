@@ -3,7 +3,7 @@ import type { Hono } from "hono";
 import { record } from "./app.fixture.js";
 import * as selfHosted from "./app.harness.js";
 import type { Db } from "./db.js";
-import { hostedApp, hostedTeam, machineClient, mid, recordsOf, signIn, testLimits } from "./hosted.fixture.js";
+import { hostedApp, hostedTeam, machineClient, machineIdOf, recordsOf, signIn, testLimits } from "./hosted.fixture.js";
 import { limitAnswer, secondsToUtcMidnight, type RefusedLimit } from "./limit-answers.js";
 import { teamTables } from "./team-data.fixture.js";
 import { HOSTED_CAPS, UPLOADS_PER_MINUTE, type LimitName, type TeamLimits } from "./team-limits.js";
@@ -34,20 +34,20 @@ const storedRows = () => db.prepare("select count(*) as n from usage").get();
 async function approach(limit: string): Promise<() => Promise<Response>> {
   if (limit === "team-rows") server({ rowsPerTeam: 7 });
   if (limit === "team-rows-per-day") server({ rowsAddedPerDay: 6, rowsPerMachine: 100 });
-  const first = await join({ machineId: mid(1) });
+  const first = await join({ machineId: machineIdOf(1) });
   switch (limit) {
     case "members":
-      await join({ machineId: mid(2), email: "bob@example.com" });
-      return () => register({ machineId: mid(3), email: "cy@example.com" });
+      await join({ machineId: machineIdOf(2), email: "bob@example.com" });
+      return () => register({ machineId: machineIdOf(3), email: "cy@example.com" });
     case "machines":
-      await join({ machineId: mid(2) });
-      return () => register({ machineId: mid(3) });
+      await join({ machineId: machineIdOf(2) });
+      return () => register({ machineId: machineIdOf(3) });
     case "machine-rows":
       await upload(first, recordsOf(5));
       return () => upload(first, recordsOf(1, 5));
     case "team-rows": {
       await upload(first, recordsOf(5));
-      const second = await join({ machineId: mid(2) });
+      const second = await join({ machineId: machineIdOf(2) });
       await upload(second, recordsOf(2));
       return () => upload(second, recordsOf(1, 2));
     }
@@ -167,7 +167,7 @@ describe("the minute of uploads", () => {
     for (let i = 0; i < 3; i++) await upload(token, recordsOf(1, i));
     const again = await join();
     expect((await upload(again, recordsOf(1, 3))).status).toBe(429);
-    const other = await join({ machineId: mid(2) });
+    const other = await join({ machineId: machineIdOf(2) });
     expect((await upload(other, recordsOf(1, 3))).status).toBe(200);
   });
   test("the same laptop in two teams has two allowances", async () => {
@@ -194,9 +194,9 @@ describe("an app without limits", () => {
 
 describe("a refusal is not a failed attempt", () => {
   test("twelve registrations refused by the member cap, then a wrong code: 403, not 429", async () => {
-    await join({ machineId: mid(1) });
-    await join({ machineId: mid(2), email: "bob@example.com" });
-    for (let i = 0; i < 12; i++) expect((await register({ machineId: mid(3), email: `x${i}@example.com` })).status).toBe(409);
+    await join({ machineId: machineIdOf(1) });
+    await join({ machineId: machineIdOf(2), email: "bob@example.com" });
+    for (let i = 0; i < 12; i++) expect((await register({ machineId: machineIdOf(3), email: `x${i}@example.com` })).status).toBe(409);
     expect((await register({ inviteCode: "0".repeat(24) })).status).toBe(403);
   });
 });

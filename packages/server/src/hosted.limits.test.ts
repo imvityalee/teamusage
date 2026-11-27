@@ -3,7 +3,7 @@ import type { Hono } from "hono";
 import { goodReg, MID, MID2, record } from "./app.fixture.js";
 import type { Db } from "./db.js";
 import { hostedApp, hostedTeam, postFromPage, signIn, testLimits } from "./hosted.fixture.js";
-import { rowsOf, SAME_EMAIL } from "./hosted.two-teams.fixture.js";
+import { countRowOf, rowsOf, SAME_EMAIL } from "./hosted.two-teams.fixture.js";
 import { STATS_BOUNDS } from "./stats-bounds.js";
 import { forTeam } from "./team-data.js";
 import type { TeamLimits } from "./team-limits.js";
@@ -36,9 +36,7 @@ const register = (code: string, over: Record<string, unknown>) => post("/api/reg
 const upload = (token: string, body: unknown) => post("/api/usage", body, { Authorization: `Bearer ${token}` });
 /** `n` records of different models, named after `tag`. */
 const newRecords = (n: number, tag: string) => Array.from({ length: n }, (_, i) => record({ model: `${tag}${i}` }));
-/** Team `teamId`'s row of usage counts, read beside `rowsOf`, which does not read it. */
-const countsOf = (teamId: number) => db.prepare("select * from usage_counts where team_id = ?").get(teamId);
-const stateOf = (teamId: number) => ({ rows: rowsOf(db, teamId), counts: countsOf(teamId) });
+const stateOf = (teamId: number) => ({ rows: rowsOf(db, teamId), counts: countRowOf(db, teamId) });
 
 /** Registers a machine of team `code` and returns its token. */
 async function join(code: string, over: Record<string, unknown>): Promise<string> {

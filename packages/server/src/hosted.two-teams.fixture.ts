@@ -102,6 +102,9 @@ export async function twoTeams(o: Omit<HostedAppOptions, "clientKey"> = {}): Pro
 type Row = Record<string, unknown>;
 export type TeamRows = { members: Row[]; machines: Row[]; usage: Row[] };
 
+/** Team `teamId`'s row of usage counts, which `rowsOf` does not read. */
+export const countRowOf = (db: Db, teamId: number) => db.prepare("select * from usage_counts where team_id = ?").get(teamId);
+
 /** Every row of team `teamId` in members, machines and usage, all columns, in the order they were inserted. */
 export function rowsOf(db: Db, teamId: number): TeamRows {
   const all = (table: string) => db.prepare(`select * from ${table} where team_id = ? order by rowid`).all(teamId) as Row[];

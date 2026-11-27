@@ -1,6 +1,6 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { goodReg, MID2, record } from "./app.fixture.js";
-import { hostedTeam, signIn } from "./hosted.fixture.js";
+import { hostedTeam, machineIdOf, signIn } from "./hosted.fixture.js";
 import { conn, github, hosted, PUBLIC_URL, roomy, serverConfig, tempDataDir } from "./main.fixture.js";
 import { buildServer, type BuiltServer } from "./main.js";
 import type { DiskSpace } from "./storage-guard.js";
@@ -54,7 +54,7 @@ test("a hosted server lets a machine upload thirty times a minute", async () => 
 test("a hosted server lets one member register ten machines", async () => {
   const { s, code } = await hostedMachine({ measureDisk: roomy });
   try {
-    const machine = (n: number) => goodReg({ inviteCode: code, machineId: n.toString(16).padStart(32, "0") });
+    const machine = (n: number) => goodReg({ inviteCode: code, machineId: machineIdOf(n) });
     // hostedMachine registered the member's first machine.
     for (let n = 2; n <= 10; n++) expect((await register(s, machine(n))).status).toBe(200);
     const res = await register(s, machine(11));
@@ -68,7 +68,7 @@ test("a hosted server lets a team's machines send 60,000 upload records a minute
   const { s, code, token } = await hostedMachine({ measureDisk: roomy });
   try {
     const second = await tokenOf(await register(s, goodReg({ inviteCode: code, machineId: MID2 })));
-    const third = await tokenOf(await register(s, goodReg({ inviteCode: code, machineId: "c".repeat(32) })));
+    const third = await tokenOf(await register(s, goodReg({ inviteCode: code, machineId: machineIdOf(3) })));
     const thousand = Array.from({ length: 1000 }, (_, i) => record({ model: `m${i}` }));
     for (let i = 0; i < 30; i++) for (const machine of [token, second]) expect((await upload(s, machine, thousand)).status).toBe(200);
     const res = await upload(s, third, [record()]);

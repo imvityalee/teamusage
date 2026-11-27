@@ -1,9 +1,8 @@
 import { expect, test } from "vitest";
 import { MID, record } from "./app.fixture.js";
-import type { Db } from "./db.js";
 import { hostedLimits } from "./hosted-limits.js";
-import { hostedApp, hostedTeam, machineClient, recordsOf, testCaps, testLimits } from "./hosted.fixture.js";
-import { requestAs, rowsOf, STATS_RANGE, twoTeams, type CallerName, type World } from "./hosted.two-teams.fixture.js";
+import { hostedApp, hostedTeam, machineClient, machineIdOf, recordsOf, testCaps, testLimits } from "./hosted.fixture.js";
+import { countRowOf, requestAs, rowsOf, STATS_RANGE, twoTeams, type CallerName, type World } from "./hosted.two-teams.fixture.js";
 import { roomy } from "./main.fixture.js";
 import { forTeam } from "./team-data.js";
 import { rec } from "./team-data.fixture.js";
@@ -69,9 +68,6 @@ test("A's refusals name nothing of B", async () => {
   }
 });
 
-/** The `usage_counts` row of team `teamId`. */
-const countRowOf = (db: Db, teamId: number) => db.prepare("select * from usage_counts where team_id = ?").get(teamId);
-
 test("an upload to A drops A's expired rows and leaves B's rows and count as they were", async () => {
   const w = await world();
   const { A, B } = w.teams;
@@ -86,9 +82,6 @@ test("an upload to A drops A's expired rows and leaves B's rows and count as the
   expect(countRowOf(w.db, A.id)).toMatchObject({ rows: 2 });
   expect({ rows: rowsOf(w.db, B.id), count: countRowOf(w.db, B.id) }).toEqual(before);
 });
-
-/** A machine id of 32 hex digits for machine `n` of many. */
-const machineIdOf = (n: number) => n.toString(16).padStart(32, "0");
 
 test("with the real values, each of a team's 600 machines uploads 11 records within one minute", async () => {
   const { db, app } = hostedApp({ limits: (appDb) => hostedLimits({ dataDir: "/data", db: appDb, measure: roomy }), now: () => NOW });

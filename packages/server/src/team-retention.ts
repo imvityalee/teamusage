@@ -2,7 +2,10 @@ import { addDays } from "@teamusage/shared";
 import type { Db } from "./db.js";
 import { countRemovedRows } from "./usage-counts.js";
 
-/** Days of usage a hosted team keeps: a row dated more than this many days before today (UTC) is dropped. */
+/**
+ * Days of usage a hosted team keeps. A row dated more than this many days before today (UTC) is dropped at the team's
+ * next uploads, at most `EXPIRED_ROWS_PER_UPLOAD` at each; a team that does not upload keeps it.
+ */
 export const USAGE_DAYS_KEPT = 730;
 
 /** Most expired rows dropped at one upload. */

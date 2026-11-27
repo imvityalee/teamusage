@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, test } from "vitest";
 import type { Hono } from "hono";
 import * as selfHosted from "./app.harness.js";
 import type { Db } from "./db.js";
-import { hostedApp, hostedTeam, machineClient, mid, recordsOf, testCaps, testLimits } from "./hosted.fixture.js";
+import { hostedApp, hostedTeam, machineClient, machineIdOf, recordsOf, testCaps, testLimits } from "./hosted.fixture.js";
 import { TEAM_UPLOAD_RECORDS_PER_MINUTE, type TeamLimits } from "./team-limits.js";
 
 // A team's machines share a budget of upload records a minute; here it is ten records, and each machine may upload twenty times.
@@ -21,8 +21,8 @@ const REFUSED = { error: "this team is sending too much at once; try again in a 
 async function server(team: Partial<TeamLimits> = {}, uploadsPerMinute = 20): Promise<void> {
   ({ db, app } = hostedApp({ limits: testLimits(testCaps(team), { uploadsPerMinute, teamUploadRecordsPerMinute: 10 }), now: () => clock.t }));
   code = hostedTeam(db, { githubId: 1, login: "ann" }, "code").code;
-  one = await join({ machineId: mid(1) });
-  two = await join({ machineId: mid(2) });
+  one = await join({ machineId: machineIdOf(1) });
+  two = await join({ machineId: machineIdOf(2) });
 }
 beforeEach(async () => {
   clock.t = Date.parse("2026-11-25T10:30:00.000Z");
@@ -95,7 +95,7 @@ test("another team with the same machine id uploads while the first team is refu
   await upload(one, recordsOf(10));
   const bob = hostedTeam(db, { githubId: 2, login: "bob" }, "code");
   const bobs = machineClient(() => app, () => bob.code);
-  const bobsToken = await bobs.join({ machineId: mid(1), email: "bob@example.com", name: "Quillfeather Bobby" });
+  const bobsToken = await bobs.join({ machineId: machineIdOf(1), email: "bob@example.com", name: "Quillfeather Bobby" });
   const refused = await upload(two, recordsOf(1, 10));
   const answer = (await refused.json()) as { error: string };
   expect(answer).toEqual(REFUSED);

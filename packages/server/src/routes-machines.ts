@@ -2,12 +2,11 @@ import type { Context, Hono } from "hono";
 import { isDisplayName, isEmail, validateBatch, type UsageRecord } from "@teamusage/shared";
 import type { RouteContext } from "./app-context.js";
 import { bearerToken, fail, readJson } from "./http.js";
-import { createLimiter } from "./limiter.js";
+import { createLimiter, MINUTE_MS } from "./limiter.js";
 import { limitAnswer, secondsToUtcMidnight } from "./limit-answers.js";
 import { authenticate, MachineOwnedError, type MachineIdentity } from "./team-data.js";
 import { LimitError } from "./team-limits.js";
 
-const MINUTE_MS = 60_000;
 const MACHINE_ID = /^[a-f0-9]{32}$/;
 
 type RegisterInput = { name: string; email: string; machineId: string; machineLabel: string };

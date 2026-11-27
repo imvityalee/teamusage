@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import * as selfHosted from "./app.harness.js";
 import { record } from "./app.fixture.js";
-import { hostedApp, hostedTeam, machineClient, mid, testCaps, testLimits } from "./hosted.fixture.js";
+import { hostedApp, hostedTeam, machineClient, machineIdOf, testCaps, testLimits } from "./hosted.fixture.js";
 
 // The app's clock is on 2026-11-26: 2024-06-01 lies inside the upload window and before the oldest date a hosted team keeps.
 const NOW = Date.parse("2026-11-26T10:30:00.000Z");
@@ -11,7 +11,7 @@ test("a hosted team's upload stores the current record and counts the old one as
   const { db, app } = hostedApp({ limits: testLimits(testCaps(), { usageDaysKept: 730 }), now: () => NOW });
   const { code } = hostedTeam(db, { githubId: 1, login: "ann" }, "code");
   const { join, upload } = machineClient(() => app, () => code);
-  const res = await upload(await join({ machineId: mid(1) }), BATCH);
+  const res = await upload(await join({ machineId: machineIdOf(1) }), BATCH);
   expect(res.status).toBe(200);
   expect(await res.json()).toEqual({ stored: 1, kept: 1 });
 });

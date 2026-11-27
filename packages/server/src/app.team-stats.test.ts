@@ -4,7 +4,7 @@ import { goodReg, INVITE } from "./app.fixture.js";
 import { createApp } from "./app.js";
 import type { AppOptions } from "./app-context.js";
 import { openDb, type Db } from "./db.js";
-import { codeLogin, cookieOf, hostedApp, hostedTeam, machineClient, mid, signIn, testCaps, testLimits } from "./hosted.fixture.js";
+import { codeLogin, cookieOf, hostedApp, hostedTeam, machineClient, machineIdOf, signIn, testCaps, testLimits } from "./hosted.fixture.js";
 import { storeTooManyModels } from "./stats.fixture.js";
 import { ensureSingleTeam, singleTeamCodes } from "./teams.js";
 
@@ -38,7 +38,7 @@ const answer = async (res: Response) => [res.status, await res.json()];
 /** Creates a team of `owner` whose dashboard opens with its code, registers one machine and signs in with the code. */
 async function setUpTeam(owner: Owner, machine: number) {
   const { team, code } = hostedTeam(db, owner, "code");
-  const joined = await machineClient(() => app, () => code).register({ machineId: mid(machine), email: `${owner.login}@example.com` });
+  const joined = await machineClient(() => app, () => code).register({ machineId: machineIdOf(machine), email: `${owner.login}@example.com` });
   const { token, memberId } = (await joined.json()) as { token: string; memberId: number };
   const session = cookieOf(await codeLogin(app, code), "tu_session");
   return { team: { ...team, memberId }, token: { Authorization: `Bearer ${token}` }, session: { Cookie: session } };
@@ -118,7 +118,7 @@ describe("while A is busy, a request it would refuse anyway gets today's answer"
   });
 });
 
-test("refused requests spend nothing: the minute ends when the first refusal said, and a bad range or a missing member costs nothing", async () => {
+test("the minute ends when the first refusal said, and a bad range or a missing member costs nothing", async () => {
   await useUpA();
   const named = clock.t + Number((await stats(sessionA)).headers.get("retry-after")) * 1000;
   for (let i = 0; i < 9; i++) expect((await stats(tokenA)).status).toBe(429);
@@ -133,7 +133,7 @@ test("refused requests spend nothing: the minute ends when the first refusal sai
 });
 
 test("a request too large to answer is 409, and the time it took is spent", async () => {
-  storeTooManyModels(db, a.id, { memberId: a.memberId, machineId: mid(1) });
+  storeTooManyModels(db, a.id, { memberId: a.memberId, machineId: machineIdOf(1) });
   cost.ms = 60;
   for (let i = 0; i < 2; i++) expect((await stats(sessionA)).status).toBe(409);   // 120 of 100
   expect(await answer(await stats(sessionA))).toEqual([429, BUSY]);

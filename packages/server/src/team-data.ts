@@ -54,7 +54,7 @@ export function forTeam(
   const writes: WriteOptions = { clock: o?.clock ?? now, limits: o?.limits };
   return {
     registerMachine: (a) => registerMachine(db, teamId, writes, a),
-    upsertUsage: uploadWithin(db, teamId, writes, o?.daysKept),
+    upsertUsage: uploadUnderRetention(db, teamId, writes, o?.daysKept),
     listMembers: () => listMembers(db, teamId),
     removeMember: (email) => removeMember(db, teamId, email),
     removeMachine: (machineId) => removeMachine(db, teamId, machineId),
@@ -109,7 +109,7 @@ function registerMachine(
  * upload a cap refuses has still dropped them, and sets aside the records dated before the oldest date kept: they are
  * not written and count as kept.
  */
-function uploadWithin(db: Db, teamId: number, o: WriteOptions, daysKept: number | undefined): TeamData["upsertUsage"] {
+function uploadUnderRetention(db: Db, teamId: number, o: WriteOptions, daysKept: number | undefined): TeamData["upsertUsage"] {
   return (who, records) => {
     if (daysKept === undefined) return upsertUsage(db, teamId, o, who, records);
     const oldest = oldestDateKept(o.clock(), daysKept);

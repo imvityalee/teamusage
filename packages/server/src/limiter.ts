@@ -14,6 +14,9 @@ export interface Limiter {
   size(): number;
 }
 
+/** A minute in milliseconds: the window of every per-minute limit. */
+export const MINUTE_MS = 60_000;
+
 const MAX_KEY_CHARS = 64;
 const PURGE_INTERVAL_MS = 1000;
 

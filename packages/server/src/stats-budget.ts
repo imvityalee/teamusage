@@ -1,6 +1,4 @@
-import { createLimiter } from "./limiter.js";
-
-const MINUTE_MS = 60_000;
+import { createLimiter, MINUTE_MS } from "./limiter.js";
 
 /** A team's statistics time in its current minute. */
 export interface StatsBudget {
@@ -10,6 +8,7 @@ export interface StatsBudget {
   spend(teamId: number, ms: number): void;
 }
 
+/** A statistics budget of `msPerMinute` milliseconds of work per team, in fixed minutes by `now`. */
 export function createStatsBudget(o: { msPerMinute: number; now: () => number }): StatsBudget {
   const spent = createLimiter({ max: o.msPerMinute, windowMs: MINUTE_MS, now: o.now });
   return {

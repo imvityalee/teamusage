@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, test } from "vitest";
 import { MID, MID2 } from "./app.fixture.js";
 import { db as appDb, bearer, getStatsReq, login, RANGE, register, sessionCookie, useFreshApp } from "./app.harness.js";
 import type { Db } from "./db.js";
+import { machineIdOf } from "./hosted.fixture.js";
 import { migrate } from "./migrate.js";
 import { STATS_BOUNDS, StatsTooLargeError, type StatsBounds } from "./stats-bounds.js";
 import { getStats } from "./stats.js";
@@ -24,7 +25,7 @@ let machines = 0;
 /** Registers a new member of team `t` with one machine and stores `records` for it. */
 function addMember(t: number, records: Rec[]): Member {
   const n = ++machines;
-  const machineId = n.toString(16).padStart(32, "0");
+  const machineId = machineIdOf(n);
   const data = forTeam(db, t);
   const { memberId } = data.registerMachine({ name: `M${n}`, email: `m${n}@x.com`, machineId, machineLabel: "l" });
   data.upsertUsage({ memberId, machineId }, records);
