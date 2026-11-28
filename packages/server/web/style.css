@@ -81,9 +81,15 @@ h2 .n { font-weight: 400; color: var(--muted); }
 .tile .v { font-size: 28px; font-weight: 600; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; white-space: nowrap;
   display: flex; flex-wrap: wrap; align-items: center; gap: 0 10px; }
 .tile .v .tile-text { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
-/* A long cost (render.ts marks its tile) shrinks with its tile, so all of it fits on the line. */
-.tile.long { container-type: inline-size; }
-.tile.long .v { font-size: min(28px, 12cqi); }
+/* The cost's figure keeps its size while it fits its tile and shrinks when it would not; render.tiles.ts sets --chars to
+   its length. --figure-em is one character's width in em at 28 px (system font, weight 600, tabular figures, -0.02em),
+   0.545, small enough that an ordinary cost keeps 28 px in the narrowest four-column tile. The font tracks wider at
+   small sizes (0.533 to 0.555 em measured from 28 down to 14 px), so a very long cost may run up to 2.6 px into the
+   tile's padding; it never reaches the border. Without cqi the fixed sizes apply. */
+@supports (width: 1cqi) {
+  .tile.cost { container-type: inline-size; --figure-em: 0.545; --figure-fit: calc(100cqi / (var(--chars) * var(--figure-em))); }
+  .tile.cost .v { font-size: min(28px, var(--figure-fit)); }
+}
 .tile .v .of { font-size: 15px; font-weight: 400; color: var(--muted); letter-spacing: 0; }
 .tile .v .agent-icon { width: 28px; height: 26px; }
 .tile .v .agent-icon .logo { width: 15px; height: 15px; }
@@ -160,10 +166,11 @@ td.accts-cell { white-space: normal; min-width: 8em; max-width: 16em; }
 .accounts li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
 .accounts li:last-child { border-bottom: 0; }
 /* The name wraps between words; when its longest word and the numbers do not fit one line, the numbers move under it.
+   Whatever line the share lands on, margin-left: auto keeps it at the right, in the column of shares.
    max-width caps the name's smallest width, so a name of one long word still breaks rather than overflow. */
 .accounts .acct-name { flex: 1 1 0; max-width: 100%; overflow-wrap: break-word; }
 .accounts .acct-tokens { font-variant-numeric: tabular-nums; white-space: nowrap; }
-.accounts .acct-share { min-width: 3.5em; text-align: right; white-space: nowrap; }
+.accounts .acct-share { min-width: 3.5em; margin-left: auto; text-align: right; white-space: nowrap; }
 
 /* States */
 .empty, .placeholder { color: var(--muted); text-align: center; padding: 40px 16px; margin: 0; }
@@ -194,7 +201,7 @@ a:active, .link:active { opacity: .6; }
   .fb-range { margin-left: 0; flex-basis: 100%; }
   .tile { padding: 12px 14px; }
   .tile .v { font-size: 20px; }
-  .tile.long .v { font-size: min(20px, 12cqi); }
+  @supports (width: 1cqi) { .tile.cost .v { font-size: min(20px, var(--figure-fit)); } }
   .model-name { max-width: 20ch; }
   /* The Russian period names are longer: less padding keeps each on one line and the three within 320 px. */
   #range button { white-space: nowrap; }

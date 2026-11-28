@@ -7,13 +7,34 @@ export function full(n: number): string {
   return Math.round(n).toLocaleString("en-US");
 }
 
-/** 4031300000000 → "4.03T", 2936526460 → "2.94B", 44200000 → "44.2M", 950 → "950" */
+interface Unit {
+  suffix: string;
+  scale: number;
+  digits: number;
+}
+
+/** The units of `compact`, largest first, with the decimals each shows. */
+const UNITS: readonly Unit[] = [
+  { suffix: "Q", scale: 1e15, digits: 2 },
+  { suffix: "T", scale: 1e12, digits: 2 },
+  { suffix: "B", scale: 1e9, digits: 2 },
+  { suffix: "M", scale: 1e6, digits: 1 },
+];
+
+/** `n` in `unit`, rounded to the decimals the unit shows, half away from zero. */
+const inUnit = (n: number, unit: Unit): number => (Math.sign(n) * Math.round(Math.abs(n) / (unit.scale / 10 ** unit.digits))) / 10 ** unit.digits;
+
+/**
+ * 9007199254740991 → "9.01Q", 4031300000000 → "4.03T", 2936526460 → "2.94B", 44200000 → "44.2M", 950 → "950".
+ * A number moves up a unit once the unit below would show 1000 after rounding (999,995,000,000,000 → "1.00Q").
+ * Q is the top: Number.MAX_SAFE_INTEGER reads "9.01Q", and a total above it is no longer an exact integer.
+ */
 export function compact(n: number): string {
-  const billions = Math.round(n / 1e7) / 100;
-  if (Math.abs(billions) >= 1000) return (n / 1e12).toFixed(2) + "T";
-  const millions = Math.round(n / 1e5) / 10;
-  if (Math.abs(millions) >= 1000) return (n / 1e9).toFixed(2) + "B";
-  if (Math.abs(n) >= 1e6) return millions.toFixed(1) + "M";
+  for (const [i, unit] of UNITS.entries()) {
+    const below = UNITS[i + 1];
+    const reached = below === undefined ? Math.abs(n) >= unit.scale : Math.abs(inUnit(n, below)) >= 1000;
+    if (reached) return inUnit(n, unit).toFixed(unit.digits) + unit.suffix;
+  }
   return full(n);
 }
 

@@ -37,6 +37,24 @@ describe("compact", () => {
     expect(compact(-2_936_526_460)).toBe("-2.94B");
     expect(compact(-4_031_300_000_000)).toBe("-4.03T");
   });
+
+  test("uses Q from a quadrillion, on both sides of the step", () => {
+    expect(compact(999_994_999_999_999)).toBe("999.99T");
+    expect(compact(999_995_000_000_000)).toBe("1.00Q");
+    expect(compact(1e15)).toBe("1.00Q");
+    expect(compact(-999_995_000_000_000)).toBe("-1.00Q");
+  });
+
+  test("rounds an exact half away from zero, on both sides of zero", () => {
+    expect(compact(1_005_000_000)).toBe("1.01B");
+    expect(compact(-1_005_000_000)).toBe("-1.01B");
+    expect(compact(44_250_000)).toBe("44.3M");
+    expect(compact(-44_250_000)).toBe("-44.3M");
+  });
+
+  test("reads the largest exact integer as Q", () => {
+    expect(compact(Number.MAX_SAFE_INTEGER)).toBe("9.01Q");
+  });
 });
 
 describe("usd", () => {

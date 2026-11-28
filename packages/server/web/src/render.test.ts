@@ -36,7 +36,7 @@ describe("server values are text, never markup", () => {
       expect(el.getAttribute("class") ?? "").not.toMatch(/[<>"']/);
       expect(el.id).not.toMatch(/[<>"']/);
       // Inline styles carry only numbers.
-      expect(el.getAttribute("style") ?? "").toMatch(/^(width: [\d.]+%;?|flex-grow: [\d.]+;?|)$/);
+      expect(el.getAttribute("style") ?? "").toMatch(/^(width: [\d.]+%;?|flex-grow: [\d.]+;?|--chars: \d+;?|)$/);
     }
   });
 

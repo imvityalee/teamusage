@@ -1,13 +1,14 @@
 import type { Stats } from "@teamusage/shared";
 import { accountPlanName } from "./accounts.js";
 import { agentIcon, agentName, OTHER_SERIES, SERIES, otherAgentsIcon } from "./agents.js";
-import { dailyAgentTotals, buckets, drawChart, presentSeries, rankAgents, WEEKLY_AFTER_DAYS } from "./chart.js";
+import { dailyAgentTotals, buckets, drawChart, presentSeries, WEEKLY_AFTER_DAYS } from "./chart.js";
 import { counted, h, icon, type Child } from "./dom.js";
 import { membersPanel, newTable, type MembersTable } from "./dashboard/members-panel.js";
 import { byAccountPlanOf, lastSync, pct, STALE_DAYS, sumOf } from "./dashboard/member-facts.js";
-import { availableTotal, isActive, NO_FILTERS, type Filters } from "./filters.js";
+import { isActive, NO_FILTERS, type Filters } from "./filters.js";
 import { compact, daysSince, full, initials, longDate, shortDate, usd } from "./format.js";
 import { count, locale, messages, t, type Lang, type MessageKey } from "./i18n.js";
+import { nOfM, tile, tiles } from "./render.tiles.js";
 
 /**
  * Builds the page body from a Stats. Every value, from the server or not, goes in as a text node or an attribute
@@ -30,15 +31,6 @@ export function applyStaticText(doc: Document, lang: Lang): void {
     if (isKey(key)) el.setAttribute("aria-label", t(lang, key));
   }
 }
-
-function tile(doc: Document, label: string, value: Child[], sub: string, hint?: string): HTMLElement {
-  const v = h(doc, "div", { class: "v" }, ...value);
-  if (hint) v.title = hint;
-  return h(doc, "div", { class: "panel tile" }, h(doc, "div", { class: "k" }, label), v, h(doc, "div", { class: "s" }, sub));
-}
-
-/** "N of M", with the "of M" quieter. */
-const nOfM = (doc: Document, lang: Lang, n: number, m: number): Child[] => [String(n), " ", h(doc, "span", { class: "of" }, t(lang, "ofN", { n: m }))];
 
 function headCell(doc: Document, label: string, left: boolean, sorted: boolean): HTMLElement {
   const attrs: Record<string, string> = { scope: "col" };
@@ -75,46 +67,6 @@ function modelsTable(doc: Document, stats: Stats, lang: Lang): HTMLElement {
   const keys = ["colAgent", "colModel", "colInput", "colOutput", "colCacheCreate", "colCacheRead", "colTokens", "colCost"] as const;
   const head = h(doc, "thead", {}, h(doc, "tr", {}, ...keys.map((k, i) => headCell(doc, t(lang, k), i < 2, k === "colTokens"))));
   return h(doc, "table", { id: "models" }, head, h(doc, "tbody", {}, ...body));
-}
-
-/** Characters of a figure that still fit half a row of tiles on a 320 px phone. */
-const HALF_ROW_FIGURE = 10;
-
-/** The cost's tile; a longer figure marks it `long`, and style.css gives it a whole row on a phone. */
-function costTile(doc: Document, lang: Lang, cost: string, filtered: boolean): HTMLElement {
-  const el = tile(doc, t(lang, filtered ? "tileCostFiltered" : "tileCost"), [cost], t(lang, "apiPrices"));
-  el.classList.toggle("long", cost.length > HALF_ROW_FIGURE);
-  return el;
-}
-
-interface TileContext {
-  filters: Filters;
-  /** "team" or "member": changes the wording of the shares. */
-  view: "team" | "member";
-  /** The first tile's sub-line when no filter is on. */
-  firstSub: string;
-}
-
-/** Total tokens, cost, a third tile that depends on the view, and the most used agent. */
-function tiles(doc: Document, stats: Stats, lang: Lang, third: HTMLElement, ctx: TileContext): HTMLElement {
-  const filtered = isActive(ctx.filters);
-  const totals = dailyAgentTotals(stats.daily);
-  const topAgent = rankAgents(totals)[0];
-  const tokens = stats.totals.tokens;
-  const first = filtered ? t(lang, "ofAllInPeriod", { n: pct(tokens, availableTotal(stats.available)) }) : ctx.firstSub;
-  const agentShare = topAgent === undefined ? 0 : pct(totals.get(topAgent) ?? 0, tokens);
-  const agentSub = filtered ? "ofFiltered" : ctx.view === "team" ? "share" : "ofTheirs";
-  return h(
-    doc,
-    "div",
-    { class: "tiles" },
-    tile(doc, t(lang, filtered ? "tileTokensFiltered" : "tileTokens"), [compact(tokens)], first, full(tokens)),
-    costTile(doc, lang, usd(stats.totals.costUsd), filtered),
-    third,
-    topAgent === undefined || tokens <= 0
-      ? tile(doc, t(lang, "tileTopAgent"), ["—"], "")
-      : tile(doc, t(lang, "tileTopAgent"), [agentIcon(doc, topAgent), h(doc, "span", { class: "tile-text" }, agentName(topAgent))], t(lang, agentSub, { n: agentShare })),
-  );
 }
 
 function chartPanel(doc: Document, stats: Stats, lang: Lang): HTMLElement {
