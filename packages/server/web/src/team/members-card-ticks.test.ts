@@ -60,15 +60,34 @@ describe("the boxes and the bar", () => {
     expect([selected(), headBox().checked, headBox().indeterminate]).toEqual(["40 selected", true, false]);
   });
 
-  test("with more than 500 members the bar says 500 ticked, the most one removal takes, and no further box can be ticked", async () => {
+  test("with more than 500 members the first press ticks 500 (the box mixed, the bar says the most one removal takes), the second unticks them", async () => {
     m = await mountMembers(team(2000));
     headBox().click();
     expect(selected()).toBe("500 ticked, the most one removal takes.");
     expect(boxes().every((b) => b.checked)).toBe(true);
-    m.click("button[data-step='next']");
-    for (let i = 0; i < 19; i++) m.click("button[data-step='next']");
+    expect([headBox().checked, headBox().indeterminate]).toEqual([false, true]);
+    for (let i = 0; i < 20; i++) m.click("button[data-step='next']");
     expect(m.all<HTMLInputElement>("tbody input[data-tick]").every((b) => b.disabled && !b.checked)).toBe(true);
-    expect(headBox().checked).toBe(true);
+    headBox().click();
+    expect([bar().hidden, headBox().checked, headBox().indeterminate]).toEqual([true, false, false]);
+  });
+
+  test("500 ticked, then a search for someone who is not: the box is unticked, a press changes nothing, and the sentence about the cap stays", async () => {
+    m = await mountMembers(team(2000));
+    headBox().click();
+    m.type("Person 1999");
+    expect([headBox().checked, headBox().indeterminate]).toEqual([false, false]);
+    headBox().click();
+    expect(selected()).toBe("500 ticked, the most one removal takes.");
+    expect(boxes()[0]?.checked).toBe(false);
+  });
+
+  test("ticks outside the search do not change the header's box", async () => {
+    m = await mountMembers(team(60));
+    boxes()[0]?.click();
+    m.type("Person 0050");
+    expect([headBox().checked, headBox().indeterminate]).toEqual([false, false]);
+    expect(selected()).toBe("1 selected");
   });
 
   test("at exactly 500 members nothing is capped: '500 selected'", async () => {
@@ -87,6 +106,19 @@ describe("the boxes and the bar", () => {
     expect(selected()).toBe("Выбрано 5 участников");
     expect(m.$("#members-clear").textContent).toBe("Сбросить");
     expect(m.$("#members-remove-selected").textContent).toBe("Удалить выбранных…");
+  });
+});
+
+describe("the status node of the bar", () => {
+  test("is the same node, in no hidden ancestor, before the first tick, after it and after Clear, and says what is ticked", async () => {
+    m = await mountMembers(team(30));
+    const live = m.$("#members-selected");
+    const inHidden = () => live.closest("[hidden]") !== null;
+    expect([inHidden(), live.textContent]).toEqual([false, ""]);
+    boxes()[0]?.click();
+    expect([m.$("#members-selected") === live, inHidden(), live.textContent]).toEqual([true, false, "1 selected"]);
+    m.click("#members-clear");
+    expect([m.$("#members-selected") === live, inHidden(), live.textContent]).toEqual([true, false, ""]);
   });
 });
 

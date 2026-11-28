@@ -30,7 +30,7 @@ test("the line under the team's name is the card's summary, in the page's langua
   expect(heading.nextElementSibling).toBe(summary);
   expect(summary.textContent).toBe("3 members, 1 not syncing");
   page.$("#lang button[data-lang='ru']").click();
-  expect(summary.textContent).toBe("3 участника, 1 не синхронизируется");
+  expect(summary.textContent).toBe("3 участника, 1 не отправляет данные");
   expect(page.$("#members-title").textContent).toBe("Участники 3");
 });
 

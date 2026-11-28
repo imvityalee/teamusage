@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test } from "vitest";
 import type { MemberRow } from "./members.js";
-import { FIRST_DIRECTION, keepExisting, MAX_TICKED, tick, tickAll, tickState, toRows, untickAll, visible, type MemberListView } from "./members.js";
+import { FIRST_DIRECTION, keepExisting, MAX_TICKED, tick, tickAll, tickState, toggleAll, toRows, untickAll, visible, type MemberListView } from "./members.js";
 import { machine, member, rowsOf, team, TODAY } from "./members.fixture.js";
 
 const view = (over: Partial<MemberListView> = {}): MemberListView => ({ query: "", onlyStale: false, sort: { by: "name", dir: "asc" }, page: 1, size: 25, ...over });
@@ -146,17 +146,62 @@ describe("ticks", () => {
     expect(idsOf(kept).sort()).toEqual([1, 2]);
   });
 
-  test("the header's box is unticked, ticked or mixed, by the people the search and the filter leave", () => {
+  test("the header's box describes the matches only: unticked, ticked or mixed; ticks outside the search do not count", () => {
     const some = rows.slice(0, 5);
     expect(tickState(new Set(), some)).toBe("none");
     expect(tickState(new Set([some[0]?.id as number]), some)).toBe("some");
     expect(tickState(new Set(ids(some)), some)).toBe("all");
     expect(tickState(new Set(ids(some)), rows.slice(0, 6))).toBe("some");
-    expect(tickState(new Set([999]), some)).toBe("some");
+    expect(tickState(new Set([999]), some)).toBe("none");
+    expect(tickState(new Set([999, some[0]?.id as number]), some)).toBe("some");
     expect(tickState(new Set(), [])).toBe("none");
   });
 
-  test("with more than 500 matches, the first 500 ticked is all that can be ticked", () => {
-    expect(tickState(tickAll(new Set(), rows), rows)).toBe("all");
+  test("with more than 500 matches, 500 ticked is a mixed box", () => {
+    expect(tickState(tickAll(new Set(), rows), rows)).toBe("some");
+  });
+});
+
+describe("the header's press", () => {
+  let rows: MemberRow[] = [];
+  beforeEach(() => void (rows = rowsOf(team(512))));
+
+  test("ticks every match, and the next press unticks the matches and leaves ticks outside the search", () => {
+    const some = rows.slice(0, 5);
+    const first = toggleAll(new Set([600]), some);
+    expect(idsOf(first).sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 600]);
+    expect(idsOf(toggleAll(first, some))).toEqual([600]);
+  });
+
+  test("a mixed box ticks everyone", () => {
+    expect(toggleAll(new Set([2]), rows.slice(0, 5)).size).toBe(5);
+  });
+
+  test("with more than 500 matches the first press ticks 500 and the second unticks them", () => {
+    const first = toggleAll(new Set(), rows);
+    expect(first.size).toBe(500);
+    expect(toggleAll(first, rows).size).toBe(0);
+  });
+
+  test("500 ticked and then a sort from Z: the press unticks, so the box is never stuck", () => {
+    const ticked = toggleAll(new Set(), rows);
+    const fromZ = [...rows].reverse();
+    expect(tickState(ticked, fromZ)).toBe("some");
+    expect(toggleAll(ticked, fromZ).size).toBe(0);
+  });
+
+  test("one tick outside the search, then a press on more than 500 matches: 499 more are ticked, up to the cap", () => {
+    const outside = new Set([9_999]);
+    const next = toggleAll(outside, rows);
+    expect(next.size).toBe(500);
+    expect(next.has(9_999)).toBe(true);
+    expect(next.has(rows[0]?.id as number)).toBe(true);
+  });
+
+  test("at the cap, a search for someone who is not ticked: the press adds nothing and unticks nothing", () => {
+    const ticked = toggleAll(new Set(), rows);
+    const matching = [rows[511] as MemberRow];
+    expect(tickState(ticked, matching)).toBe("none");
+    expect(toggleAll(ticked, matching)).toEqual(ticked);
   });
 });

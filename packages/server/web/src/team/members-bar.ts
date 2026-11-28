@@ -4,10 +4,16 @@ import { countText } from "./members-text.js";
 import { MAX_TICKED } from "./members.js";
 import { tt } from "./strings.js";
 
-/** The bar above the table while members are ticked: "14 selected", "Clear" and "Remove selected…". Its count is a live region that stays in the document. */
+/**
+ * The bar above the table while members are ticked: "14 selected", "Clear" and "Remove selected…". What a screen reader
+ * hears is `status`, a node that stays in the document, outside the bar that hides while nothing is ticked, and is
+ * empty then; the count the bar shows is the same words, hidden from assistive technology.
+ */
 
 export type TicksBar = {
   element: HTMLElement;
+  /** The live region: visually hidden, never in a hidden ancestor. */
+  status: HTMLElement;
   clear: HTMLButtonElement;
   remove: HTMLButtonElement;
   /** Draws the bar for `count` ticked members; `capped` says the team has more members than one removal takes. */
@@ -15,18 +21,22 @@ export type TicksBar = {
 };
 
 export function ticksBar(doc: Document): TicksBar {
-  const selected = h(doc, "span", { id: "members-selected", class: "selected", role: "status" });
+  const status = h(doc, "p", { id: "members-selected", class: "sr", role: "status" });
+  const selected = h(doc, "span", { class: "selected", "aria-hidden": "true" });
   const clear = h(doc, "button", { type: "button", id: "members-clear", class: "link-button" }) as HTMLButtonElement;
   const remove = h(doc, "button", { type: "button", id: "members-remove-selected", class: "link-button" }) as HTMLButtonElement;
   const element = h(doc, "div", { id: "members-bar", class: "members-bar", hidden: "" }, selected, h(doc, "span", { class: "bar-actions" }, clear, remove));
   return {
     element,
+    status,
     clear,
     remove,
     paint(lang, count, capped) {
       element.hidden = count === 0;
       const text = capped && count >= MAX_TICKED ? tt(lang, "selectedMax", { n: count }) : countText(lang, "selectedCount", count);
-      if (selected.textContent !== text) selected.textContent = text;
+      const said = count === 0 ? "" : text;
+      if (status.textContent !== said) status.textContent = said;
+      selected.textContent = text;
       clear.textContent = tt(lang, "clearTicks");
       remove.textContent = tt(lang, "removeSelected");
     },

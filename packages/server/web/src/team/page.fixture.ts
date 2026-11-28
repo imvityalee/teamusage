@@ -1,9 +1,9 @@
 import type { Window } from "happy-dom";
-import { expect } from "vitest";
+import { expect, vi } from "vitest";
 import { bootPage, json, user, type Call, type Page, type Reply } from "../site/page.fixture.js";
 import type { TeamInfo } from "./api.js";
 import { membersReply } from "./members-card.fixture.js";
-import { team as someMembers } from "./members.fixture.js";
+import { noon, TODAY, team as someMembers } from "./members.fixture.js";
 import { listReplies } from "./roles.fixture.js";
 
 /** Opens `/team` in happy-dom for the page's tests (tests only). */
@@ -23,7 +23,13 @@ export const teamReply = (team: TeamInfo) => json({ team });
 
 /** Opens `/team<suffix>` and answers each request with the next reply, the session's first. */
 export const bootAt = (suffix: string, ...replies: Reply[]): Promise<Page> =>
-  bootPage({ url: `/team${suffix}`, html: "team.html", load: () => import("./main.js") }, replies);
+  bootPage({ url: `/team${suffix}`, html: "team.html", load: () => import("./main.js"), prepare: onFixtureDay }, replies);
+
+/** The page's clock reads noon of the fixture's `TODAY`, so no test of the page depends on the day it runs. `page.close()` puts the real clock back. */
+const onFixtureDay = (): void => {
+  vi.useRealTimers();
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"], now: new Date(noon(TODAY)) });
+};
 
 /** The answers the members card gets when the page opens: a small team, one member not syncing. */
 export const memberReplies = () => [membersReply(someMembers(3, 1))];

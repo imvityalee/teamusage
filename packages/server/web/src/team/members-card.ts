@@ -1,16 +1,15 @@
 import { counted, h } from "../dom.js";
 import type { Lang } from "../lang.js";
-import type { ApiResult } from "../site/http.js";
 import { pressedColumn, markSorted, nextSort } from "../site/sort-head.js";
 import { searchField } from "../site/search-field.js";
 import { loadPageSize, savePageSize, type PageSize } from "../site/paging.js";
 import { refocusStep, renderPager, updatePager } from "../site/pager.js";
-import { getMembers, isApiMember, type Machine } from "./api.js";
+import type { Machine } from "./api.js";
 import type { Card, TeamContext } from "./card.js";
-import { failureText } from "./failure.js";
-import { FIRST_DIRECTION, keepExisting, MAX_TICKED, tick, tickAll, tickState, toRows, untickAll, visible, type MemberListView, type MemberRow, type Ticked } from "./members.js";
+import { FIRST_DIRECTION, keepExisting, MAX_TICKED, tick, tickState, toggleAll, visible, type MemberListView, type MemberRow, type Ticked } from "./members.js";
 import { memberRows } from "./members-rows.js";
 import { ticksBar } from "./members-bar.js";
+import { membersReader } from "./members-read.js";
 import { staleFilter, tableHead } from "./members-table.js";
 import { summaryText } from "./members-text.js";
 import { tt } from "./strings.js";
@@ -42,16 +41,11 @@ export type MembersOptions = {
   onRemove(what: Removal, opener: HTMLElement): void;
 };
 
-/** An answer that says the caller has no role in this team (any more). */
-const lostRole = (result: ApiResult<unknown>): boolean => result.kind === "refused" && (result.status === 403 || result.status === 404);
-
 export function membersCard(ctx: TeamContext, options: MembersOptions): MembersCard {
   const { doc } = ctx;
   let rows: MemberRow[] | null = null;
   let byId = new Map<number, MemberRow>();
   let ticked: Ticked = new Set();
-  let problem: ApiResult<unknown> | null = null;
-  let reading = 0;
   let shown: ReturnType<typeof visible> | null = null;
   const view: MemberListView = { query: "", onlyStale: false, sort: { by: "name", dir: "asc" }, page: 1, size: loadPageSize() };
   /** The members whose machines are open. */
@@ -66,16 +60,27 @@ export function membersCard(ctx: TeamContext, options: MembersOptions): MembersC
   const input = search.querySelector("input") as HTMLInputElement;
   const bar = ticksBar(doc);
   const loading = h(doc, "p", { class: "card-note" });
-  const error = h(doc, "p", { id: "members-error", class: "notice warn", role: "alert", hidden: "" });
-  const retry = h(doc, "button", { type: "button", id: "members-retry", class: "btn quiet compact", hidden: "" }) as HTMLButtonElement;
+  const reader = membersReader(ctx, {
+    today: options.today,
+    accept(read) {
+      rows = read;
+      byId = new Map(read.map((r) => [r.id, r]));
+      ticked = keepExisting(ticked, read);
+      for (const id of open) if (!byId.has(id)) open.delete(id);
+      view.page = 1;
+    },
+    changed: paint,
+    refocus: title,
+  });
   const empty = h(doc, "p", { id: "members-empty", class: "card-note", hidden: "" });
   const body = h(doc, "tbody");
-  let head = tableHead(doc, "en");
+  let head = tableHead(doc, ctx.lang());
+  head.box.addEventListener("change", onTickAll);
   const table = h(doc, "table", { id: "members-table", class: "members-table" }, head.thead, body);
   const scroll = h(doc, "div", { class: "scroll" }, table);
   const pagerSlot = h(doc, "div", { class: "pager-slot" });
   let pager: HTMLElement | null = null;
-  const element = h(doc, "section", { id: "members-card", class: "card", "aria-labelledby": "members-title" }, h(doc, "div", { class: "card-head" }, title, h(doc, "div", { class: "members-tools" }, filter.element, search)), loading, error, retry, bar.element, empty, pagerSlot);
+  const element = h(doc, "section", { id: "members-card", class: "card", "aria-labelledby": "members-title" }, h(doc, "div", { class: "card-head" }, title, h(doc, "div", { class: "members-tools" }, filter.element, search)), loading, reader.error, reader.retry, bar.status, bar.element, empty, pagerSlot);
 
   const lang = (): Lang => ctx.lang();
 
@@ -141,28 +146,27 @@ export function membersCard(ctx: TeamContext, options: MembersOptions): MembersC
     if (pressed !== undefined && pager !== null) refocusStep(pager, pressed);
   }
 
-  /** The head, the search box's words and the pager are drawn again when the language changed. */
+  /** The search box's words are set once and again in a new language, which also draws the head and the pager anew. */
   function paintLanguage(): void {
     const l = lang();
     if (builtIn === l) return;
+    if (builtIn !== null) {
+      head = tableHead(doc, l);
+      table.querySelector("thead")?.replaceWith(head.thead);
+      head.box.addEventListener("change", onTickAll);
+      pager = null;
+    }
     builtIn = l;
-    head = tableHead(doc, l);
-    table.querySelector("thead")?.replaceWith(head.thead);
-    head.box.addEventListener("change", onTickAll);
     search.querySelector("label")!.textContent = tt(l, "membersSearchLabel");
     input.placeholder = tt(l, "membersSearchPlaceholder");
-    pager = null;
   }
 
   function paint(): void {
     const l = lang();
     paintLanguage();
-    loading.hidden = rows !== null || problem !== null;
+    loading.hidden = rows !== null || reader.problem() !== null;
     loading.textContent = tt(l, "membersLoading");
-    error.hidden = problem === null;
-    error.textContent = problem === null ? "" : `${tt(l, "membersLoadFailed")} ${failureText(l, problem)}`;
-    retry.hidden = problem === null;
-    retry.textContent = tt(l, "tryAgain");
+    reader.paint(l);
     const hasRows = rows !== null && rows.length > 0;
     for (const part of [filter.element, search]) part.hidden = !hasRows;
     scroll.hidden = !hasRows;
@@ -191,7 +195,7 @@ export function membersCard(ctx: TeamContext, options: MembersOptions): MembersC
 
   function onTickAll(): void {
     const matching = shown?.matching ?? [];
-    setTicked(tickState(ticked, matching) === "all" ? untickAll(ticked, matching) : tickAll(ticked, matching));
+    setTicked(toggleAll(ticked, matching));
   }
 
   /** A press or change inside the table: a tick, "and 2 more", "Remove" or "Remove machine". */
@@ -221,25 +225,6 @@ export function membersCard(ctx: TeamContext, options: MembersOptions): MembersC
     if (panel !== null) panel.hidden = !opening;
   }
 
-  /** Reads the list. A 401 is the page's, a lost role reloads the page, anything else is told in the card. */
-  async function read(): Promise<void> {
-    const mine = ++reading;
-    const result = await getMembers(ctx.team().id);
-    if (mine !== reading) return;
-    if (result.kind === "unauthorized") return ctx.signedOut();
-    if (lostRole(result)) return void ctx.reload();
-    const list = result.kind === "ok" ? (result.value as { members?: unknown }).members : null;
-    if (Array.isArray(list) && list.every(isApiMember)) {
-      rows = toRows(list, options.today());
-      byId = new Map(rows.map((r) => [r.id, r]));
-      ticked = keepExisting(ticked, rows);
-      for (const id of open) if (!byId.has(id)) open.delete(id);
-      view.page = 1;
-      problem = null;
-    } else problem = result;
-    paint();
-  }
-
   body.addEventListener("click", onTable);
   body.addEventListener("change", onTable);
   input.addEventListener("input", () => change({ query: input.value }));
@@ -252,15 +237,7 @@ export function membersCard(ctx: TeamContext, options: MembersOptions): MembersC
     head.box.focus();
   });
   bar.remove.addEventListener("click", () => options.onRemove({ members: tickedRows(), machines: [] }, bar.remove));
-  retry.addEventListener("click", async () => {
-    const hadFocus = doc.activeElement === retry;
-    retry.disabled = true;
-    await read();
-    retry.disabled = false;
-    if (hadFocus) (problem === null ? title : retry).focus();
-  });
-
   paint();
-  void read();
-  return { element, paint, summary, reload: read, clearTicks: () => setTicked(new Set()) };
+  void reader.read();
+  return { element, paint, summary, reload: reader.read, clearTicks: () => setTicked(new Set()) };
 }

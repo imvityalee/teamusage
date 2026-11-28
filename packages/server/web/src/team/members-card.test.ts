@@ -68,10 +68,10 @@ describe("the list", () => {
   });
 
   test.each([
-    [21, 1, "21 участник, 1 не синхронизируется"],
-    [2, 2, "2 участника, 2 не синхронизируются"],
-    [5, 5, "5 участников, 5 не синхронизируются"],
-    [12, 0, "12 участников, 0 не синхронизируются"],
+    [21, 1, "21 участник, 1 не отправляет данные"],
+    [2, 2, "2 участника, 2 не отправляют данные"],
+    [5, 5, "5 участников, 5 не отправляют данные"],
+    [12, 0, "12 участников, 0 не отправляют данные"],
   ])("Russian: %i members, %i not syncing read %s", async (count, stale, text) => {
     m = await mountMembers(team(count, stale), [], { lang: "ru" });
     expect(m.card.summary.textContent).toBe(text);
@@ -150,6 +150,21 @@ describe("the machines of a member", () => {
     await m.world.close();
     m = await mountMembers(many(5), [], { lang: "ru" });
     expect(m.$("[data-action='more']").textContent).toBe("и ещё 5 устройств");
+  });
+});
+
+describe("the head", () => {
+  test("is built once: a repaint in the same language keeps it, a new language draws it anew", async () => {
+    m = await mountMembers(team(30));
+    const [thead, box] = [m.$("thead"), m.$("#members-tick-all")];
+    m.card.paint();
+    expect([m.$("thead") === thead, m.$("#members-tick-all") === box]).toEqual([true, true]);
+    m.world.setLang("ru");
+    m.card.paint();
+    expect(m.$("thead")).not.toBe(thead);
+    expect(m.$("#members-tick-all").getAttribute("aria-label")).toBe("Выбрать всех участников, подходящих под поиск и фильтр");
+    m.$<HTMLInputElement>("#members-tick-all").click();
+    expect(m.$("#members-selected").textContent).toBe("Выбрано 30 участников");
   });
 });
 

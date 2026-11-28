@@ -97,9 +97,20 @@ export function keepExisting(ticked: Ticked, rows: MemberRow[]): Ticked {
   return new Set([...ticked].filter((id) => there.has(id)));
 }
 
-/** The header's box: nothing ticked, everyone the search and filter leave (up to MAX_TICKED) ticked, or something in between. */
+/**
+ * The header's box, over the people the search and filter leave: none of them ticked, every one ticked, or some.
+ * Ticks on people outside the search do not change it (the bar counts everyone).
+ */
 export function tickState(ticked: Ticked, matching: MemberRow[]): "none" | "some" | "all" {
-  if (ticked.size === 0) return "none";
-  const target = matching.slice(0, MAX_TICKED);
-  return target.length > 0 && target.every((r) => ticked.has(r.id)) ? "all" : "some";
+  const count = matching.filter((r) => ticked.has(r.id)).length;
+  return count === 0 ? "none" : count === matching.length ? "all" : "some";
+}
+
+/**
+ * A press on the header's box: ticks every match; when that would add nothing (every match is ticked, or the cap is
+ * reached) it unticks every match instead, so a press always does something where it can. Ticks outside the search stay.
+ */
+export function toggleAll(ticked: Ticked, matching: MemberRow[]): Ticked {
+  const more = tickAll(ticked, matching);
+  return more.size > ticked.size ? more : untickAll(ticked, matching);
 }
