@@ -142,7 +142,8 @@ describe("a refusal", () => {
   test.each([
     ["the owner's limit", refused(409, "you already own 5 teams"), "You own 5 teams, the most one account can."],
     ["paused sign-ups", refused(503, "sign-ups are paused"), "New teams are paused for now. Try again later."],
-    ["an unknown refusal", refused(409, "<b>who knows</b>"), strings.en.errorFailed],
+    ["another refusal", refused(403, "cross-site request refused"), "The team could not be created. The server answered: cross-site request refused"],
+    ["a refusal without the server's text", new Response("<h1>Forbidden</h1>", { status: 403 }), strings.en.errorFailed],
     ["a server error", json({ error: "internal error" }, 500), strings.en.errorFailed],
     ["a network error", new TypeError("Failed to fetch"), strings.en.errorNetwork],
   ])("%s: its own sentence, the button back and focus on the button", async (_what, reply, text) => {
@@ -154,12 +155,13 @@ describe("a refusal", () => {
     expect(page.doc.activeElement).toBe(page.$("#create"));
     expect(posts()).toHaveLength(1);
     expect(page.assign).not.toHaveBeenCalled();
-    expect(page.doc.body.innerHTML).not.toContain("who knows</b>");
+    expect(page.$("#form-notice").childElementCount).toBe(0);
   });
 
-  test("the server's own text is never drawn", async () => {
-    await submitWith(refused(409, "SERVER-WORDS"));
-    expect(page.doc.documentElement.outerHTML).not.toContain("SERVER-WORDS");
+  test("another refusal's text stays inside the page's own sentence, in Russian too", async () => {
+    await submitWith(refused(403, "cross-site request refused"));
+    page.press('#lang [data-lang="ru"]');
+    expect(page.$("#form-notice").textContent).toBe("Не удалось создать команду. Ответ сервера: cross-site request refused");
   });
 
   test("invalid name puts the error on the name field and the focus there", async () => {

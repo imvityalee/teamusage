@@ -1,9 +1,10 @@
 import type { Window } from "happy-dom";
 import { expect, vi } from "vitest";
+import { noon } from "../site/noon.fixture.js";
 import { bootPage, json, user, type Call, type Page, type Reply } from "../site/page.fixture.js";
 import type { TeamInfo } from "./api.js";
 import { membersReply } from "./members-card.fixture.js";
-import { noon, TODAY, team as someMembers } from "./members.fixture.js";
+import { TODAY, team as someMembers } from "./members.fixture.js";
 import { listReplies } from "./roles.fixture.js";
 
 /** Opens `/team` in happy-dom for the page's tests (tests only). */

@@ -210,8 +210,7 @@ function paint(): void {
   switch (shown.kind) {
     case "team":
       ui.pageHead.replaceChildren();
-      const opts = { query: state.query, filters: shown.filters, table: state.members };
-      ui.stats.replaceChildren(renderStats(document, shown.stats, lang, today(), opts));
+      ui.stats.replaceChildren(renderStats(document, shown.stats, lang, today(), { query: state.query, filters: shown.filters, table: state.members }));
       break;
     case "member": {
       ui.pageHead.replaceChildren(renderMemberHead(document, shown.stats, shown.id, lang, today()));
@@ -283,10 +282,7 @@ async function load(): Promise<void> {
       break;
     case "unauthorized":
       // A hosted team's dashboard is never opened with a code.
-      if (state.source.kind === "hosted") return start.showPanel("signedOut");
-      state.view = "login";
-      state.status = null;
-      break;
+      return state.source.kind === "hosted" ? start.showPanel("signedOut") : start.showLogin();
     case "noTeam":
       return start.showPanel("noTeam");
     case "busy":
@@ -457,6 +453,6 @@ window.addEventListener("hashchange", () => {
 });
 
 const retryBusy = busyRetry(() => void load());
-const frame = dashboardFrame(document, { lang: () => state.lang, signedIn: load });
+const frame = dashboardFrame(document, { lang: () => state.lang, signedIn: load, leaving: () => start.clearShown() });
 const start = dashboardStart(document, state, { paint, ready: () => selectPreset(90), load: () => void load() });
 void start.begin();

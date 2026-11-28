@@ -1,3 +1,4 @@
+import { noon } from "../site/noon.fixture.js";
 import { worstCase } from "../site/worst-case.fixture.js";
 import type { ApiMember, Machine } from "./api.js";
 import { toRows, type MemberRow } from "./members.js";
@@ -5,12 +6,6 @@ import { toRows, type MemberRow } from "./members.js";
 /** Members of a team for the tests (tests only). Times are noon on a local day, so a day count is the same in every time zone. */
 
 export const TODAY = "2026-11-27";
-
-/** A time on the local day `iso` at noon. */
-export const noon = (iso: string): string => {
-  const [y, m, d] = iso.split("-").map(Number) as [number, number, number];
-  return new Date(y, m - 1, d, 12).toISOString();
-};
 
 const hex = (n: number) => n.toString(16).padStart(32, "0");
 let serial = 0;

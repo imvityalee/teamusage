@@ -1,8 +1,9 @@
 import { initials } from "../format.js";
 import type { Lang } from "../lang.js";
 import { request } from "../site/http.js";
-import { applyText, languageSwitch } from "../site/i18n.js";
+import { applyText, languageSwitch, translator } from "../site/i18n.js";
 import { tokenOf } from "../site/fragment-token.js";
+import { reloadWhenRestored } from "../site/restored.js";
 import { me } from "../site/session.js";
 import { listsView } from "../site/views.js";
 import { opener, type OpenView } from "./open.js";
@@ -16,12 +17,14 @@ const OPENING_DELAY_MS = 400;
 const token = tokenOf(location.hash);
 history.replaceState(null, "", "/open");
 
+const t = translator(strings);
 const byId = (id: string) => document.getElementById(id) as HTMLElement;
 const ui = {
   views: Array.from(document.querySelectorAll<HTMLElement>("[data-view]")),
   parts: Array.from(document.querySelectorAll<HTMLElement>("[data-views]")),
   login: byId("login"),
   initials: byId("initials"),
+  failedText: byId("failed-text"),
   githubLine: byId("gh-line"),
   codeLine: byId("code-line"),
   openMember: byId("open-member") as HTMLButtonElement,
@@ -70,7 +73,16 @@ function paint(): void {
   const login = state.login ?? "";
   ui.login.textContent = `@${login}`;
   ui.initials.textContent = initials(login.replace(/[-_]+/g, " "));
+  ui.failedText.textContent = failedSentence();
   paintBusy();
+}
+
+/** The sentence of `failed`: its own line for a server that opens links only from its address, any other refusal inside the page's words, as text. */
+function failedSentence(): string {
+  const { failure } = state;
+  if (failure.kind === "wrongAddress") return t(lang, "wrongAddress");
+  if (failure.kind === "refused") return failure.error === "" ? t(lang, "refusedBare") : t(lang, "refusedText", { error: failure.error });
+  return t(lang, "failedText");
 }
 
 /** While a press is answered its button stays where it was, disabled and busy, and "Stay" waits too. */
@@ -89,4 +101,5 @@ ui.openMember.addEventListener("click", () => void state.open());
 ui.retry.addEventListener("click", () => void state.open());
 // The link is left to expire: nothing is sent.
 ui.stay.addEventListener("click", () => go("/teams"));
+reloadWhenRestored(window);
 onViewChange();

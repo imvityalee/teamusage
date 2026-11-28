@@ -1,4 +1,4 @@
-/** The language choice: which languages exist, which one a visitor gets, and the one thing a page stores. */
+/** The language choice: which languages exist, which one a visitor gets, and how the choice is stored. */
 
 export type Lang = "en" | "ru";
 
@@ -19,7 +19,7 @@ export function loadLang(): string | null {
   }
 }
 
-/** Remembers the language. The only thing this page ever stores. */
+/** Remembers the language in `localStorage` under `LANG_KEY`. */
 export function saveLang(lang: Lang): void {
   try {
     localStorage.setItem(LANG_KEY, lang);

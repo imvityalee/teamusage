@@ -1,12 +1,13 @@
 import { t } from "../i18n.js";
+import { reloadWhenRestored } from "../site/restored.js";
 import { linkBrand, PLAIN, type Chrome, type Panel } from "./chrome.js";
 import type { View } from "./frame.js";
 import { startOf } from "./session-start.js";
 import type { Source } from "./source.js";
 import type { Text } from "./strings.js";
 
-/** The part of the dashboard's state its start reads and writes. */
-export type Shell = { view: View; chrome: Chrome | null; source: Source; status: Text | null };
+/** The part of the dashboard's state its start reads and writes. `shown`: the statistics on the page, or null. */
+export type Shell = { view: View; chrome: Chrome | null; source: Source; status: Text | null; shown: object | null };
 
 /**
  * How the dashboard opens: a hosted team's session is read first; Retry asks for it again while it could not be read,
@@ -15,13 +16,32 @@ export type Shell = { view: View; chrome: Chrome | null; source: Source; status:
 export function dashboardStart(doc: Document, shell: Shell, on: { paint(): void; ready(): void; load(): void }) {
   const retry = doc.getElementById("retry") as HTMLButtonElement;
   if (shell.source.kind !== "selfHosted") linkBrand(doc);
+  // The demo shows nothing private; every other dashboard is behind a session.
+  if (shell.source.kind !== "demo") reloadWhenRestored(window);
+
+  /**
+   * Takes the statistics off the page (the state, `#stats` and `#page-head`) and draws it again, which also gives the
+   * title back from a member's name: a 401, a lost role, a sign-out.
+   */
+  function clearShown(): void {
+    shell.shown = null;
+    for (const id of ["stats", "page-head"]) doc.getElementById(id)?.replaceChildren();
+    on.paint();
+  }
 
   /** Shows `panel` instead of the dashboard, with a header that names no team and no account. */
   function showPanel(panel: Panel): void {
     shell.view = panel;
     shell.chrome = PLAIN;
     shell.status = null;
-    on.paint();
+    clearShown();
+  }
+
+  /** A self-hosted server's 401: the code form, with nothing of the team behind it. */
+  function showLogin(): void {
+    shell.view = "login";
+    shell.status = null;
+    clearShown();
   }
 
   async function begin(): Promise<void> {
@@ -49,5 +69,5 @@ export function dashboardStart(doc: Document, shell: Shell, on: { paint(): void;
   }
 
   retry.addEventListener("click", () => void (shell.chrome === null ? retrySession() : on.load()));
-  return { begin, showPanel };
+  return { begin, showPanel, showLogin, clearShown };
 }

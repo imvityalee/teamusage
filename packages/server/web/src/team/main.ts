@@ -4,6 +4,7 @@ import { paintAccount } from "../site/account.js";
 import type { ApiResult } from "../site/http.js";
 import { closeEveryDialog } from "../site/dialog.js";
 import { applyText, languageSwitch } from "../site/i18n.js";
+import { reloadWhenRestored } from "../site/restored.js";
 import { me } from "../site/session.js";
 import { signOutButton } from "../site/sign-out.js";
 import { renderTeamNav, teamNav } from "../site/team-nav.js";
@@ -56,7 +57,7 @@ let code: (CodeCard & Card) | null = null;
 let removal: RemovalFlow | null = null;
 let members: MembersCard | null = null;
 
-const signOut = signOutButton(document, () => tt(lang, "signOutFailed"));
+const signOut = signOutButton(document, () => tt(lang, "signOutFailed"), dropCards);
 
 const ctx: TeamContext = {
   doc: document,
@@ -142,5 +143,6 @@ async function retry(): Promise<void> {
 }
 
 ui.retry.addEventListener("click", () => void retry());
+reloadWhenRestored(window);
 paint();
 if (team !== null) void load(team);

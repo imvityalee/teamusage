@@ -15,8 +15,12 @@ export function checkForm(name: string, access: string | null): "name" | "access
   return access === "members" || access === "admins" ? null : "access";
 }
 
-export type CreateError = "name" | "ownsMost" | "paused" | "failed" | "network";
-export type CreateOutcome = { kind: "created"; team: string } | { kind: "signedOut" } | { kind: "error"; error: CreateError };
+/** `refused`: a refusal the page does not know, with the server's text (`serverText`) to show inside the page's sentence. */
+export type CreateError = "name" | "ownsMost" | "paused" | "refused" | "failed" | "network";
+export type CreateOutcome =
+  | { kind: "created"; team: string }
+  | { kind: "signedOut" }
+  | { kind: "error"; error: CreateError; serverText?: string };
 
 const error = (e: CreateError): CreateOutcome => ({ kind: "error", error: e });
 
@@ -37,6 +41,6 @@ export function createOutcome(result: ApiResult<{ team: { id: string } }>): Crea
       if (result.status === 409 && result.error === OWNS_MOST) return error("ownsMost");
       if (result.status === 503 && result.error === SIGN_UPS_PAUSED) return error("paused");
       if (result.status === 400 && result.error === INVALID_NAME) return error("name");
-      return error("failed");
+      return result.error === "" ? error("failed") : { kind: "error", error: "refused", serverText: result.error };
   }
 }

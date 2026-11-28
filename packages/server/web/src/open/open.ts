@@ -3,9 +3,15 @@ import type { me } from "../site/session.js";
 
 export type OpenView = "how" | "opening" | "confirm" | "expired" | "adminsOnly" | "failed";
 
-/** The server's refusal of a link whose team shows its dashboard only to admins (src/stats-access.ts). */
+/** The refusals of `/api/dashboard-link/open` the page knows (src/routes-member-sign-in.ts, src/stats-access.ts, src/http.ts). */
+const LINK_NOT_VALID = "this link is no longer valid; ask your agent for a new one";
 const DASHBOARD_ADMINS_ONLY = "this team's dashboard is limited to its admins";
+const CROSS_SITE = "cross-site request refused";
 const OPEN_PATH = "/api/dashboard-link/open";
+
+/** Why the view is `failed`: the server was not reached, it opens links only from its own address, or another refusal with its text. */
+export type OpenFailure = { kind: "unreachable" } | { kind: "wrongAddress" } | { kind: "refused"; error: string };
+const UNREACHABLE: OpenFailure = { kind: "unreachable" };
 
 /**
  * `noAccounts`: the server has no GitHub sign-in (self-hosted), so the page offers the invite code instead.
@@ -13,6 +19,8 @@ const OPEN_PATH = "/api/dashboard-link/open";
  */
 export type Opener = {
   view: OpenView;
+  /** Read only while the view is `failed`. */
+  failure: OpenFailure;
   login?: string;
   noAccounts: boolean;
   busy: boolean;
@@ -22,13 +30,17 @@ export type Opener = {
 
 type Deps = { token: string | null; me: typeof me; request: typeof request; go(path: "/" | "/dashboard" | "/teams"): void };
 
-/** The view an answer to the link's opening leads to; null when it opened. */
-function viewAfter(answer: ApiResult<unknown>): OpenView | null {
+type Outcome = { view: OpenView; failure?: OpenFailure };
+
+/** What an answer to the link's opening leads to; null when it opened. Only the route's "no longer valid" reads as an expired link. */
+function outcomeOf(answer: ApiResult<unknown>): Outcome | null {
   if (answer.kind === "ok") return null;
-  if (answer.kind === "network" || answer.kind === "failed") return "failed";
-  if (answer.kind === "refused" && answer.status >= 500) return "failed";
-  if (answer.kind === "refused" && answer.status === 403 && answer.error === DASHBOARD_ADMINS_ONLY) return "adminsOnly";
-  return "expired";
+  if (answer.kind !== "refused" || answer.status >= 500) return { view: "failed" };
+  const known = answer.status === 403 ? answer.error : null;
+  if (known === LINK_NOT_VALID) return { view: "expired" };
+  if (known === DASHBOARD_ADMINS_ONLY) return { view: "adminsOnly" };
+  if (known === CROSS_SITE) return { view: "failed", failure: { kind: "wrongAddress" } };
+  return { view: "failed", failure: { kind: "refused", error: answer.error } };
 }
 
 /**
@@ -44,6 +56,7 @@ export function opener(deps: Deps): Opener {
   // With a token the page starts in "opening": the automatic opening, whose text is drawn after a delay (main.ts).
   const state: Opener = {
     view: token === null ? "how" : "opening",
+    failure: UNREACHABLE,
     noAccounts: false,
     busy: false,
     open,
@@ -54,18 +67,19 @@ export function opener(deps: Deps): Opener {
     for (const listener of listeners) listener();
   }
 
-  /** Shows `view`; any press has been answered. */
-  function show(view: OpenView): void {
+  /** Shows `view`, and for `failed` why; any press has been answered. */
+  function show(view: OpenView, failure = UNREACHABLE): void {
     state.view = view;
+    state.failure = failure;
     state.busy = false;
     tell();
   }
 
   /** Posts the token; on success the page navigates away, so a pressed button stays busy. */
   async function post(link: string): Promise<void> {
-    const view = viewAfter(await deps.request("POST", OPEN_PATH, { token: link }));
-    if (view === null) deps.go(state.noAccounts ? "/" : "/dashboard");
-    else show(view);
+    const outcome = outcomeOf(await deps.request("POST", OPEN_PATH, { token: link }));
+    if (outcome === null) deps.go(state.noAccounts ? "/" : "/dashboard");
+    else show(outcome.view, outcome.failure);
   }
 
   /** Reads the session, then asks a GitHub user first and opens the link for anyone else. */

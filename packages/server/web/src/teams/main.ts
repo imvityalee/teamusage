@@ -2,6 +2,7 @@ import type { Lang } from "../lang.js";
 import { paintAccount } from "../site/account.js";
 import { request } from "../site/http.js";
 import { applyText, languageSwitch, translator } from "../site/i18n.js";
+import { reloadWhenRestored } from "../site/restored.js";
 import { me, signInDidNotFinish, signOut, type MeAnswer } from "../site/session.js";
 import { showView } from "../site/views.js";
 import { formView } from "./form-view.js";
@@ -86,20 +87,31 @@ function route(): void {
   paint();
 }
 
-async function load(): Promise<void> {
+/** Back to the state before `me()` has answered: no list, no login. */
+function forgetSession(): void {
   session = null;
   view = "loading";
   paint();
+}
+
+async function load(): Promise<void> {
+  forgetSession();
   session = await me();
   route();
 }
 
-/** One request at a time: the button is disabled while it is out. If the session may still be there the person stays, with the button back and a sentence saying so. */
+/**
+ * One request at a time: the button is disabled while it is out. Once signed out the list leaves the page before the
+ * browser goes home. If the session may still be there the person stays, with the button back and a sentence saying so.
+ */
 async function leave(): Promise<void> {
   signingOut = true;
   signOutFailed = false;
   paint();
-  if (await signOut()) return location.assign("/");
+  if (await signOut()) {
+    forgetSession();
+    return location.assign("/");
+  }
   signingOut = false;
   signOutFailed = true;
   paint();
@@ -115,4 +127,5 @@ async function retry(): Promise<void> {
 ui.signOut.addEventListener("click", () => void leave());
 ui.retry.addEventListener("click", () => void retry());
 window.addEventListener("hashchange", route);
+reloadWhenRestored(window);
 void load();

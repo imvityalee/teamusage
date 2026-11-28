@@ -72,9 +72,10 @@ export function openInviteDialog(ctx: TeamContext, o: { opener: HTMLElement; onC
     primary.textContent = tt(lang, next ? "creatingLink" : link === null ? "createLink" : "copyLink");
   }
 
-  /** The second step: the link in a code box, one press to copy it, and what to know about it. */
+  /** The second step: the link in a code box, one press to copy it, and what to know about it. Only Done closes it now. */
   function showLink(text: string): void {
     link = text;
+    dialog.holdOpen();
     secondary.textContent = tt(lang, "done");
     primary.textContent = tt(lang, "copyLink");
     const note = tt(lang, pluralKey(lang, "linkNote", INVITE_DAYS), { n: INVITE_DAYS });

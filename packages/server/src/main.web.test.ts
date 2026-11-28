@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { goodReg, record } from "./app.fixture.js";
-import { cookieOf, finishSignIn, machineIdOf } from "./hosted.fixture.js";
+import { askForLink, cookieOf, finishSignIn, machineIdOf } from "./hosted.fixture.js";
 import { conn, webWith } from "./main.fixture.js";
 import { fromPage, getWith, hostedServer, ownerWithTeam, PEOPLE, teamRowIds, TODAY } from "./main.web.fixture.js";
 import type { BuiltServer } from "./main.js";
@@ -72,7 +72,7 @@ describe("the admin who is also a member and opens their agent's link where they
     }, conn);
     expect(uploaded.status).toBe(200);
 
-    const linked = await s.app.request("/api/dashboard-link", { method: "POST", headers: { Authorization: `Bearer ${token}` } }, conn);
+    const linked = await askForLink(s.app, token, conn);
     expect(linked.status).toBe(200);
     const { path } = (await linked.json()) as { path: string };
     expect(path).toMatch(/^\/open#[a-f0-9]{64}$/);

@@ -33,7 +33,7 @@ test("a machine's board 12 names the machine; Russian has its own words", async 
   await m.world.close();
   await showCode({ lang: "ru" }, ONE_MEMBER, "Удалить участника");
   expect(m.within("h2")?.textContent).toBe("У команды новый код");
-  expect(m.text()).toContain("Nurlan Asanov больше нет в команде.");
+  expect(m.text()).toContain("Участника Nurlan Asanov больше нет в команде.");
   expect(m.button("Скопировать код")).not.toBeNull();
 });
 

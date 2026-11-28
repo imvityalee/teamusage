@@ -83,13 +83,25 @@ export function hostedApp(o: HostedAppOptions = {}) {
   return { db, app, github };
 }
 
-/** A JSON POST from the server's own pages, which send its origin; a string body is sent as it is. */
-export const postFromPage = async (app: Hono, path: string, body: unknown, headers: Record<string, string> = {}): Promise<Response> =>
+/** The connection a request arrives on, as the Node server passes it (`from` of main.fixture.ts); an app of `hostedApp` reads none. */
+type Connection = Parameters<Hono["request"]>[2];
+
+/**
+ * A JSON POST from the server's own pages, which send its origin (`PUBLIC`, or `at.origin` for a server with another
+ * address), over `at.conn`; a string body is sent as it is.
+ */
+export const postFromPage = async (
+  app: Hono,
+  path: string,
+  body: unknown,
+  headers: Record<string, string> = {},
+  at: { origin?: string; conn?: Connection } = {},
+): Promise<Response> =>
   app.request(path, {
     method: "POST",
     body: typeof body === "string" ? body : JSON.stringify(body),
-    headers: { "Content-Type": "application/json", Origin: PUBLIC, ...headers },
-  });
+    headers: { "Content-Type": "application/json", Origin: at.origin ?? PUBLIC, ...headers },
+  }, at.conn);
 
 /** The `name=value` pair of the cookie `name` that the response sets; "" when it sets none. */
 export const cookieOf = (res: Response, name: string): string =>
@@ -118,9 +130,9 @@ export async function signIn(app: Hono, code: string, headers: { Cookie?: string
   return session;
 }
 
-/** Asks for a sign-in link as the machine `token`. */
-export const askForLink = async (app: Hono, token: string): Promise<Response> =>
-  app.request("/api/dashboard-link", { method: "POST", headers: { Authorization: `Bearer ${token}` } });
+/** Asks for a sign-in link as the machine `token`, over `conn`. */
+export const askForLink = async (app: Hono, token: string, conn?: Connection): Promise<Response> =>
+  app.request("/api/dashboard-link", { method: "POST", headers: { Authorization: `Bearer ${token}` } }, conn);
 
 /** Asks for a sign-in link as the machine `token`; returns the link's token. */
 export async function dashboardLinkToken(app: Hono, token: string): Promise<string> {

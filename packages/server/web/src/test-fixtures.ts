@@ -1,4 +1,5 @@
 import type { Stats } from "@teamusage/shared";
+import { noon } from "./site/noon.fixture.js";
 
 /** Test data only; never imported by the app. */
 export interface FixtureNames {
@@ -38,7 +39,7 @@ export function statsFixture(names: FixtureNames = PLAIN): Stats {
   }));
   const members: Stats["members"] = [
     {
-      id: 1, name: names.name, email: names.email, tokens: 40_000, costUsd: 9, machines: 2, lastSyncAt: "2026-11-18T12:00:00.000Z",
+      id: 1, name: names.name, email: names.email, tokens: 40_000, costUsd: 9, machines: 2, lastSyncAt: noon("2026-11-18"),
       byAgent: Object.fromEntries([["claude", 35_000], ["codex", 4_500], [names.agent, 500]]) as Record<string, number>,
       // Shares of 40,000: 78%, 13%, 10%.
       byAccount: { "team:Devcats": 31_000, unknown: 5_000, personal: 4_000 },
@@ -49,7 +50,7 @@ export function statsFixture(names: FixtureNames = PLAIN): Stats {
       ],
     },
     {
-      id: 2, name: "Bao Nguyen", email: "bao@example.com", tokens: 20_500, costUsd: 3.5, machines: 1, lastSyncAt: "2026-11-10T12:00:00.000Z",
+      id: 2, name: "Bao Nguyen", email: "bao@example.com", tokens: 20_500, costUsd: 3.5, machines: 1, lastSyncAt: noon("2026-11-10"),
       byAgent: { claude: 20_000, codex: 500 },
       byAccount: { "team:Devcats": 20_000, unknown: 500 },
       byAccountPlan: [
@@ -101,8 +102,8 @@ export function memberStatsFixture(names: FixtureNames = PLAIN, machine = "alice
     totals: { tokens: 60_500, costUsd: 12.5, activeMembers: 1, memberCount: 1 },
     members: s.members.slice(0, 1),
     machines: [
-      { label: machine, lastSyncAt: "2026-11-18T12:00:00.000Z" },
-      { label: "alice-linux", lastSyncAt: "2026-11-15T12:00:00.000Z" },
+      { label: machine, lastSyncAt: noon("2026-11-18") },
+      { label: "alice-linux", lastSyncAt: noon("2026-11-15") },
       { label: "old-box", lastSyncAt: null },
     ],
   };

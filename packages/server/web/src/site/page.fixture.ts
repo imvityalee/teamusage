@@ -33,6 +33,7 @@ function makePage(win: Window, calls: Call[], logged: unknown[][]) {
     $,
     replace: win.location.replace as unknown as ReturnType<typeof vi.fn>,
     assign: win.location.assign as unknown as ReturnType<typeof vi.fn>,
+    reload: win.location.reload as unknown as ReturnType<typeof vi.fn>,
     flush: async () => {
       for (let i = 0; i < 5; i++) await vi.advanceTimersByTimeAsync(0);
     },
@@ -46,6 +47,10 @@ function makePage(win: Window, calls: Call[], logged: unknown[][]) {
       Array.from(doc.querySelectorAll<HTMLElement>("[data-view]"))
         .filter((el) => !el.hidden)
         .map((el) => el.dataset.view),
+    /** The browser shows the page again: `persisted` from its back-forward cache (happy-dom has none, so the event is made here). */
+    pageshow(persisted: boolean) {
+      win.dispatchEvent(Object.assign(new win.Event("pageshow"), { persisted }));
+    },
     async goTo(hash: string) {
       win.location.hash = hash;
       win.dispatchEvent(new win.Event("hashchange"));
@@ -111,6 +116,7 @@ export async function bootPage(
   (win.document as unknown as Document).body.innerHTML = bodyOf(page.html);
   vi.spyOn(win.location, "replace").mockImplementation(vi.fn());
   vi.spyOn(win.location, "assign").mockImplementation(vi.fn());
+  vi.spyOn(win.location, "reload").mockImplementation(vi.fn());
   const { calls, logged } = stubBrowser(win, replies);
   page.prepare?.(win);
   vi.resetModules();

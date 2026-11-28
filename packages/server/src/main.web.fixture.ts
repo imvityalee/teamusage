@@ -1,6 +1,6 @@
 import { afterEach } from "vitest";
 import type { DashboardAccess } from "./hosted-teams.js";
-import { fakeGithub, signIn } from "./hosted.fixture.js";
+import { fakeGithub, postFromPage, signIn } from "./hosted.fixture.js";
 import { conn, hosted, PUBLIC_URL, roomy, tempDataDir } from "./main.fixture.js";
 import { buildServer, type BuiltServer } from "./main.js";
 
@@ -36,11 +36,7 @@ export function closedAfterTest(s: BuiltServer): BuiltServer {
 
 /** A request from the server's own pages: JSON with the hosted origin and the browser's `cookie`, if any. */
 export const fromPage = async (s: BuiltServer, path: string, body: unknown, cookie = ""): Promise<Response> =>
-  s.app.request(path, {
-    method: "POST",
-    body: JSON.stringify(body),
-    headers: { "Content-Type": "application/json", Origin: PUBLIC_URL, ...(cookie ? { Cookie: cookie } : {}) },
-  }, conn);
+  postFromPage(s.app, path, body, cookie ? { Cookie: cookie } : {}, { origin: PUBLIC_URL, conn });
 
 /** A GET with the browser's `cookie`, if any. */
 export const getWith = async (s: BuiltServer, path: string, cookie = ""): Promise<Response> =>

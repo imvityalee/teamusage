@@ -30,6 +30,9 @@ const en = {
   adminsOnlyText: "Your own numbers are available in your agent.",
   failedTitle: "Could not open the link",
   failedText: "The server could not be reached. The link may still work if you try again within 5 minutes of making it.",
+  wrongAddress: "This server opens links only from its own address. Ask whoever runs it to check TEAMUSAGE_PUBLIC_URL.",
+  refusedText: "The server refused this link: {error}",
+  refusedBare: "The server refused this link.",
   tryAgain: "Try again",
 };
 
@@ -63,6 +66,9 @@ const ru: Record<OpenKey, string> = {
   adminsOnlyText: "Ваша собственная статистика доступна в агенте.",
   failedTitle: "Не удалось открыть ссылку",
   failedText: "Сервер недоступен. Ссылка может ещё сработать, если повторить попытку в течение 5 минут после её создания.",
+  wrongAddress: "Этот сервер открывает ссылки только со своего адреса. Попросите того, кто им управляет, проверить настройку TEAMUSAGE_PUBLIC_URL.",
+  refusedText: "Сервер отклонил ссылку: {error}",
+  refusedBare: "Сервер отклонил ссылку.",
   tryAgain: "Повторить",
 };
 

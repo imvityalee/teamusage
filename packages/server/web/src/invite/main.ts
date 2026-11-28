@@ -3,6 +3,7 @@ import type { Lang } from "../lang.js";
 import { shortDay } from "../site/day.js";
 import { request } from "../site/http.js";
 import { applyText, languageSwitch, translator } from "../site/i18n.js";
+import { reloadWhenRestored } from "../site/restored.js";
 import { me, signInDidNotFinish, signOut } from "../site/session.js";
 import { listsView, showView } from "../site/views.js";
 import { inviter, takeToken } from "./invite.js";
@@ -120,4 +121,5 @@ async function retry(): Promise<void> {
 ui.accept.addEventListener("click", () => void accept());
 ui.useAnother.addEventListener("click", () => void useAnotherAccount());
 ui.retry.addEventListener("click", () => void retry());
+reloadWhenRestored(window);
 paint();

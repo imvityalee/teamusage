@@ -5,6 +5,7 @@ import { LOGO_PATHS } from "./agents.js";
 import type { Filters } from "./filters.js";
 import { renderBackLink, renderMember, renderMemberHead, renderNotFound } from "./render.js";
 import { CODEX_ONLY, HOSTILE, TODAY, cells, codexOnly, newDocument, render, rows, tags } from "./render.fixture.js";
+import { noon } from "./site/noon.fixture.js";
 import { emptyStatsFixture, HOSTILE_IDS, memberStatsFixture, statsFixture } from "./test-fixtures.js";
 
 const tileTexts = (root: Element) =>
@@ -283,7 +284,7 @@ describe("member page", () => {
 
   test("machines: a worded status, good under 7 days, a warning at 7 or more or never", () => {
     const stats = memberStatsFixture();
-    stats.machines?.push({ label: "home-mini", lastSyncAt: "2026-11-06T12:00:00.000Z" });
+    stats.machines?.push({ label: "home-mini", lastSyncAt: noon("2026-11-06") });
     const root = renderPage(stats);
     expect(root.querySelector("#machines-heading")?.textContent).toBe("Machines 4");
     expect(machines(root)).toEqual([

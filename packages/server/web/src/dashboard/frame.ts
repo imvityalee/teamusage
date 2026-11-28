@@ -10,11 +10,12 @@ export type View = "waiting" | "stats" | "login" | Panel;
 
 /**
  * Everything around the statistics: the header, the title of a hosted team, the code form, sign out, and the
- * signed-out or noTeam panel. `signedIn` runs once the code form has opened a session.
+ * signed-out or noTeam panel. `signedIn` runs once the code form has opened a session; `leaving` once signing out
+ * has worked, before the browser goes home.
  */
-export function dashboardFrame(doc: Document, opts: { lang: () => Lang; signedIn: () => Promise<void> }) {
+export function dashboardFrame(doc: Document, opts: { lang: () => Lang; signedIn: () => Promise<void>; leaving: () => void }) {
   const signIn = codeSignIn(doc, opts);
-  const signOut = signOutButton(doc, () => dt(opts.lang(), "signOutFailed"));
+  const signOut = signOutButton(doc, () => dt(opts.lang(), "signOutFailed"), opts.leaving);
   const login = doc.getElementById("login") as HTMLElement;
   const panelBox = doc.getElementById("signed-out") as HTMLElement;
   /** The panel on screen. A new one is drawn only when its kind changes: a drawn panel is announced. */

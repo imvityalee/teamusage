@@ -52,7 +52,7 @@ export const ru: Record<keyof typeof en, string> = {
   signInGithub: "Войти через GitHub",
   memberPrompt: "Вы участник команды?",
   howToOpen: "Откройте дашборд из своего агента",
-  notFoundTitle: "Команда не найдена или у вас в ней больше нет роли.",
+  notFoundTitle: "Команда не найдена, или у вас в ней больше нет роли.",
   viewerTitle: "Наблюдателям доступен только дашборд.",
   openDashboard: "Открыть дашборд",
   cancel: "Отмена",

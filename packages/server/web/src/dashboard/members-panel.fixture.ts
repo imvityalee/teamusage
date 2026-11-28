@@ -1,6 +1,7 @@
 import type { Stats } from "@teamusage/shared";
 import { renderStats } from "../render.js";
 import { newDocument, TODAY, who } from "../render.fixture.js";
+import { noon } from "../site/noon.fixture.js";
 import { chooseSize } from "../site/pager.fixture.js";
 import { worstCase } from "../site/worst-case.fixture.js";
 import { statsFixture } from "../test-fixtures.js";
@@ -24,7 +25,7 @@ export function team(count = SIZE): Stats {
       tokens: (count - i) * 10,
       costUsd: (i * 7) % 13,
       machines: 1,
-      lastSyncAt: i % 10 === 9 ? null : "2026-11-17T08:00:00.000Z",
+      lastSyncAt: i % 10 === 9 ? null : noon("2026-11-17"),
       byAgent: { claude: (count - i) * 10 },
       byAccount: {},
       byAccountPlan: [],

@@ -1,9 +1,10 @@
 import { describe, expect, test, vi, type Mock } from "vitest";
 import type { ApiResult } from "../site/http.js";
 import type { Me, me as meOf } from "../site/session.js";
-import { opener, type Opener } from "./open.js";
+import { opener, type OpenFailure, type Opener } from "./open.js";
 
 const TOKEN = "0123456789abcdef".repeat(4);
+const NOT_VALID = "this link is no longer valid; ask your agent for a new one";
 const BOB: Me = { kind: "user", githubId: 7_310_442, login: "bob", teams: [] };
 const MEMBER: Me = { kind: "member", team: { id: "a1b2c3d4e5f60718", name: "Acme" }, memberId: 3 };
 
@@ -77,16 +78,27 @@ describe("opening a link", () => {
   });
 
   test.each([
-    [403, "this link is no longer valid; ask your agent for a new one", "expired"],
+    [403, NOT_VALID, "expired"],
     [403, "this team's dashboard is limited to its admins", "adminsOnly"],
-    [400, "invalid token", "expired"],
-    [403, "cross-site request refused", "expired"],
   ])("a %i %s shows %s", async (status, error, view) => {
     const go = vi.fn();
     const o = opener({ token: TOKEN, me: async () => ({ kind: "none" }), request: requests(refused(status, error)), go });
     await settled(o);
     expect(o.view).toBe(view);
     expect(go).not.toHaveBeenCalled();
+  });
+
+  // Each of these leaves the link unspent: the route refuses before it takes the link.
+  test.each<[string, Answer, OpenFailure]>([
+    ["a 403 from a server that opens links only from its own address", refused(403, "cross-site request refused"), { kind: "wrongAddress" }],
+    ["another refusal of the route", refused(400, "invalid token"), { kind: "refused", error: "invalid token" }],
+    ["a refusal without the server's text (a proxy's page)", refused(403, ""), { kind: "refused", error: "" }],
+    ["a network error", { kind: "network" }, { kind: "unreachable" }],
+  ])("%s shows failed with its reason, not an expired link", async (_, answer, failure) => {
+    const o = opener({ token: TOKEN, me: async () => ({ kind: "none" }), request: requests(answer), go: vi.fn() });
+    await settled(o);
+    expect(o.view).toBe("failed");
+    expect(o.failure).toEqual(failure);
   });
 
   test.each<[string, Answer]>([
@@ -125,7 +137,7 @@ describe("opening a link", () => {
   });
 
   test("a refused press ends the busy state on the view the answer leads to", async () => {
-    const o = opener({ token: TOKEN, me: async () => ({ kind: "me", me: BOB }), request: requests(refused(403, "x")), go: vi.fn() });
+    const o = opener({ token: TOKEN, me: async () => ({ kind: "me", me: BOB }), request: requests(refused(403, NOT_VALID)), go: vi.fn() });
     const seen: string[] = [];
     o.onChange(() => seen.push(o.busy ? `${o.view} (busy)` : o.view));
     await settled(o);

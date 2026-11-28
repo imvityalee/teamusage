@@ -116,16 +116,38 @@ describe("the link", () => {
   });
 });
 
+const pressEscape = () => dialogOf(m)?.dispatchEvent(new m.world.win.Event("cancel", { cancelable: true }) as unknown as Event);
+
+describe("a slip does not lose the link, which is shown once", () => {
+  test("Escape on the link's view leaves the dialog open with the link; Done closes it", async () => {
+    await openFor([created()]);
+    choose("admin");
+    await createLink();
+    pressEscape();
+    await m.world.flush();
+    expect(dialogOf(m)).not.toBeNull();
+    expect(text(codeBox())).toBe(LINK);
+    dialogButton(m, "cancel").click();
+    await m.world.flush();
+    expect(dialogOf(m)).toBeNull();
+  });
+
+  test("Escape on the choice of a role, before any link exists, still closes", async () => {
+    await openFor([]);
+    choose("admin");
+    pressEscape();
+    await m.world.flush();
+    expect(dialogOf(m)).toBeNull();
+  });
+});
+
 describe("the token is dropped when the dialog closes", () => {
-  test.each([
-    ["Done", () => dialogButton(m, "cancel").click()],
-    ["Escape", () => dialogOf(m)?.dispatchEvent(new m.world.win.Event("cancel", { cancelable: true }) as unknown as Event)],
-  ])("closing with %s leaves it in no element, attribute, title, storage, address, request or console", async (_name, close) => {
+  test("closing with Done leaves it in no element, attribute, title, storage, address, request or console", async () => {
     await openFor([created()]);
     choose("admin");
     await createLink();
     expectNowhereIn(m.world, TOKEN, true);
-    close();
+    dialogButton(m, "cancel").click();
     await m.world.flush();
     expect(dialogOf(m)).toBeNull();
     expectNowhereIn(m.world, TOKEN);

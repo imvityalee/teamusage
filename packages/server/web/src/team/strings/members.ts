@@ -93,7 +93,7 @@ export const ru: Record<keyof typeof en, string> = {
   selectedMax: "Выбрано {n} — больше за одно удаление нельзя.",
   clearTicks: "Сбросить",
   removeSelected: "Удалить выбранных…",
-  membersEmpty: "Пока никто не присоединился. Отправьте команде приглашение из блока выше.",
+  membersEmpty: "Пока никто не присоединился. Отправьте команде сообщение из блока выше.",
   membersNoMatch: "Никого не нашли.",
   membersNoStale: "Все участники отправляют данные.",
   membersLoading: "Загружаем участников…",

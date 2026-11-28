@@ -82,24 +82,33 @@ describe.each(["hosted", "self-hosted"] as const)("the built pages of a %s serve
 describe("links between the built pages", () => {
   test("every link of a hosted page to this site is a hosted page, its query and fragment set aside, or the GitHub sign-in", async () => {
     const hostedPages = pagesOf("hosted");
+    let seen = 0;
     for (const { path, html } of await pagesFrom(serverOf("hosted"), "hosted")) {
       for (const { href } of sitePathLinks(parsePage(html))) {
+        seen += 1;
         const known = Object.hasOwn(hostedPages, pathOf(href)) || href.startsWith("/auth/github/start");
         expect(known, `${path} links to ${href}`).toBe(true);
       }
     }
+    expect(seen).toBeGreaterThan(0);
   });
 
   test("a self-hosted page links only to its own pages, or to a path that is hidden on such a server", async () => {
     const selfHostedPages = pagesOf("self-hosted");
+    let seen = 0;
+    const hidden: string[] = [];
     for (const { path, html } of await pagesFrom(serverOf("self-hosted"), "self-hosted")) {
       for (const { href, anchor } of sitePathLinks(parsePage(html))) {
+        seen += 1;
         if (Object.hasOwn(selfHostedPages, pathOf(href))) continue;
         const hiddenBy = HIDDEN_ON_SELF_HOSTED[pathOf(href)];
         expect(hiddenBy, `${path} links to ${href}`).toBeDefined();
         expect(anchor.closest(`#${hiddenBy}`), `${path}: ${href} is inside #${hiddenBy}`).not.toBeNull();
+        hidden.push(`${path} ${href} in #${hiddenBy}`);
       }
     }
+    expect(seen).toBeGreaterThan(hidden.length);
+    expect(hidden).toEqual(expect.arrayContaining(["/open /auth/github/start in #gh-line", "/ /teams#all in #account"]));
   });
 });
 
@@ -109,6 +118,7 @@ describe("the landing page's scripts", () => {
     const scriptsAt = async (page: string) => scriptsOf(parsePage(await (await get(s, page)).text()));
     const bodyOf = async (path: string) => (await get(s, path)).text();
     const landing = await scriptsAt("/");
+    expect(landing.length).toBeGreaterThan(0);
     const dashboard = await scriptsAt("/dashboard");
     // The dashboard's own script is the one of its scripts that holds its table, whatever the build names it.
     const dashboardBodies = await Promise.all(dashboard.map(bodyOf));

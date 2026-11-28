@@ -197,6 +197,27 @@ describe("Try again", () => {
   });
 });
 
+describe("the sentence of a link that did not open", () => {
+  test.each<[string, Reply, string, string]>([
+    ["the server could not be reached", new TypeError("Failed to fetch"), strings.en.failedText, strings.ru.failedText],
+    ["the server opens links only from its own address", refused("cross-site request refused"), strings.en.wrongAddress, strings.ru.wrongAddress],
+    ["another refusal", json({ error: "invalid token" }, 400), "The server refused this link: invalid token", "Сервер отклонил ссылку: invalid token"],
+    ["a refusal without the server's text", new Response("<h1>Forbidden</h1>", { status: 403 }), strings.en.refusedBare, strings.ru.refusedBare],
+  ])("%s: its own line, in both languages", async (_, answer, en, ru) => {
+    await boot(`#${TOKEN}`, nobody(), answer);
+    expect(shownViews()).toEqual(["failed"]);
+    expect($("#failed-text").textContent).toBe(en);
+    press('#lang [data-lang="ru"]');
+    expect($("#failed-text").textContent).toBe(ru);
+  });
+
+  test("the server's text is drawn as text inside the page's sentence", async () => {
+    await boot(`#${TOKEN}`, nobody(), json({ error: "<b>no</b>" }, 400));
+    expect($("#failed-text").textContent).toBe("The server refused this link: <b>no</b>");
+    expect($("#failed-text").childElementCount).toBe(0);
+  });
+});
+
 describe("language", () => {
   test("a switch redraws the view in Russian and sets <html lang>", async () => {
     await boot(`#${TOKEN}`, user(worstCase.login));

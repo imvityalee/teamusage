@@ -20,7 +20,7 @@ type Deps = {
   onSignedOut(): void;
 };
 
-/** A refusal that belongs to no field; it is shown in the page's own sentence and the server's text is never drawn. */
+/** A refusal that belongs to no field; it is shown in the page's own sentence, an unknown one with the server's text inside it. */
 type Notice = Exclude<CreateError, "name">;
 const NOTICE_KEY = { paused: "errorPaused", failed: "errorFailed", network: "errorNetwork" } as const;
 
@@ -38,7 +38,7 @@ export function formView(deps: Deps): FormView {
   const radios = Array.from(form.querySelectorAll<HTMLInputElement>('input[name="dashboard-access"]'));
 
   let busy = false;
-  let problem: { name: boolean; access: boolean; notice: Notice | null } = { name: false, access: false, notice: null };
+  let problem: { name: boolean; access: boolean; notice: Notice | null; serverText?: string } = { name: false, access: false, notice: null };
 
   const chosen = (): string | null => radios.find((r) => r.checked)?.value ?? null;
 
@@ -55,6 +55,7 @@ export function formView(deps: Deps): FormView {
   }
 
   function noticeText(kind: Notice, lang: Lang): string {
+    if (kind === "refused") return t(lang, "errorRefused", { error: problem.serverText ?? "" });
     if (kind !== "ownsMost") return t(lang, NOTICE_KEY[kind]);
     const { key, vars } = atMostLine(lang, MAX_OWNED);
     return t(lang, key, vars);
@@ -81,7 +82,8 @@ export function formView(deps: Deps): FormView {
     if (outcome.kind === "created") return deps.assign(teamPath(outcome.team));
     busy = false;
     if (outcome.kind === "signedOut") return deps.onSignedOut();
-    problem = { name: outcome.error === "name", access: false, notice: outcome.error === "name" ? null : outcome.error };
+    const { error, serverText } = outcome;
+    problem = { name: error === "name", access: false, notice: error === "name" ? null : error, serverText };
     paint();
     focusFault();
   }

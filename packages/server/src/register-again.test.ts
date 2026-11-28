@@ -47,7 +47,7 @@ describe("on a hosted server", () => {
     const colleague = await memberSignIn(app, B.tia.one.token);
     const otherLink = await dashboardLinkToken(app, B.sam.two.token);    // links of sam's second machine and of tia's
     const colleaguesLink = await dashboardLinkToken(app, B.tia.one.token);
-    const before ={ A: everythingOf(db, A.id), tia: sessionRowsOf(db, B.id, B.tia.memberId) };
+    const before = { A: everythingOf(db, A.id), tia: sessionRowsOf(db, B.id, B.tia.memberId) };
 
     const again = await register(B.code, B.sam.email, B.sam.one.id);     // the same machine id and email
     const { token } = (await again.json()) as { token: string };
