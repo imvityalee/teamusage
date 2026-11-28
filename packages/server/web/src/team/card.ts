@@ -15,6 +15,8 @@ export type TeamContext = {
   update(team: TeamInfo): void;
   /** A 401: the page shows its sign-in panel. A card closes its dialog first. */
   signedOut(): void;
+  /** Asks the server again for the session and the team, and draws the page and every card anew from the answer. */
+  reload(): Promise<void>;
   /** Leaves for another page, which Back does not return from (after the team was deleted). */
   go(path: string): void;
 };

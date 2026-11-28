@@ -12,10 +12,10 @@ describe("who sees what", () => {
   test("an owner sees the header, the heading and every card of this task", async () => {
     page = await bootTeam(teamInfo("owner"));
     expect(page.shownViews()).toEqual(["page"]);
-    expect(urls()).toEqual(["/api/me", `/api/teams/${T}`]);
+    expect(urls()).toEqual(["/api/me", `/api/teams/${T}`, `/api/teams/${T}/roles`, `/api/teams/${T}/invites`]);
     expect(page.$("#team-title").textContent).toBe("Acme Engineering");
     expect(page.doc.title).toBe("Acme Engineering · teamusage");
-    for (const sel of ["#code-card", "#invite-card", "#access-card", "#access-change", "#delete-card", "#rename"]) expect(visible(page, sel), sel).toBe(true);
+    for (const sel of ["#code-card", "#invite-card", "#access-card", "#access-change", "#roles-card", "#roles-invite", "#delete-card", "#rename"]) expect(visible(page, sel), sel).toBe(true);
   });
 
   test("an admin sees no Change… and no Delete team card", async () => {

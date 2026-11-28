@@ -15,6 +15,7 @@ import { deleteCard } from "./delete-card.js";
 import { failureText } from "./failure.js";
 import { inviteMessage } from "./invite-message.js";
 import { startView, type TeamPageView } from "./page-view.js";
+import { rolesCard } from "./roles-card.js";
 import { strings, tt } from "./strings.js";
 import { titleRow } from "./title-row.js";
 
@@ -59,13 +60,16 @@ const ctx: TeamContext = {
     paint();
   },
   signedOut: showSignedOut,
+  reload: async () => {
+    if (team !== null) await load(team);
+  },
   go: (path) => location.replace(path),
 };
 
 /** The cards of an owner or admin, in the order of board 3. A card is added here with one line. */
-function mountCards(): void {
+function mountCards(githubId: number): void {
   code = codeCard(ctx);
-  cards = [titleRow(ctx), code, inviteMessage(ctx), accessCard(ctx), deleteCard(ctx)];
+  cards = [titleRow(ctx), code, inviteMessage(ctx), accessCard(ctx), rolesCard(ctx, githubId), deleteCard(ctx)];
   ui.cards.replaceChildren(...cards.map((card) => card.element));
 }
 
@@ -98,7 +102,7 @@ async function load(team: string): Promise<void> {
   failure = session.kind === "me" || session.kind === "none" ? result : { kind: "failed" };
   info = result.kind === "ok" && (view === "page" || view === "viewer") ? result.value.team : null;
   dropCards();
-  if (view === "page") mountCards();
+  if (view === "page" && session.kind === "me" && session.me.kind === "user") mountCards(session.me.githubId);
   paint();
 }
 

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { bootPage, json, nobody, user, type Page, type Reply } from "../site/page.fixture.js";
 import { worstCase } from "../site/worst-case.fixture.js";
-import { expiryDay } from "./answers.js";
+import { shortDay } from "../site/day.js";
 import { INVITE_KEY } from "./invite.js";
 import { strings } from "./strings.js";
 
@@ -86,7 +86,7 @@ describe("before accepting", () => {
     expect(page.$("#switch-line").hidden).toBe(true);
     // The day is drawn in the machine's zone, like the page's; answers.test.ts pins its format in a given zone.
     expect(page.$("#expiry-note").textContent).toBe(
-      `The invitation works once and until ${expiryDay(DAY, "en")}. Signing in gives teamusage no access to your repositories or your email.`,
+      `The invitation works once and until ${shortDay(DAY, "en")}. Signing in gives teamusage no access to your repositories or your email.`,
     );
   });
 
@@ -126,7 +126,7 @@ describe("before accepting", () => {
     page = await boot(`#${TOKEN}`, [preview(), nobody()]);
     page.press('#lang [data-lang="ru"]');
     expect(page.$("#expiry-note").textContent).toBe(
-      `До ${expiryDay(DAY, "ru")} приглашение можно использовать один раз. Вход не даёт teamusage доступа к вашим репозиториям и почте.`,
+      `До ${shortDay(DAY, "ru")} приглашение можно использовать один раз. Вход не даёт teamusage доступа к вашим репозиториям и почте.`,
     );
   });
 });

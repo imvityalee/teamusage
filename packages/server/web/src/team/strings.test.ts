@@ -34,3 +34,11 @@ test("the page has no inline script, style attribute or event attribute", () => 
 test("the page's text of a code that can no longer be shown is the server's", () => {
   expect(CODE_NOT_SHOWN).toBe(SERVER_CODE_NOT_SHOWN);
 });
+
+test("each counted sentence has its three forms, in both languages", () => {
+  for (const table of [strings.en, strings.ru]) {
+    const prefixes = Object.keys(table).filter((key) => key.endsWith("_one")).map((key) => key.slice(0, -4));
+    expect(prefixes.length).toBeGreaterThan(0);
+    for (const prefix of prefixes) expect(Object.keys(table).filter((key) => key.startsWith(`${prefix}_`)).sort()).toEqual([`${prefix}_few`, `${prefix}_many`, `${prefix}_one`]);
+  }
+});

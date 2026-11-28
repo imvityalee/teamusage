@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "vitest";
 import { json, nobody, type Page } from "../site/page.fixture.js";
 import { worstCase } from "../site/worst-case.fixture.js";
-import { bootTeam, dialogButton, openDialogOf, T, teamInfo, teamReply, typeInto } from "./page.fixture.js";
+import { bootTeam, loadRequests, dialogButton, openDialogOf, T, teamInfo, teamReply, typeInto } from "./page.fixture.js";
 
 let page: Page;
 afterEach(async () => page?.close());
@@ -27,9 +27,9 @@ test("Save sends the name trimmed; on 200 the heading and the title change at on
   typeInto(page, field(), `  ${worstCase.teamName}  `);
   dialogButton(page, "confirm").click();
   dialogButton(page, "confirm").click();
-  expect(globalThis.fetch).toHaveBeenCalledTimes(3);
+  expect(globalThis.fetch).toHaveBeenCalledTimes(loadRequests("admin") + 1);
   expect(dialogButton(page, "confirm").textContent).toBe("Saving…");
-  const call = page.calls[2];
+  const call = page.calls[loadRequests("admin")];
   expect([call?.url, call?.init.method, JSON.parse(String(call?.init.body))]).toEqual([`/api/teams/${T}`, "PATCH", { name: worstCase.teamName }]);
   await page.flush();
   expect(openDialogOf(page)).toBeNull();
@@ -50,7 +50,7 @@ test.each([
   await page.flush();
   expect(errorText()).toBe("Use 1 to 60 characters, with no line breaks.");
   expect(field().getAttribute("aria-invalid")).toBe("true");
-  expect(page.calls).toHaveLength(2);
+  expect(page.calls).toHaveLength(loadRequests("owner"));
 });
 
 test("the same name closes the dialog and sends nothing", async () => {
@@ -60,7 +60,7 @@ test("the same name closes the dialog and sends nothing", async () => {
   dialogButton(page, "confirm").click();
   await page.flush();
   expect(openDialogOf(page)).toBeNull();
-  expect(page.calls).toHaveLength(2);
+  expect(page.calls).toHaveLength(loadRequests("owner"));
 });
 
 test("the server's 'invalid name' is said as the page's own rule; another refusal in the page's sentence", async () => {

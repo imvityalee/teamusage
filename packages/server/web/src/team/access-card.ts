@@ -1,5 +1,6 @@
 import { h } from "../dom.js";
 import type { Lang } from "../lang.js";
+import { choiceList } from "../site/choice-list.js";
 import { uniqueId } from "../site/dialog.js";
 import { isTeamInfo, patchTeam, type TeamInfo } from "./api.js";
 import type { Card, TeamContext } from "./card.js";
@@ -20,17 +21,9 @@ const CHOICES: { value: Access; name: TeamKey; card: TeamKey; notes: TeamKey[] }
 const choiceOf = (value: Access) => CHOICES.find((c) => c.value === value) ?? (CHOICES[0] as (typeof CHOICES)[number]);
 
 /** The dialog's two options, the current one chosen. */
-function options(doc: Document, lang: Lang, current: Access): { fieldset: HTMLElement; chosen(): Access } {
-  const name = uniqueId("dashboard-access");
-  const inputs = CHOICES.map((c) => {
-    const input = h(doc, "input", { type: "radio", name, value: c.value }) as HTMLInputElement;
-    input.checked = c.value === current;
-    if (input.checked) input.setAttribute("autofocus", "");
-    const lines = c.notes.map((key) => h(doc, "span", { class: "small" }, tt(lang, key)));
-    return { input, label: h(doc, "label", { class: "option" }, input, h(doc, "span", { class: "option-text" }, h(doc, "span", { class: "option-title" }, tt(lang, c.name)), ...lines)) };
-  });
-  const fieldset = h(doc, "fieldset", { class: "options" }, ...inputs.map((i) => i.label));
-  return { fieldset, chosen: () => (inputs.find((i) => i.input.checked)?.input.value as Access | undefined) ?? current };
+function options(doc: Document, lang: Lang, current: Access) {
+  const choices = CHOICES.map((c) => ({ value: c.value, title: tt(lang, c.name), lines: c.notes.map((key) => tt(lang, key)) }));
+  return choiceList(doc, { name: uniqueId("dashboard-access"), choices, current });
 }
 
 export function accessCard(ctx: TeamContext): Card {
@@ -66,15 +59,15 @@ export function accessCard(ctx: TeamContext): Card {
 
   function askForAccess(): void {
     const lang = ctx.lang();
-    const { fieldset, chosen } = options(doc, lang, ctx.team().dashboardAccess);
+    const list = options(doc, lang, ctx.team().dashboardAccess);
     const flow: Flow = openFlow(ctx, {
       title: tt(lang, "accessDialogTitle"),
-      content: [fieldset],
+      content: [list.element],
       confirm: tt(lang, "save"),
       busy: tt(lang, "saving"),
       tone: "primary",
       opener: change,
-      onConfirm: () => void save(flow, chosen()),
+      onConfirm: () => void save(flow, list.chosen() ?? ctx.team().dashboardAccess),
     });
   }
 

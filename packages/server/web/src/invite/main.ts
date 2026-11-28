@@ -1,10 +1,10 @@
 import { initials } from "../format.js";
 import type { Lang } from "../lang.js";
+import { shortDay } from "../site/day.js";
 import { request } from "../site/http.js";
 import { applyText, languageSwitch, translator } from "../site/i18n.js";
 import { me, signInDidNotFinish, signOut } from "../site/session.js";
 import { listsView, showView } from "../site/views.js";
-import { expiryDay } from "./answers.js";
 import { inviter, takeToken } from "./invite.js";
 import { strings } from "./strings.js";
 
@@ -48,7 +48,7 @@ function paintInvite(): void {
   const team = preview?.team.name ?? "";
   ui.title.textContent = preview === null ? "" : t(lang, preview.role === "admin" ? "joinAdmin" : "joinViewer", { team });
   ui.roleNote.textContent = preview === null ? "" : t(lang, preview.role === "admin" ? "roleAdmin" : "roleViewer");
-  ui.expiryNote.textContent = preview === null ? "" : t(lang, "expiryNote", { day: expiryDay(preview.expiresAt, lang) });
+  ui.expiryNote.textContent = preview === null ? "" : t(lang, "expiryNote", { day: shortDay(preview.expiresAt, lang) });
   ui.hasRoleText.textContent = t(lang, "hasRoleText", { login: state.login ?? "", team });
 }
 

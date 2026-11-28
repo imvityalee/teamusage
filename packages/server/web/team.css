@@ -34,6 +34,21 @@
 .message { margin: 0; min-width: 0; padding: 14px 16px; border-radius: 12px; background: var(--soft);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
 
+/* Admins and viewers: a row for each person and each pending invite; its buttons move under the text when narrow */
+.cards .card h2 .n { font-weight: 400; color: var(--muted); font-variant-numeric: tabular-nums; }
+.roles-list { list-style: none; margin: 0; padding: 0; min-width: 0; }
+.role-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 14px; min-width: 0;
+  padding: 10px 4px; border-top: 1px solid var(--hairline); }
+.role-who { display: flex; align-items: center; gap: 10px; flex: 1 1 260px; min-width: 0; }
+.role-who .identity-mark { width: 28px; height: 28px; box-sizing: border-box; }
+.identity-mark.pending { background: none; border: 1px dashed var(--axis); color: var(--muted); }
+.role-text { min-width: 0; }
+.role-line { font-weight: 600; overflow-wrap: anywhere; }
+.role-sub { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+.role-side { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+.role-side .badge { padding: 3px 8px; border-radius: 8px; color: var(--text); }
+.role-side .btn { flex-shrink: 0; }
+
 @media (max-width: 520px) {
   .team-head h1 { font-size: 24px; }
   .code-row .btn { flex: 1 1 auto; }

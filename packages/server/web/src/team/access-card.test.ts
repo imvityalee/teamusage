@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "vitest";
 import { json, nobody, type Page } from "../site/page.fixture.js";
-import { bootTeam, dialogButton, openDialogOf, T, teamInfo, teamReply, visible } from "./page.fixture.js";
+import { bootTeam, loadRequests, dialogButton, openDialogOf, T, teamInfo, teamReply, visible } from "./page.fixture.js";
 
 let page: Page;
 afterEach(async () => page?.close());
@@ -44,7 +44,7 @@ test("choosing the same access sends nothing and closes the dialog", async () =>
   dialogButton(page, "confirm").click();
   await page.flush();
   expect(openDialogOf(page)).toBeNull();
-  expect(page.calls).toHaveLength(2);
+  expect(page.calls).toHaveLength(loadRequests("owner"));
   expect(page.doc.activeElement).toBe(page.$("#access-change"));
 });
 
@@ -54,8 +54,8 @@ test("another choice is sent; the card shows the server's answer", async () => {
   choose("admins");
   dialogButton(page, "confirm").click();
   dialogButton(page, "confirm").click();
-  expect(globalThis.fetch).toHaveBeenCalledTimes(3);
-  const call = page.calls[2];
+  expect(globalThis.fetch).toHaveBeenCalledTimes(loadRequests("owner") + 1);
+  const call = page.calls[loadRequests("owner")];
   expect([call?.url, call?.init.method, JSON.parse(String(call?.init.body))]).toEqual([`/api/teams/${T}`, "PATCH", { dashboardAccess: "admins" }]);
   await page.flush();
   expect(openDialogOf(page)).toBeNull();

@@ -3,7 +3,7 @@ import { NAME_DOES_NOT_MATCH as SERVER_NAME_DOES_NOT_MATCH } from "../../../src/
 import { json, nobody, type Page } from "../site/page.fixture.js";
 import { worstCase } from "../site/worst-case.fixture.js";
 import { NAME_DOES_NOT_MATCH, namesMatch } from "./delete-card.js";
-import { bootTeam, dialogButton, openDialogOf, pressEscape, T, teamInfo, typeInto } from "./page.fixture.js";
+import { bootTeam, loadRequests, dialogButton, openDialogOf, pressEscape, T, teamInfo, typeInto } from "./page.fixture.js";
 
 let page: Page;
 afterEach(async () => page?.close());
@@ -49,7 +49,7 @@ describe("deleting", () => {
     typeInto(page, input, "Acm");
     page.fire("dialog[open] form", "submit");
     await page.flush();
-    expect(page.calls).toHaveLength(2);
+    expect(page.calls).toHaveLength(loadRequests("owner"));
   });
 
   test("a worst-case team name is drawn whole in the dialog's heading, and typing it enables Delete", async () => {
@@ -64,13 +64,13 @@ describe("deleting", () => {
     typeInto(page, input, " Acme ");
     dialogButton(page, "confirm").click();
     dialogButton(page, "confirm").click();
-    expect(globalThis.fetch).toHaveBeenCalledTimes(3);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(loadRequests("owner") + 1);
     expect(dialogButton(page, "confirm").textContent).toBe("Deleting…");
     expect(dialogButton(page, "confirm").disabled).toBe(true);
     expect(dialogButton(page, "cancel").disabled).toBe(true);
     expect(pressEscape(page).defaultPrevented).toBe(true);
     expect(openDialogOf(page)).not.toBeNull();
-    const call = page.calls[2];
+    const call = page.calls[loadRequests("owner")];
     expect([call?.url, call?.init.method, JSON.parse(String(call?.init.body))]).toEqual([`/api/teams/${T}/delete`, "POST", { name: "Acme" }]);
     await page.flush();
     expect(page.replace).toHaveBeenCalledWith("/teams#all");
@@ -161,7 +161,7 @@ describe("deleting", () => {
     await openDelete("Acme");
     dialogButton(page, "cancel").click();
     expect(openDialogOf(page)).toBeNull();
-    expect(page.calls).toHaveLength(2);
+    expect(page.calls).toHaveLength(loadRequests("owner"));
     expect(page.doc.activeElement).toBe(page.$("#delete-open"));
   });
 });

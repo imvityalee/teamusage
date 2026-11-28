@@ -48,6 +48,7 @@ function makeWorld(win: Window, team: TeamInfo, lang: Lang, clipboard: Clipboard
     team: () => current,
     update: vi.fn((next: TeamInfo) => void (current = next)),
     signedOut: vi.fn(),
+    reload: vi.fn(async () => {}),
     go: vi.fn(),
   } satisfies TeamContext;
   return {
