@@ -3,6 +3,7 @@ import * as code from "./strings/code.js";
 import * as invite from "./strings/invite.js";
 import * as members from "./strings/members.js";
 import * as page from "./strings/page.js";
+import * as removal from "./strings/removal.js";
 import * as roles from "./strings/roles.js";
 import * as rolesDialogs from "./strings/roles-dialogs.js";
 import * as settings from "./strings/settings.js";
@@ -11,13 +12,13 @@ import * as settings from "./strings/settings.js";
  * Everything `/team` says, in English (the frame's also in team.html) and Russian: one table, assembled from the part of
  * each card (`strings/<part>.ts`). A card adds its part here.
  */
-export const parts = { page, code, invite, settings, roles, rolesDialogs, members };
+export const parts = { page, code, invite, settings, roles, rolesDialogs, members, removal };
 
-const en = { ...page.en, ...code.en, ...invite.en, ...settings.en, ...roles.en, ...rolesDialogs.en, ...members.en };
+const en = { ...page.en, ...code.en, ...invite.en, ...settings.en, ...roles.en, ...rolesDialogs.en, ...members.en, ...removal.en };
 
 export type TeamKey = keyof typeof en;
 
-const ru: Record<TeamKey, string> = { ...page.ru, ...code.ru, ...invite.ru, ...settings.ru, ...roles.ru, ...rolesDialogs.ru, ...members.ru };
+const ru: Record<TeamKey, string> = { ...page.ru, ...code.ru, ...invite.ru, ...settings.ru, ...roles.ru, ...rolesDialogs.ru, ...members.ru, ...removal.ru };
 
 export const strings: Table<TeamKey> = { en, ru };
 

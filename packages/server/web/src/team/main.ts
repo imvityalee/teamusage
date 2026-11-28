@@ -16,7 +16,8 @@ import { deleteCard } from "./delete-card.js";
 import { failureText } from "./failure.js";
 import { inviteMessage } from "./invite-message.js";
 import { startView, type TeamPageView } from "./page-view.js";
-import { membersCard } from "./members-card.js";
+import { membersCard, type MembersCard } from "./members-card.js";
+import { removalFlow, type RemovalFlow } from "./removal-flow.js";
 import { rolesCard } from "./roles-card.js";
 import { strings, tt } from "./strings.js";
 import { titleRow } from "./title-row.js";
@@ -50,6 +51,9 @@ let retrying = false;
 let cards: Card[] = [];
 /** The code card among `cards`: its code is dropped with them. */
 let code: (CodeCard & Card) | null = null;
+/** What the page does around a removal, with the members card it reads again. */
+let removal: RemovalFlow | null = null;
+let members: MembersCard | null = null;
 
 const signOut = signOutButton(document, () => tt(lang, "signOutFailed"));
 
@@ -73,8 +77,9 @@ function mountCards(githubId: number): void {
   const title = titleRow(ctx);
   code = codeCard(ctx);
   const roles = rolesCard(ctx, githubId);
-  // Task 16 gives the members card's removal buttons their dialog; until then they do nothing visible.
-  const members = membersCard(ctx, { today: () => localIsoDate(new Date()), onRemove: () => {} });
+  const today = () => localIsoDate(new Date());
+  removal = removalFlow(ctx, { today, members: () => members, code: () => code });
+  members = membersCard(ctx, { today, onRemove: removal.open, above: removal.status });
   cards = [title, code, inviteMessage(ctx), accessCard(ctx), roles, members, deleteCard(ctx)];
   ui.cards.replaceChildren(...cards.map((card) => card.element));
   title.element.after(members.summary);
@@ -84,6 +89,7 @@ function mountCards(githubId: number): void {
 function dropCards(): void {
   code?.hide();
   code = null;
+  removal = members = null;
   cards = [];
   ui.cards.replaceChildren();
 }
@@ -99,6 +105,7 @@ function paint(): void {
   if (team !== null) ui.viewerDashboard.setAttribute("href", dashboardPath(team));
   signOut.paint();
   for (const card of cards) card.paint();
+  removal?.paint();
 }
 
 /** Reads the session and the team together; nothing else is asked before both have answered. */

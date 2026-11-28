@@ -84,3 +84,12 @@ export const isApiMember = (v: unknown): v is ApiMember =>
 
 /** The team's members with their machines, for an owner or an admin. */
 export const getMembers = (team: string): Promise<ApiResult<{ members: ApiMember[] }>> => request("GET", teamApi(team, "/members"));
+
+/** What a removal asks for: member ids, machine ids, and whether the team gets a new code. */
+export type RemovalBody = { members: number[]; machines: string[]; rotateCode: boolean };
+
+/** The server's answer to a finished removal: how many members and machines went, and the new code when one was asked for. */
+export type RemovalAnswer = { removed: { members: number; machines: number }; code?: string };
+
+/** Removes members and machines; the server answers only once the removal is finished. */
+export const removeFromTeam = (team: string, body: RemovalBody): Promise<ApiResult<RemovalAnswer>> => request("POST", teamApi(team, "/removals"), body);

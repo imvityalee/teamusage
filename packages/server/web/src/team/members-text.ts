@@ -4,7 +4,7 @@ import { tt } from "./strings.js";
 
 /** The members card's counted sentences and sync ages: every number through the plural forms and the language's own grouping. */
 
-type Counted = "memberCount" | "notSyncing" | "moreMachines" | "syncDaysAgo" | "selectedCount";
+type Counted = "memberCount" | "notSyncing" | "moreMachines" | "syncDaysAgo" | "selectedCount" | "membersAcc" | "machineCount" | "removeMore";
 
 /** "21 участник", "2 участника", "5 участников": the sentence of `prefix` for `n`, with `n` written the language's way ("2,000", "2 000"). */
 export const countText = (lang: Lang, prefix: Counted, n: number): string =>

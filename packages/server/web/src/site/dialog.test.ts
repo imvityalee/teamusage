@@ -111,6 +111,23 @@ test("a busy dialog is closed by neither Escape nor the backdrop, and focus retu
   expect(onClose).toHaveBeenCalledTimes(1);
 });
 
+test("a dialog held open is closed by neither Escape nor the backdrop, is not busy, and its own close() still closes it", () => {
+  const { dialog, onClose } = setUp();
+  dialog.holdOpen();
+  const cancel = cancelEvent();
+  dialog.element.dispatchEvent(cancel);
+  expect(cancel.defaultPrevented).toBe(true);
+  const key = escape();
+  dialog.element.dispatchEvent(key);
+  expect(key.defaultPrevented).toBe(true);
+  pressOn(dialog.element, OUTSIDE);
+  expect(isOpen(dialog)).toBe(true);
+  expect(dialog.element.hasAttribute("aria-busy")).toBe(false);
+  dialog.close();
+  expect(dialog.element.open).toBe(false);
+  expect(onClose).toHaveBeenCalledTimes(1);
+});
+
 test("an Escape that is not busy is left to the browser, which answers it with cancel", () => {
   const { dialog } = setUp();
   const key = escape();

@@ -39,6 +39,8 @@ export type MembersOptions = {
   timeZone?: string;
   /** `opener` is the button that was pressed, which a dialog gives focus back to. */
   onRemove(what: Removal, opener: HTMLElement): void;
+  /** An element the page puts above the table: the line that says what a removal took. */
+  above?: HTMLElement;
 };
 
 export function membersCard(ctx: TeamContext, options: MembersOptions): MembersCard {
@@ -80,7 +82,7 @@ export function membersCard(ctx: TeamContext, options: MembersOptions): MembersC
   const scroll = h(doc, "div", { class: "scroll" }, table);
   const pagerSlot = h(doc, "div", { class: "pager-slot" });
   let pager: HTMLElement | null = null;
-  const element = h(doc, "section", { id: "members-card", class: "card", "aria-labelledby": "members-title" }, h(doc, "div", { class: "card-head" }, title, h(doc, "div", { class: "members-tools" }, filter.element, search)), loading, reader.error, reader.retry, bar.status, bar.element, empty, pagerSlot);
+  const element = h(doc, "section", { id: "members-card", class: "card", "aria-labelledby": "members-title" }, h(doc, "div", { class: "card-head" }, title, h(doc, "div", { class: "members-tools" }, filter.element, search)), loading, reader.error, reader.retry, ...(options.above ? [options.above] : []), bar.status, bar.element, empty, pagerSlot);
 
   const lang = (): Lang => ctx.lang();
 
