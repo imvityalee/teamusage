@@ -21,6 +21,21 @@ describe("compact", () => {
 
   test("moves up a unit when rounding reaches 1000", () => {
     expect(compact(999_960_000)).toBe("1.00B");
+    expect(compact(999_999_999_999)).toBe("1.00T");
+  });
+
+  test("uses T from a trillion, on both sides of each step", () => {
+    expect(compact(999_940_000)).toBe("999.9M");
+    expect(compact(1_000_000_000)).toBe("1.00B");
+    expect(compact(999_994_999_999)).toBe("999.99B");
+    expect(compact(1_000_000_000_000)).toBe("1.00T");
+    expect(compact(4_031_300_000_000)).toBe("4.03T");
+  });
+
+  test("keeps the sign of a negative number", () => {
+    expect(compact(-44_200_000)).toBe("-44.2M");
+    expect(compact(-2_936_526_460)).toBe("-2.94B");
+    expect(compact(-4_031_300_000_000)).toBe("-4.03T");
   });
 });
 

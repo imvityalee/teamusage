@@ -12,7 +12,8 @@
 .team-main { flex: 1 1 200px; min-width: 0; }
 .team-name { font-weight: 600; overflow-wrap: anywhere; }
 .team-main .badge { margin-top: 2px; padding: 3px 8px; border-radius: 8px; }
-.team-links { display: flex; flex-wrap: wrap; gap: 8px; flex-shrink: 0; }
+/* On a row of its own the pair shrinks to the row and its buttons wrap; it never runs past the card. */
+.team-links { display: flex; flex-wrap: wrap; gap: 8px; max-width: 100%; }
 .team-links .btn { min-height: 44px; padding: 0 14px; font-size: 14px; }
 .list-foot { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between; margin-top: 18px; }
 .list-foot .btn { font-size: 14px; }

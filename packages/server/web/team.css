@@ -66,6 +66,8 @@
 .members-table .who, .members-table .machines-cell { min-width: 0; overflow-wrap: anywhere; }
 .members-table .who { min-width: 14em; }
 .members-table .machines-cell { color: var(--muted); font-size: 13px; }
+/* Wide, a long machine label has room; narrow, the table keeps its 820 px inside its own scroll box. */
+@media (min-width: 1024px) { .members-table .machines-cell { min-width: 14rem; } }
 .members-table .joined { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .members-table .sync-cell { white-space: nowrap; }
 .member-name { font-weight: 600; overflow-wrap: anywhere; }

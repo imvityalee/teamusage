@@ -63,7 +63,7 @@ export const ru: Record<keyof typeof en, string> = {
   filterAll: "Все",
   filterStale: "Нет отправок",
   membersSearchLabel: "Поиск участников",
-  membersSearchPlaceholder: "Поиск по имени или почте",
+  membersSearchPlaceholder: "Имя или почта",
   colMember: "Участник",
   colMachines: "Устройства",
   colSync: "Последняя отправка",

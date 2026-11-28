@@ -292,7 +292,7 @@ const ru: Record<MessageKey, string> = {
   usedSelectedModels: "пользовались выбранными моделями",
   activeDaysSub: "дни, когда были данные",
   membersHint: "Выберите участника, чтобы увидеть его статистику",
-  searchPlaceholder: "Поиск по имени или почте",
+  searchPlaceholder: "Имя или почта",
   colAgentMix: "Состав по агентам",
   mixNote: "Длина полосы сравнивает участника с самым активным; цвета показывают, какими агентами он пользовался.",
   mixLabel: "{share}% токенов команды: {parts}",

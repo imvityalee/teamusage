@@ -164,6 +164,13 @@ describe("a refusal", () => {
     expect(page.$("#form-notice").textContent).toBe("Не удалось создать команду. Ответ сервера: cross-site request refused");
   });
 
+  test("markup in the server's text is drawn as text inside the page's sentence", async () => {
+    const markup = "<b>x</b><img src=x onerror=alert(1)>";
+    await submitWith(refused(403, markup));
+    expect(page.$("#form-notice").textContent).toBe(`The team could not be created. The server answered: ${markup}`);
+    expect(page.$("#form-notice").childElementCount).toBe(0);
+  });
+
   test("invalid name puts the error on the name field and the focus there", async () => {
     await submitWith(refused(400, "invalid name"));
     expect(shown("#name-error")).toBe(true);

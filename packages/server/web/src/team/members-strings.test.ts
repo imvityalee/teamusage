@@ -22,3 +22,8 @@ test("no string of the team page says «синхрон»", () => {
   const dir = new URL("./strings/", import.meta.url);
   for (const file of readdirSync(dir)) expect(readFileSync(new URL(file, dir), "utf8"), file).not.toMatch(/синхрон/i);
 });
+
+test("the Russian search placeholder fits a 320 px field, and the field's label keeps its full wording", () => {
+  expect(ru.membersSearchPlaceholder).toBe("Имя или почта");
+  expect(ru.membersSearchLabel).toBe("Поиск участников");
+});

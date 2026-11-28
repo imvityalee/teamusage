@@ -26,6 +26,8 @@ h2 .n { font-weight: 400; color: var(--muted); }
 .fb-show { margin-left: 6px; }
 .custom { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; }
 .custom input { min-height: 40px; }
+/* A label stays on the line of its field; the two pairs may wrap apart. */
+.custom .pair { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .fb-controls { display: contents; }
 .fb-range { margin-left: auto; font-size: 13px; color: var(--muted); }
 .filter { position: relative; }
@@ -75,8 +77,13 @@ h2 .n { font-weight: 400; color: var(--muted); }
 .tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 .tile { padding: 14px 18px; }
 .tile .k { color: var(--muted); font-size: 12px; }
-.tile .v { font-size: 28px; font-weight: 600; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; overflow-wrap: anywhere;
+/* A figure is never broken: it stays on one line. Only an agent's name may wrap. */
+.tile .v { font-size: 28px; font-weight: 600; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; white-space: nowrap;
   display: flex; flex-wrap: wrap; align-items: center; gap: 0 10px; }
+.tile .v .tile-text { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+/* A long cost (render.ts marks its tile) shrinks with its tile, so all of it fits on the line. */
+.tile.long { container-type: inline-size; }
+.tile.long .v { font-size: min(28px, 12cqi); }
 .tile .v .of { font-size: 15px; font-weight: 400; color: var(--muted); letter-spacing: 0; }
 .tile .v .agent-icon { width: 28px; height: 26px; }
 .tile .v .agent-icon .logo { width: 15px; height: 15px; }
@@ -102,6 +109,9 @@ tbody th { font-weight: 400; }
 th:first-child, td:first-child, th.l, td.l { text-align: left; }
 tbody tr:last-child th, tbody tr:last-child td { border-bottom: 0; }
 td.strong { font-weight: 600; }
+/* A model's name is as wide as it is, up to a cap: a longer one (the server allows 128 characters) wraps there,
+   and the numbers stay on screen. */
+.model-name { display: inline-block; width: max-content; max-width: 28ch; white-space: normal; overflow-wrap: anywhere; }
 .unpriced { margin-left: 6px; padding: 0 5px; border-radius: 4px; background: var(--soft); color: var(--muted); font-size: 11px; }
 
 /* Members */
@@ -147,9 +157,11 @@ td.accts-cell { white-space: normal; min-width: 8em; max-width: 16em; }
 .status-pill.warn { background: var(--warn-bg); color: var(--warn-text); }
 .machines-none { color: var(--muted); margin: 0; }
 .accounts { list-style: none; margin: 0; padding: 0; }
-.accounts li { display: flex; align-items: baseline; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.accounts li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
 .accounts li:last-child { border-bottom: 0; }
-.accounts .acct-name { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+/* The name wraps between words; when its longest word and the numbers do not fit one line, the numbers move under it.
+   max-width caps the name's smallest width, so a name of one long word still breaks rather than overflow. */
+.accounts .acct-name { flex: 1 1 0; max-width: 100%; overflow-wrap: break-word; }
 .accounts .acct-tokens { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .accounts .acct-share { min-width: 3.5em; text-align: right; white-space: nowrap; }
 
@@ -173,11 +185,20 @@ td.accts-cell { white-space: normal; min-width: 8em; max-width: 16em; }
 a:active, .link:active { opacity: .6; }
 .pop-row:not(:has(input:disabled)):active { opacity: .6; }
 
-@media (max-width: 760px) { .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 760px) {
+  .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  /* With a long cost, the tokens' tile and the cost's tile take a row each, so no hole is left beside either. */
+  .tiles:has(> .tile.long) > .tile:nth-child(-n+2) { grid-column: 1 / -1; }
+}
 @media (max-width: 520px) {
   .fb-range { margin-left: 0; flex-basis: 100%; }
   .tile { padding: 12px 14px; }
   .tile .v { font-size: 20px; }
+  .tile.long .v { font-size: min(20px, 12cqi); }
+  .model-name { max-width: 20ch; }
+  /* The Russian period names are longer: less padding keeps each on one line and the three within 320 px. */
+  #range button { white-space: nowrap; }
+  :root:lang(ru) #range button { padding: 0 8px; }
   .panel { padding: 14px; }
 }
 @media (prefers-reduced-motion: reduce) {

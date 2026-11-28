@@ -59,7 +59,7 @@ function modelsTable(doc: Document, stats: Stats, lang: Lang): HTMLElement {
   // Largest first, as the API sends them; a stable sort keeps the API order for ties.
   const rows = [...stats.models].sort((a, b) => b.total - a.total);
   const body = rows.map((m) => {
-    const model = h(doc, "td", { class: "l" }, m.model);
+    const model = h(doc, "td", { class: "l" }, h(doc, "span", { class: "model-name" }, m.model));
     if (m.unpriced) model.append(h(doc, "span", { class: "unpriced", title: t(lang, "unpricedHint") }, t(lang, "unpriced")));
     return h(
       doc,
@@ -75,6 +75,16 @@ function modelsTable(doc: Document, stats: Stats, lang: Lang): HTMLElement {
   const keys = ["colAgent", "colModel", "colInput", "colOutput", "colCacheCreate", "colCacheRead", "colTokens", "colCost"] as const;
   const head = h(doc, "thead", {}, h(doc, "tr", {}, ...keys.map((k, i) => headCell(doc, t(lang, k), i < 2, k === "colTokens"))));
   return h(doc, "table", { id: "models" }, head, h(doc, "tbody", {}, ...body));
+}
+
+/** Characters of a figure that still fit half a row of tiles on a 320 px phone. */
+const HALF_ROW_FIGURE = 10;
+
+/** The cost's tile; a longer figure marks it `long`, and style.css gives it a whole row on a phone. */
+function costTile(doc: Document, lang: Lang, cost: string, filtered: boolean): HTMLElement {
+  const el = tile(doc, t(lang, filtered ? "tileCostFiltered" : "tileCost"), [cost], t(lang, "apiPrices"));
+  el.classList.toggle("long", cost.length > HALF_ROW_FIGURE);
+  return el;
 }
 
 interface TileContext {
@@ -99,7 +109,7 @@ function tiles(doc: Document, stats: Stats, lang: Lang, third: HTMLElement, ctx:
     "div",
     { class: "tiles" },
     tile(doc, t(lang, filtered ? "tileTokensFiltered" : "tileTokens"), [compact(tokens)], first, full(tokens)),
-    tile(doc, t(lang, filtered ? "tileCostFiltered" : "tileCost"), [usd(stats.totals.costUsd)], t(lang, "apiPrices")),
+    costTile(doc, lang, usd(stats.totals.costUsd), filtered),
     third,
     topAgent === undefined || tokens <= 0
       ? tile(doc, t(lang, "tileTopAgent"), ["—"], "")

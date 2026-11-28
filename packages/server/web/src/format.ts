@@ -7,8 +7,10 @@ export function full(n: number): string {
   return Math.round(n).toLocaleString("en-US");
 }
 
-/** 2936526460 → "2.94B", 44200000 → "44.2M", 950 → "950" */
+/** 4031300000000 → "4.03T", 2936526460 → "2.94B", 44200000 → "44.2M", 950 → "950" */
 export function compact(n: number): string {
+  const billions = Math.round(n / 1e7) / 100;
+  if (Math.abs(billions) >= 1000) return (n / 1e12).toFixed(2) + "T";
   const millions = Math.round(n / 1e5) / 10;
   if (Math.abs(millions) >= 1000) return (n / 1e9).toFixed(2) + "B";
   if (Math.abs(n) >= 1e6) return millions.toFixed(1) + "M";

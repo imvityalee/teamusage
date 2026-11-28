@@ -11,6 +11,11 @@ import { assertFreshBuild, closeParser, parsePage, pathOf, scriptsAndStyles, scr
 const LANDING_SCRIPT_BYTES = 12_000;
 /** A message only the dashboard's own table holds (the controller's probe for that table in another page). */
 const DASHBOARD_ONLY_MESSAGE = "The start date is after the end date.";
+/** The phone's status bar takes the page's own background (`--page` of base.css) in each colour scheme. */
+const THEME_COLORS = [
+  ["(prefers-color-scheme: light)", "#f5f5f7"],
+  ["(prefers-color-scheme: dark)", "#000000"],
+];
 /**
  * Links of a self-hosted server's pages to paths it does not serve, each with the id of the element that hides it there:
  * open.html's GitHub line, which open/main.ts hides when `me()` says `noAccounts`; and index.html's account box, hidden
@@ -49,6 +54,8 @@ describe.each(["hosted", "self-hosted"] as const)("the built pages of a %s serve
       const doc = parsePage(html);
       expect(doc.querySelector('meta[name="viewport"]')?.getAttribute("content"), path).toContain("viewport-fit=cover");
       expect(doc.querySelector('meta[name="color-scheme"]')?.getAttribute("content"), path).toBe("light dark");
+      const themeColors = [...doc.querySelectorAll('meta[name="theme-color"]')].map((m) => [m.getAttribute("media"), m.getAttribute("content")]);
+      expect(themeColors, path).toEqual(THEME_COLORS);
       expect(doc.querySelector("title")?.textContent?.trim(), path).not.toBe("");
       for (const script of doc.querySelectorAll("script")) {
         expect(script.getAttribute("src"), `${path}: a script without src`).toBeTruthy();

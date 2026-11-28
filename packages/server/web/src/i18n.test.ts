@@ -134,7 +134,8 @@ describe("filter and design strings", () => {
     expect(t("en", "tileTopAgent")).toBe("Most used agent");
     expect(t("en", "sentUsage")).toBe("sent usage in this period");
     expect(t("en", "membersHint")).toBe("Select a member to see their own usage");
-    expect(t("en", "searchPlaceholder")).toBe("Search by name or email");
+    expect(both("searchPlaceholder")).toEqual(["Search by name or email", "Имя или почта"]);
+    expect(t("ru", "searchMembers")).toBe("Поиск участников");
     expect(t("en", "allMembers")).toBe("All members");
     expect(t("en", "teamShare", { n: 29 })).toBe("29% of the team's tokens");
     expect(t("en", "syncedToday")).toBe("Synced today");
