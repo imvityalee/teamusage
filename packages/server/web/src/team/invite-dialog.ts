@@ -3,7 +3,6 @@ import { choiceList } from "../site/choice-list.js";
 import { copyWith } from "../site/copy.js";
 import { dialogActions, openDialog, uniqueId } from "../site/dialog.js";
 import type { ApiResult } from "../site/http.js";
-import { MAX_ADMINS_AND_VIEWERS } from "../site/limits.js";
 import { pluralKey } from "../site/plural-key.js";
 import { createInvite, isInvite, type Invite } from "./api.js";
 import type { TeamContext } from "./card.js";
@@ -17,14 +16,11 @@ import { tt } from "./strings.js";
  * closing the dialog empties both before the dialog leaves the page.
  */
 
-const TEAM_FULL = `this team has reached its limit of ${MAX_ADMINS_AND_VIEWERS} admins and viewers`;
-
-/** The dialog's own sentence for a refusal of the invite, or the page's sentence around the server's text. */
+/** The dialog's own sentence for the one refusal of an invite the server makes (too many pending), or the page's sentence around the server's text. */
 function refusalText(ctx: TeamContext, result: ApiResult<unknown>): string {
   const lang = ctx.lang();
-  if (result.kind === "refused" && result.status === 409) {
-    if (result.error === REFUSALS.pendingFull) return tt(lang, pluralKey(lang, "pendingFull", MAX_PENDING_INVITES), { n: MAX_PENDING_INVITES });
-    if (result.error === TEAM_FULL) return tt(lang, pluralKey(lang, "teamFull", MAX_ADMINS_AND_VIEWERS), { n: MAX_ADMINS_AND_VIEWERS });
+  if (result.kind === "refused" && result.status === 409 && result.error === REFUSALS.pendingFull) {
+    return tt(lang, pluralKey(lang, "pendingFull", MAX_PENDING_INVITES), { n: MAX_PENDING_INVITES });
   }
   return failureText(lang, result);
 }

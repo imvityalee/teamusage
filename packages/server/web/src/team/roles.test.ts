@@ -2,8 +2,6 @@ import { readFileSync } from "node:fs";
 import { expect, test } from "vitest";
 import { INVITE_DAYS as SERVER_DAYS, MAX_PENDING_INVITES as SERVER_PENDING } from "../../../src/admin-invites.js";
 import { MAX_TEAMS_PER_USER as SERVER_TEAMS } from "../../../src/hosted-teams.js";
-import { MAX_ADMINS_AND_VIEWERS as PAGE_ADMINS } from "../site/limits.js";
-import { MAX_ADMINS_AND_VIEWERS as SERVER_ADMINS } from "../../../src/team-roles.js";
 import { actionsFor, countOf, initialsOf, inviteLink, INVITE_DAYS, MAX_PENDING_INVITES, MAX_TEAMS_PER_USER, REFUSALS, sortRoles } from "./roles.js";
 import { ADMIN, OTHER_ADMIN, OWNER, TOKEN, VIEWER } from "./roles.fixture.js";
 
@@ -56,8 +54,8 @@ test.each([
 const routes = readFileSync(new URL("../../../src/routes-team-roles.ts", import.meta.url), "utf8");
 
 test("the page's copies of the server's limits are the server's", () => {
-  expect([MAX_PENDING_INVITES, PAGE_ADMINS, MAX_TEAMS_PER_USER, INVITE_DAYS]).toEqual([SERVER_PENDING, SERVER_ADMINS, SERVER_TEAMS, SERVER_DAYS]);
-  expect(new Set([MAX_PENDING_INVITES, PAGE_ADMINS, MAX_TEAMS_PER_USER, INVITE_DAYS]).size).toBe(4);
+  expect([MAX_PENDING_INVITES, MAX_TEAMS_PER_USER, INVITE_DAYS]).toEqual([SERVER_PENDING, SERVER_TEAMS, SERVER_DAYS]);
+  expect(new Set([MAX_PENDING_INVITES, MAX_TEAMS_PER_USER, INVITE_DAYS]).size).toBe(3);
 });
 
 test("each refusal the card matches is the text the server's route file holds", () => {

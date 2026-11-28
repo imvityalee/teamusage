@@ -135,6 +135,7 @@ describe("Make owner…", () => {
     await m.world.flush();
     expect(text(dialogError(m))).toBe("@aigerim-t is not an admin of this team any more, and ownership goes to an admin. The list is up to date.");
     expect(m.$(`[data-github-id="${ADMIN.githubId}"]`)).toBeNull();
+    expect(text(m.$("#roles-status"))).toBe("");
   });
 
   test("a 404 'role not found' closes the dialog and reads the lists again", async () => {
@@ -216,6 +217,43 @@ describe("Cancel invite", () => {
     expect(m.$("#roles-retry").hidden).toBe(true);
     expect(cancelButton(PENDING.id).disabled).toBe(false);
     expect(m.world.doc.activeElement).toBe(cancelButton(PENDING.id));
+  });
+
+  test("two cancels in a row each write the status, so that the same words are heard twice", async () => {
+    m = await ownerWith(noContent(), noContent());
+    cancelButton(PENDING.id).click();
+    await m.world.flush();
+    const first = m.$("#roles-status").firstChild;
+    expect(text(m.$("#roles-status"))).toBe("The invite was cancelled.");
+    cancelButton(PENDING_VIEWER.id).click();
+    await m.world.flush();
+    expect(text(m.$("#roles-status"))).toBe("The invite was cancelled.");
+    expect(m.$("#roles-status").firstChild).not.toBe(first);
+  });
+
+  test("painting again does not say the status again", async () => {
+    m = await ownerWith(noContent());
+    cancelButton(PENDING.id).click();
+    await m.world.flush();
+    const said = m.$("#roles-status").firstChild;
+    m.card.paint();
+    expect(m.$("#roles-status").firstChild).toBe(said);
+  });
+
+  test.each([
+    ["a cancel", () => cancelButton(PENDING_VIEWER.id).click()],
+    ["a removal", () => {
+      press(VIEWER.githubId, "remove");
+      dialogButton(m, "confirm").click();
+    }],
+  ])("the alert of a failed cancel is gone once %s works", async (_name, act) => {
+    m = await ownerWith(new TypeError("Failed to fetch"), noContent());
+    cancelButton(PENDING.id).click();
+    await m.world.flush();
+    expect(m.$("#roles-error").hidden).toBe(false);
+    act();
+    await m.world.flush();
+    expect(m.$("#roles-error").hidden).toBe(true);
   });
 
   test("a 401 is the page's", async () => {

@@ -1,6 +1,6 @@
 import { request, type ApiResult } from "../site/http.js";
 import { isTeam, type UserTeam } from "../site/session.js";
-import { isTeamId } from "../site/team-param.js";
+import { isPublicId, isTeamId } from "../site/team-param.js";
 
 /** The team page's requests: one function for each route of `src/routes-team-settings.ts`. `team` is a checked public id. */
 
@@ -39,11 +39,11 @@ export const isRoleEntry = (v: unknown): v is RoleEntry =>
   isRecord(v) && Number.isSafeInteger(v.githubId) && typeof v.login === "string" && (v.role === "owner" || v.role === "admin" || v.role === "viewer") && isDay(v.since);
 
 export const isInvite = (v: unknown): v is Invite =>
-  isRecord(v) && isTeamId(String(v.id)) && (v.role === "admin" || v.role === "viewer") && isDay(v.createdAt) && isDay(v.expiresAt);
+  isRecord(v) && isPublicId(String(v.id)) && (v.role === "admin" || v.role === "viewer") && isDay(v.createdAt) && isDay(v.expiresAt);
 
 /** The path of an invite or a role: the id is checked before it goes into an address. */
 function inviteApi(team: string, id: string): string {
-  if (!isTeamId(id)) throw new RangeError("an invite's id is 16 lowercase hex characters");
+  if (!isPublicId(id)) throw new RangeError("an invite's id is 16 lowercase hex characters");
   return teamApi(team, `/invites/${id}`);
 }
 

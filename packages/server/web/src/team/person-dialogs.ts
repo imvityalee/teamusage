@@ -14,7 +14,7 @@ import { tt } from "./strings.js";
 export type PersonOutcome = {
   /** The person has no role any more: their row goes. */
   removed(entry: RoleEntry): void;
-  /** The server did not find the role, or the person is not an admin any more: the card reads the list again. */
+  /** The server did not find the role (the card says so), or the person is not an admin any more (the dialog says so): the card reads the list again. */
   stale(entry: RoleEntry, why: "gone" | "notAnAdmin"): void;
 };
 
@@ -75,7 +75,7 @@ export function askToHandOver(ctx: TeamContext, entry: RoleEntry, opener: HTMLEl
       const result = await flow.send(() => handOver(ctx.team().id, entry.githubId));
       if (result === null) return;
       const now = ctx.lang();
-      if (result.kind === "ok") return done(flow, () => void ctx.reload());
+      if (result.kind === "ok") return done(flow, () => void ctx.reload().then(() => ctx.doc.getElementById("roles-title")?.focus()));
       if (refusedWith(result, 404, REFUSALS.roleNotFound)) return done(flow, () => outcome.stale(entry, "gone"));
       if (refusedWith(result, 409, REFUSALS.notAnAdmin)) {
         outcome.stale(entry, "notAnAdmin");

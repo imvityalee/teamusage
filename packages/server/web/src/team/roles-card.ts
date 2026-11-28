@@ -1,4 +1,5 @@
 import { counted, h } from "../dom.js";
+import type { Lang } from "../lang.js";
 import type { ApiResult } from "../site/http.js";
 import { cancelInvite, getInvites, getRoles, isInvite, isRoleEntry, type Invite, type RoleEntry } from "./api.js";
 import type { Card, TeamContext } from "./card.js";
@@ -20,6 +21,9 @@ type Status = { key: TeamKey; vars: Record<string, string> } | null;
 
 /** What went wrong and the card's sentence for it; the server's own text is drawn only inside `failureText`'s sentence. */
 type Problem = { key: "rolesLoadFailed" | "cancelInviteFailed"; result: ApiResult<unknown> } | null;
+
+/** An answer that says the caller has no role in this team (any more). */
+const lostRole = (result: ApiResult<unknown> | null): boolean => result?.kind === "refused" && (result.status === 403 || result.status === 404);
 
 const isList = <T>(result: ApiResult<unknown>, name: string, guard: (v: unknown) => v is T): T[] | null => {
   const list = result.kind === "ok" ? (result.value as Record<string, unknown> | null)?.[name] : null;
@@ -45,6 +49,9 @@ export function rolesCard(ctx: TeamContext, viewer: number, timeZone?: string): 
   let invites: Invite[] = [];
   let problem: Problem = null;
   let status: Status = null;
+  /** Counts what the card has said, and what the status node last drew. */
+  let statusSerial = 0;
+  let spoken: { serial: number; lang: Lang } | null = null;
   /** The invites being cancelled: their buttons stay disabled until the answer. */
   const cancelling = new Set<string>();
   /** Counts the readings of the lists, so that an answer that is no longer the latest is dropped. */
@@ -72,8 +79,12 @@ export function rolesCard(ctx: TeamContext, viewer: number, timeZone?: string): 
     error.textContent = problem === null ? "" : `${tt(lang, problem.key)} ${failureText(lang, problem.result)}`;
     retry.hidden = problem?.key !== "rolesLoadFailed";
     retry.textContent = tt(lang, "tryAgain");
-    const said = status === null ? "" : tt(lang, status.key, status.vars);
-    if (live.textContent !== said) live.textContent = said;
+    // Written once for each thing said (and again for a language), emptied first so that the same words twice are heard twice.
+    if (spoken?.serial !== statusSerial || spoken.lang !== lang) {
+      live.textContent = "";
+      live.textContent = status === null ? "" : tt(lang, status.key, status.vars);
+      spoken = { serial: statusSerial, lang };
+    }
     paintList();
   }
 
@@ -84,6 +95,8 @@ export function rolesCard(ctx: TeamContext, viewer: number, timeZone?: string): 
     const [people, pending] = await Promise.all([getRoles(id), isOwner() ? getInvites(id) : Promise.resolve(null)]);
     if (mine !== reading) return;
     if ([people, pending].some((r) => r?.kind === "unauthorized")) return ctx.signedOut();
+    // A role lost while the page was open: the page asks for its own session and team again, which is where that is told.
+    if ([people, pending].some(lostRole)) return void ctx.reload();
     const readPeople = isList(people, "roles", isRoleEntry);
     const readInvites = pending === null ? [] : isList(pending, "invites", isInvite);
     const unread = readPeople === null ? people : readInvites === null ? pending : null;
@@ -92,20 +105,28 @@ export function rolesCard(ctx: TeamContext, viewer: number, timeZone?: string): 
     paint();
   }
 
+  /** Says `key` in the status node. */
+  const say = (key: TeamKey, vars: Record<string, string> = {}): void => {
+    status = { key, vars };
+    statusSerial++;
+  };
+
   /** The list is out of date: say so, and read it again. */
   const stale = (key: TeamKey, vars: Record<string, string> = {}): void => {
-    status = { key, vars };
+    say(key, vars);
     void read();
   };
 
   const outcome: PersonOutcome = {
     removed(entry) {
       roles = (roles ?? []).filter((r) => r.githubId !== entry.githubId);
-      status = { key: "statusRemoved", vars: { login: entry.login } };
+      problem = null;
+      say("statusRemoved", { login: entry.login });
       paint();
       title.focus();
     },
-    stale: (entry, why) => stale(why === "gone" ? "statusRoleGone" : "notAnAdmin", { login: entry.login }),
+    // The dialog says why a person is not an admin any more; the card only reads the list again.
+    stale: (entry, why) => (why === "gone" ? stale("statusRoleGone", { login: entry.login }) : void read()),
   };
 
   function onAction(action: RoleAction, entry: RoleEntry, button: HTMLButtonElement): void {
@@ -125,7 +146,8 @@ export function rolesCard(ctx: TeamContext, viewer: number, timeZone?: string): 
     if (result.kind === "unauthorized") return ctx.signedOut();
     if (result.kind === "ok") {
       invites = invites.filter((i) => i.id !== invite.id);
-      status = { key: "statusInviteCancelled", vars: {} };
+      problem = null;
+      say("statusInviteCancelled");
       paint();
       return title.focus();
     }
@@ -140,7 +162,7 @@ export function rolesCard(ctx: TeamContext, viewer: number, timeZone?: string): 
       opener: inviteButton,
       onCreated(invite) {
         invites = [...invites, invite];
-        status = { key: "statusInviteCreated", vars: {} };
+        say("statusInviteCreated");
         paint();
       },
     }),

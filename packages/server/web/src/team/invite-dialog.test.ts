@@ -81,7 +81,7 @@ describe("the link", () => {
     await openFor([created()], { lang: "ru" });
     choose("admin");
     await createLink();
-    expect(text(dialogOf(m))).toContain("Она сработает один раз, в течение 7 дней, для того аккаунта GitHub, который откроет её первым.");
+    expect(text(dialogOf(m))).toContain("Ссылка сработает один раз в течение 7 дней — для того аккаунта GitHub, с которого её откроют первым. Отправьте её в личном сообщении.");
   });
 
   test("the new invite is in the list behind the dialog, with its end day", async () => {
@@ -132,6 +132,20 @@ describe("the token is dropped when the dialog closes", () => {
     expect(m.world.doc.activeElement).toBe(m.$("#roles-invite"));
   });
 
+  test("the link is out of the document at once, not when the closing motion ends", async () => {
+    await openFor([created()]);
+    choose("admin");
+    await createLink();
+    const dialog = dialogOf(m) as HTMLDialogElement;
+    // A browser runs a closing motion: the dialog stays attached until it finishes. This one never does.
+    dialog.getAnimations = (() => [{ finished: new Promise(() => {}) }]) as unknown as typeof dialog.getAnimations;
+    dialogButton(m, "cancel").click();
+    await m.world.flush();
+    expect(dialog.isConnected).toBe(true);
+    expect(dialog.textContent).not.toContain(TOKEN);
+    expectNowhereIn(m.world, TOKEN);
+  });
+
   test("a later open starts from the choice again and shows no link", async () => {
     await openFor([created()]);
     choose("admin");
@@ -159,9 +173,7 @@ describe("what the server refuses", () => {
 
   test.each([
     ["en", "this team has 20 pending invites; cancel one first", "This team has 20 pending invitations. Cancel one first."],
-    ["ru", "this team has 20 pending invites; cancel one first", "У команды уже 20 ожидающих приглашений. Сначала отмените одно из них."],
-    ["en", "this team has reached its limit of 50 admins and viewers", "This team has reached its limit of 50 admins and viewers. Remove one to invite another."],
-    ["ru", "this team has reached its limit of 50 admins and viewers", "В команде достигнут предел: не больше 50 администраторов и наблюдателей. Чтобы пригласить ещё одного, удалите кого-нибудь."],
+    ["ru", "this team has 20 pending invites; cancel one first", "У команды уже 20 неиспользованных приглашений. Сначала отмените одно из них."],
   ] as const)("(%s) %s is said in the dialog, which stays with focus on its button", async (lang, error, sentence) => {
     await openFor([refused(error)], { lang });
     choose("admin");

@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "vitest";
+import { afterEach, describe, expect, test } from "vitest";
 import { json, nobody } from "../site/page.fixture.js";
 import { worstCase } from "../site/worst-case.fixture.js";
 import { T } from "./page.fixture.js";
@@ -44,7 +44,7 @@ test("each row says its role and the day, in the page's language and the given t
   expect(text(m.$(`[data-invite-id="${PENDING.id}"]`))).toContain("Created Nov 27, 2026. The link works once and ends on Dec 4, 2026.");
   await m.world.close();
   m = await mountRoles("owner", [rolesReply([MY_OWNER, ADMIN]), invitesReply([PENDING])], { lang: "ru" });
-  expect(text(rowOf(m, ADMIN.githubId))).toMatch(/Добавлен 3 сент\. 2026 г\..*Администратор/s);
+  expect(text(rowOf(m, ADMIN.githubId))).toMatch(/Добавили 3 сент\. 2026 г\..*Администратор/s);
   expect(text(m.$(`[data-invite-id="${PENDING.id}"]`))).toContain("действует до 4 дек. 2026 г.");
 });
 
@@ -99,7 +99,7 @@ test("the card is drawn again in the other language, with the list as it was", a
   m.card.paint();
   expect(text(m.$("#roles-title"))).toBe("Администраторы и наблюдатели 1");
   expect(m.$("#roles-invite").textContent).toBe("Пригласить…");
-  expect(loginsIn(m)).toEqual(["@acme-admin", "@aigerim-t", "Приглашение администратора, ещё не использовано"]);
+  expect(loginsIn(m)).toEqual(["@acme-admin", "@aigerim-t", "Приглашение в администраторы, ещё не использовано"]);
   expect(m.all(".role-row")).toHaveLength(3);
   expect(m.world.calls).toHaveLength(2);
 });
@@ -134,4 +134,41 @@ test("the heading, not an alert, is the card's name; the alert is on its own nod
   m = await mountRoles("admin", [new TypeError("x")]);
   expect(m.$("#roles-title").closest("[role=alert]")).toBeNull();
   expect(m.$("#roles-card").getAttribute("aria-labelledby")).toBe("roles-title");
+});
+
+test("a pending invite's mark is the board's link icon: an svg drawn in the current colour, with no style attribute", async () => {
+  m = await mountRoles("owner", [rolesReply([MY_OWNER]), invitesReply([PENDING])]);
+  const svg = m.$(`[data-invite-id="${PENDING.id}"] .identity-mark svg`);
+  expect([svg.getAttribute("aria-hidden"), svg.getAttribute("stroke"), svg.getAttribute("stroke-width"), svg.getAttribute("style")]).toEqual(["true", "currentColor", "2.2", null]);
+  expect(svg.querySelectorAll("path")).toHaveLength(1);
+});
+
+test("Remove names the role in the accusative in Russian", async () => {
+  m = await mountRoles("owner", [rolesReply([MY_OWNER, ADMIN, VIEWER]), invitesReply([])], { lang: "ru" });
+  expect(rowOf(m, ADMIN.githubId).querySelector("[data-action=remove]")?.getAttribute("aria-label")).toBe("Удалить администратора @aigerim-t");
+  expect(rowOf(m, VIEWER.githubId).querySelector("[data-action=remove]")?.getAttribute("aria-label")).toBe("Удалить наблюдателя @nurlan-b");
+});
+
+describe("a role lost while the page is open", () => {
+  test("the owner who handed the team over elsewhere: a 403 of the invites list reloads the page, and there is no alert", async () => {
+    m = await mountRoles("owner", [rolesReply([MY_OWNER, ADMIN]), json({ error: "your role does not allow this" }, 403)]);
+    expect(m.world.ctx.reload).toHaveBeenCalledTimes(1);
+    expect(m.$("#roles-error").hidden).toBe(true);
+    expect(m.$("#roles-retry").hidden).toBe(true);
+  });
+
+  test("a 404 of the roles list, and of the invites list, reloads the page", async () => {
+    m = await mountRoles("owner", [json({ error: "team not found" }, 404), json({ error: "team not found" }, 404)]);
+    expect(m.world.ctx.reload).toHaveBeenCalledTimes(1);
+    expect(m.$("#roles-error").hidden).toBe(true);
+    await m.world.close();
+    m = await mountRoles("owner", [rolesReply([MY_OWNER]), json({ error: "team not found" }, 404)]);
+    expect(m.world.ctx.reload).toHaveBeenCalledTimes(1);
+  });
+
+  test("a 5xx is still the card's alert, with Try again, and no reload", async () => {
+    m = await mountRoles("admin", [json({ error: "boom" }, 500)]);
+    expect(m.world.ctx.reload).not.toHaveBeenCalled();
+    expect(m.$("#roles-retry").hidden).toBe(false);
+  });
 });

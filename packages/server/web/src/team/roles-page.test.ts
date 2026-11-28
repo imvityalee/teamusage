@@ -35,6 +35,7 @@ test("a handover reads the session and the team again, and the former owner then
   expect(rowActions(ADMIN.githubId)).toEqual([]);
   expect(visible(page, "#delete-card")).toBe(false);
   expect(page.shownViews()).toEqual(["page"]);
+  expect(page.doc.activeElement).toBe(page.$("#roles-title"));
 });
 
 test("the admin's page asks for no invites", async () => {
