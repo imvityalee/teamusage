@@ -82,10 +82,11 @@ h2 .n { font-weight: 400; color: var(--muted); }
   display: flex; flex-wrap: wrap; align-items: center; gap: 0 10px; }
 .tile .v .tile-text { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
 /* The cost's figure keeps its size while it fits its tile and shrinks when it would not; render.tiles.ts sets --chars to
-   its length. --figure-em is one character's width in em at 28 px (system font, weight 600, tabular figures, -0.02em),
-   0.545, small enough that an ordinary cost keeps 28 px in the narrowest four-column tile. The font tracks wider at
-   small sizes (0.533 to 0.555 em measured from 28 down to 14 px), so a very long cost may run up to 2.6 px into the
-   tile's padding; it never reaches the border. Without cqi the fixed sizes apply. */
+   its length. --figure-em stands for one character's width in em. It is chosen, not measured: 0.545 is about the
+   largest value that leaves an ordinary nine-character cost within half a pixel of 28 px in the narrowest four-column
+   tile. On the macOS system font (weight 600, tabular figures, -0.02em) a character measures 0.532 to 0.555 em, by
+   the figure and its size, so a very long cost may run up to 2.6 px into the tile's padding; a font with wider
+   figures runs further. Without cqi the fixed sizes apply. */
 @supports (width: 1cqi) {
   .tile.cost { container-type: inline-size; --figure-em: 0.545; --figure-fit: calc(100cqi / (var(--chars) * var(--figure-em))); }
   .tile.cost .v { font-size: min(28px, var(--figure-fit)); }
