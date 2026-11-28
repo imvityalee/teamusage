@@ -1,14 +1,11 @@
 import { afterEach, describe, expect, test } from "vitest";
 import type { ServerConfig } from "./config.js";
-import { conn, github, hosted, roomy, serverConfig, tempDataDir, webWith } from "./main.fixture.js";
+import { conn, CSP_OF_218FF14, github, hosted, roomy, serverConfig, tempDataDir, webWith } from "./main.fixture.js";
 import { buildServer, type BuiltServer } from "./main.js";
 import { pagesOf } from "./pages.js";
 
 const HOSTED_PAGES = { "/": "landing.html", "/dashboard": "index.html", "/demo": "index.html", "/open": "open.html", "/teams": "teams.html", "/team": "team.html", "/invite": "invite.html", "/privacy": "privacy.html", "/terms": "terms.html" };
 const SELF_HOSTED_PAGES = { "/": "index.html", "/index.html": "index.html", "/open": "open.html" };
-/** The Content-Security-Policy of main.ts as it is at 218ff14. */
-const CSP_OF_TODAY =
-  "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'";
 /** Every file of both tables, and one asset. */
 const EVERY_FILE = [...new Set([...Object.values(HOSTED_PAGES), ...Object.values(SELF_HOSTED_PAGES)]), "assets/app.js"];
 
@@ -35,7 +32,7 @@ async function expectPage(res: Response, file: string): Promise<void> {
   expect(await res.text()).toBe(file);
   expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
   expect(res.headers.get("cache-control")).toBe("no-cache");
-  expect(res.headers.get("content-security-policy")).toBe(CSP_OF_TODAY);
+  expect(res.headers.get("content-security-policy")).toBe(CSP_OF_218FF14);
 }
 
 /** The response is the fixed page a server answers at `/` when its file is not built. */

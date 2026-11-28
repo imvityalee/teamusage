@@ -47,6 +47,10 @@ export const serverConfig = ({ dataDir = tempDataDir(), ...over }: Partial<Serve
   ...over,
 });
 
+/** The Content-Security-Policy of main.ts as it is at 218ff14; this plan never changes it. */
+export const CSP_OF_218FF14 =
+  "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'";
+
 /** The public URL of the hosted test server. */
 export const PUBLIC_URL = "https://usage.example.org";
 /** The GitHub client secret of the hosted test server. */
