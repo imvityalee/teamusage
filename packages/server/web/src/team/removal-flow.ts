@@ -4,12 +4,12 @@ import type { TeamContext } from "./card.js";
 import type { CodeCard } from "./code-card.js";
 import type { MembersCard } from "./members-card.js";
 import { openRemoval } from "./removal-dialog.js";
-import { removedText, type RemovalOutcome, type RemovalTarget } from "./removal.js";
+import { removedText, type RemovalDone, type RemovalTarget } from "./removal.js";
 
 /**
- * What the team page does around a removal: opens the dialog for the members card's buttons and, once a removal is done,
- * hides the code card (which then holds no code and asks the server at the next "Show"), clears the ticks, reads the
- * list again and says in the status line above the table what went.
+ * What the team page does around a removal: opens the dialog for the members card's buttons; once a request that asked
+ * for a new code has answered, hides the code card (which then holds no code and asks the server at the next "Show");
+ * once a removal is done, clears the ticks, reads the list again and says in the status line above the table what went.
  */
 
 export type RemovalFlow = {
@@ -21,11 +21,9 @@ export type RemovalFlow = {
   paint(): void;
 };
 
-type Done = Extract<RemovalOutcome, { kind: "done" }>;
-
 export function removalFlow(ctx: TeamContext, o: { today(): string; members(): MembersCard | null; code(): CodeCard | null }): RemovalFlow {
   const status = h(ctx.doc, "p", { id: "removal-status", class: "removal-status", role: "status" });
-  let last: { removed: Done["removed"]; target: RemovalTarget } | null = null;
+  let last: { removed: RemovalDone["removed"]; target: RemovalTarget } | null = null;
   let serial = 0;
   let spoken: { serial: number; lang: Lang } | null = null;
 
@@ -38,8 +36,7 @@ export function removalFlow(ctx: TeamContext, o: { today(): string; members(): M
     spoken = { serial, lang };
   }
 
-  async function done(outcome: Done, target: RemovalTarget): Promise<void> {
-    if (outcome.code !== null) o.code()?.hide();
+  async function done(outcome: RemovalDone, target: RemovalTarget): Promise<void> {
     last = { removed: outcome.removed, target };
     serial++;
     paint();
@@ -57,6 +54,7 @@ export function removalFlow(ctx: TeamContext, o: { today(): string; members(): M
       opener,
       refocus: ctx.doc.getElementById("members-title"),
       onDone: (outcome) => void done(outcome, target),
+      onCodeAsked: () => o.code()?.hide(),
       onSignedOut: ctx.signedOut,
       onRoleLost: () => void ctx.reload(),
     });

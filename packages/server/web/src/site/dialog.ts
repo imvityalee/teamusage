@@ -15,6 +15,17 @@ export type Dialog = {
 
 let made = 0;
 
+/** How each dialog this module opened is closed whatever it is doing: busy and held open are ignored. */
+const forcedClose = new WeakMap<HTMLDialogElement, () => void>();
+
+/**
+ * Closes every dialog this module opened in `doc` that is still open, busy or held open alike, each running its own
+ * `onClose` at once (a sign-out: nothing a dialog shows may stay on the page).
+ */
+export function closeEveryDialog(doc: Document): void {
+  for (const el of doc.querySelectorAll<HTMLDialogElement>("dialog[open]")) forcedClose.get(el)?.();
+}
+
 /** An id no other element of the page has, for a heading or a field a dialog labels with it. */
 export const uniqueId = (prefix: string): string => `${prefix}-${++made}`;
 
@@ -83,6 +94,10 @@ export function openDialog(doc: Document, o: { title: string; content: Node[]; o
     removeAfterMotion(el);
   });
 
+  forcedClose.set(el, () => {
+    busy = held = false;
+    close();
+  });
   doc.body.append(el);
   el.showModal();
   focusInside(el);

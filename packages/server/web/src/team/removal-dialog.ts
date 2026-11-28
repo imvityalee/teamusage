@@ -3,14 +3,15 @@ import type { Lang } from "../lang.js";
 import { copyWith } from "../site/copy.js";
 import { dialogActions, openDialog } from "../site/dialog.js";
 import { removeFromTeam } from "./api.js";
-import { removalBody, removalOutcome, removalSummary, removedText, targetKind, type RemovalOutcome, type RemovalTarget, type TargetKind } from "./removal.js";
+import { removalBody, removalOutcome, removalSummary, removedText, targetKind, type RemovalDone, type RemovalOutcome, type RemovalTarget, type TargetKind } from "./removal.js";
 import { tt, type TeamKey } from "./strings.js";
 
 /**
  * The removal dialog. Board 11 asks, with "Replace the team code" ticked each time it opens; while the request is out
  * nothing closes it. Done with a new code it becomes board 12, which shows the code once and only "Done" closes; done
  * without, it closes. A removal that stopped (board 13) keeps it open with "Run it again", or after a 403 only "Close".
- * The new code is in the dialog's code box and in this function's one variable, and both are emptied as it closes.
+ * The new code is in the dialog's code box and in this function's one variable, and both are emptied as it closes;
+ * nothing outside the dialog receives it.
  */
 
 type Done = Extract<RemovalOutcome, { kind: "done" }>;
@@ -27,11 +28,13 @@ export type RemovalOptions = {
   opener: HTMLElement | null;
   /** What focus goes to after a removal, or when the opener has left the page with its row. */
   refocus: HTMLElement | null;
-  /** The removal finished; `code` is the new team code, which nothing outside the dialog needs to keep. */
-  onDone(outcome: Done): void;
+  /** The removal finished: the counts, and whether the code was replaced. */
+  onDone(outcome: RemovalDone): void;
+  /** A request that asked for a new code has answered, whatever the answer: a code shown elsewhere may no longer work. */
+  onCodeAsked(): void;
   /** A 401: the dialog has closed. */
   onSignedOut(): void;
-  /** The dialog that told of a lost role (a 403) has closed. */
+  /** The dialog that told of a lost role or access (a 403 or a 404) has closed. */
   onRoleLost(): void;
 };
 
@@ -42,10 +45,15 @@ const WORDS: Record<TargetKind, { body: TeamKey; replace: TeamKey; confirm: Team
   machine: { body: "removeBodyMachine", replace: "removeReplaceMachine", confirm: "removeMachine", kept: "stoppedKeptMachine" },
 };
 
-/** What is deleted: one member's machine, or their machines when they have more or none. */
+/** What is deleted: one member's machine, their machines when they have more, or only their history when they have none. */
 function bodyKey(target: RemovalTarget, kind: TargetKind): TeamKey {
-  return kind === "one" && target.members[0]?.machines.length !== 1 ? "removeBodyOneMachines" : WORDS[kind].body;
+  const machines = target.members[0]?.machines.length;
+  if (kind !== "one" || machines === 1) return WORDS[kind].body;
+  return machines === 0 ? "removeBodyOneNone" : "removeBodyOneMachines";
 }
+
+/** The last sentence of board 13: what was lost, after which only "Close" is offered, or "Run it again to finish". */
+const LAST_LINE: Record<"role" | "access" | "none", TeamKey> = { role: "roleGone", access: "accessGone", none: "stoppedRunAgain" };
 
 /** The first sentence of board 12: who or what was removed. */
 function doneSentence(lang: Lang, target: RemovalTarget, kind: TargetKind, outcome: Done): string {
@@ -62,7 +70,10 @@ export function openRemoval(doc: Document, o: RemovalOptions): void {
   let label = say(WORDS[kind].confirm);
   let busy = false;
   let finished = false;
-  let roleLost = false;
+  /** A 403 or 404 was told: closing has the page read the role again. */
+  let lost = false;
+  /** An answer of this dialog may have come after the removal finished: no later stop claims the members or the code unchanged. */
+  let unsure = false;
   /** The new code while board 12 shows it. */
   let code: string | null = null;
 
@@ -86,7 +97,7 @@ export function openRemoval(doc: Document, o: RemovalOptions): void {
     onClose() {
       code = null;
       form.replaceChildren();
-      if (roleLost) o.onRoleLost();
+      if (lost) o.onRoleLost();
       const back = finished || !o.opener?.isConnected ? o.refocus : o.opener;
       if (back?.isConnected) back.focus();
     },
@@ -111,6 +122,7 @@ export function openRemoval(doc: Document, o: RemovalOptions): void {
     setBusy(true);
     const outcome = removalOutcome(await removeFromTeam(o.team, request));
     setBusy(false);
+    if (request.rotateCode) o.onCodeAsked();
     answer(outcome);
   }
 
@@ -118,7 +130,7 @@ export function openRemoval(doc: Document, o: RemovalOptions): void {
     switch (outcome.kind) {
       case "done":
         finished = true;
-        o.onDone(outcome);
+        o.onDone({ kind: "done", removed: outcome.removed, replaced: outcome.code !== null });
         return outcome.code === null ? dialog.close() : showCode(outcome, outcome.code);
       case "signedOut":
         dialog.close();
@@ -133,14 +145,15 @@ export function openRemoval(doc: Document, o: RemovalOptions): void {
     }
   }
 
-  /** Board 13: what may be gone, and "Run it again", or after a 403 only "Close". */
+  /** Board 13: what may be gone, and "Run it again", or after a 403 or a 404 only "Close". */
   function stopped(outcome: Stopped): void {
+    unsure ||= !outcome.codeKept;
     body.hidden = true;
-    const text = [say(outcome.codeKept ? WORDS[kind].kept : "stoppedUnsure"), say(outcome.role ? "roleGone" : "stoppedRunAgain")].join(" ");
+    const text = [say(unsure ? "stoppedUnsure" : WORDS[kind].kept), say(LAST_LINE[outcome.lost ?? "none"])].join(" ");
     tell(h(doc, "p", { class: "alert-title" }, say("stoppedTitle")), h(doc, "p", {}, text));
     cancel.textContent = say("close");
-    if (outcome.role) {
-      roleLost = true;
+    if (outcome.lost !== null) {
+      lost = true;
       confirm.hidden = tick.hidden = true;
       return cancel.focus();
     }

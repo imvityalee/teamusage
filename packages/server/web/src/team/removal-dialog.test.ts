@@ -73,6 +73,15 @@ describe("board 11", () => {
     expect(m.within("h2")?.textContent).toBe(`Удалить устройство ${worstCase.machineLabel}?`);
   });
 
+  test("a member with no machine: no machines in the line, and the body leaves the machines out", () => {
+    m = mount([]);
+    const none = rowsOf([member(8, [], { name: "Jo", email: "jo@example.com" })])[0]!;
+    m.open({ members: [none], machines: [] });
+    expect(m.within(".removal-detail")?.textContent).toBe("jo@example.com, no machines");
+    expect(m.text()).toContain("All of their usage history is deleted, and their browser is signed out of the dashboard. Nobody else is signed out. This cannot be undone.");
+    expect(m.text()).not.toContain("Their machine");
+  });
+
   test("in Russian", () => {
     m = mount([], { lang: "ru" });
     m.open(SEVERAL);
@@ -90,7 +99,7 @@ describe("confirming", () => {
     expect(m.sent()).toEqual([{ method: "POST", path: `/api/teams/${T}/removals`, body: { members: [7], machines: [], rotateCode: true } }]);
     expect(m.dialog()?.textContent).toContain(NEW_CODE);
     expect(m.button("Copy code")).not.toBeNull();
-    expect(m.onDone).toHaveBeenCalledWith({ kind: "done", removed: { members: 1, machines: 1 }, code: NEW_CODE });
+    expect(m.onDone).toHaveBeenCalledWith({ kind: "done", removed: { members: 1, machines: 1 }, replaced: true });
   });
 
   test("unticked, it sends rotateCode false, shows no code, closes and gives focus to the card's heading", async () => {
@@ -100,7 +109,7 @@ describe("confirming", () => {
     await m.press("Remove member");
     expect(m.sent()[0]?.body).toEqual({ members: [7], machines: [], rotateCode: false });
     expect(m.dialog()).toBeNull();
-    expect(m.onDone).toHaveBeenCalledWith({ kind: "done", removed: { members: 1, machines: 1 }, code: null });
+    expect(m.onDone).toHaveBeenCalledWith({ kind: "done", removed: { members: 1, machines: 1 }, replaced: false });
     expect(m.world.doc.activeElement).toBe(m.refocus);
   });
 
@@ -168,18 +177,46 @@ describe("a removal that does not finish", () => {
     m = mount([reply]);
     m.open();
     await m.press("Remove member");
-    expect(m.text()).toContain("Part of the usage history may already be deleted, and the page could not learn whether the removal finished. Run it again to finish.");
+    expect(m.text()).toContain("Part of their usage history may already be deleted. The page could not learn whether the removal finished. Run it again to finish.");
     expect(m.text()).not.toContain("unchanged");
     expect(m.button("Run it again")).not.toBeNull();
     expect(m.button("Close")).not.toBeNull();
     expect(m.world.doc.activeElement).toBe(m.button("Run it again"));
   });
 
-  test("after the server's own 404 the member is still there and the code is unchanged", async () => {
+  test("a 404 says the access is gone and offers only Close, which has the page read the role again", async () => {
     m = mount([json({ error: "team not found" }, 404)]);
     m.open();
     await m.press("Remove member");
-    expect(m.text()).toContain("Part of their usage history is already deleted. The member is still in the list and the team code is unchanged. Run it again to finish.");
+    expect(m.text()).toContain("Part of their usage history may already be deleted. The member is still in the list and the team code is unchanged. You no longer have access to this team.");
+    expect(m.button("Run it again")).toBeNull();
+    expect(m.within("[data-action=confirm]")?.hidden).toBe(true);
+    expect(m.world.doc.activeElement).toBe(m.button("Close"));
+    await m.press("Close");
+    expect(m.onRoleLost).toHaveBeenCalledTimes(1);
+  });
+
+  test("in Russian, a 404's notice", async () => {
+    m = mount([json({ error: "team not found" }, 404)], { lang: "ru" });
+    m.open();
+    await m.press("Удалить участника");
+    expect(m.within("[role=alert]")?.textContent).toBe(
+      "Удаление не завершилосьВозможно, часть истории расхода уже удалена. Участник пока в списке, код команды не изменился. У вас больше нет доступа к этой команде.",
+    );
+  });
+
+  test.each<["en" | "ru", string, string]>([
+    ["en", "Remove member", "Run it again"],
+    ["ru", "Удалить участника", "Запустить ещё раз"],
+  ])("in %s, once an answer left it unsure, a later 403 or 404 does not say the code is unchanged or the member still there", async (lang, confirm, again) => {
+    m = mount([new TypeError("offline"), json({ error: "your role does not allow this" }, 403)], { lang });
+    m.open();
+    await m.press(confirm);
+    m.box().click();
+    await m.press(again);
+    const said = m.within("[role=alert]")?.textContent ?? "";
+    expect(said).toContain(lang === "en" ? "Your role no longer allows this." : "Ваша роль больше не позволяет это сделать.");
+    for (const claim of lang === "en" ? ["unchanged", "still in the list"] : ["не изменился", "пока в списке"]) expect(said).not.toContain(claim);
   });
 
   test("a 403 says the role no longer allows it and offers only Close, which has the page read the role again", async () => {
@@ -207,7 +244,7 @@ describe("a removal that does not finish", () => {
     expect(second).toEqual(first);
     expect(third?.body).toEqual({ members: [7], machines: [], rotateCode: false });
     expect(m.dialog()).toBeNull();
-    expect(m.onDone).toHaveBeenCalledWith({ kind: "done", removed: { members: 1, machines: 1 }, code: null });
+    expect(m.onDone).toHaveBeenCalledWith({ kind: "done", removed: { members: 1, machines: 1 }, replaced: false });
   });
 
   test("a run again that finds the members already gone ends as a success would", async () => {
@@ -215,7 +252,7 @@ describe("a removal that does not finish", () => {
     m.open();
     await m.press("Remove member");
     await m.press("Run it again");
-    expect(m.onDone).toHaveBeenCalledWith({ kind: "done", removed: { members: 0, machines: 0 }, code: NEW_CODE });
+    expect(m.onDone).toHaveBeenCalledWith({ kind: "done", removed: { members: 0, machines: 0 }, replaced: true });
     expect(m.text()).toContain(NEW_CODE);
   });
 

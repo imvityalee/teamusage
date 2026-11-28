@@ -23,11 +23,15 @@ export type RemovalOutcome =
   /** Refused before anything was removed: a 400 (`error` null), or another refusal of the request itself (its text). */
   | { kind: "notSent"; error: string | null }
   /**
-   * Part of the usage may be gone. `role`: a 403, the role was lost midway. `codeKept`: the server itself stopped it
-   * (a 403 or a 404) before its last step, so the members are still there and the code was not replaced; after a 5xx,
-   * the network or an answer the page cannot read, the removal may have finished without the page hearing of it.
+   * Part of the usage may be gone. `lost`: what the server said the person lost midway, a 403 (`role`: the role no
+   * longer allows it) or a 404 (`access`: no role in the team, or no team), after which a run again cannot work.
+   * `codeKept`: the server itself stopped it before its last step, so the members are still there and the code was not
+   * replaced; after a 5xx, the network or an answer the page cannot read, the removal may have finished unheard.
    */
-  | { kind: "stopped"; role: boolean; codeKept: boolean };
+  | { kind: "stopped"; lost: "role" | "access" | null; codeKept: boolean };
+
+/** What the page around the dialog learns of a finished removal: the counts, and whether the code was replaced, never the code. */
+export type RemovalDone = { kind: "done"; removed: RemovalAnswer["removed"]; replaced: boolean };
 
 /** The machines named on their own: those whose member is not removed whole. */
 const loneMachines = (target: RemovalTarget) => {
@@ -51,7 +55,7 @@ const isAnswer = (v: unknown): v is RemovalAnswer => {
   return isCount(counts.members) && isCount(counts.machines) && (code === undefined || typeof code === "string");
 };
 
-const UNSURE = { kind: "stopped", role: false, codeKept: false } as const;
+const UNSURE = { kind: "stopped", lost: null, codeKept: false } as const;
 
 /** What an answer of `POST …/removals` means for the dialog (the answers of `src/routes-team-members.ts`). */
 export function removalOutcome(result: ApiResult<RemovalAnswer>): RemovalOutcome {
@@ -61,8 +65,8 @@ export function removalOutcome(result: ApiResult<RemovalAnswer>): RemovalOutcome
     case "unauthorized":
       return { kind: "signedOut" };
     case "refused":
-      if (result.status === 403 && result.error === ROLE_NOT_ALLOWED) return { kind: "stopped", role: true, codeKept: true };
-      if (result.status === 404) return { kind: "stopped", role: false, codeKept: true };
+      if (result.status === 403 && result.error === ROLE_NOT_ALLOWED) return { kind: "stopped", lost: "role", codeKept: true };
+      if (result.status === 404) return { kind: "stopped", lost: "access", codeKept: true };
       if (result.status === 400) return { kind: "notSent", error: null };
       return result.status < 500 ? { kind: "notSent", error: result.error } : UNSURE;
     default:
@@ -74,6 +78,20 @@ export function removalOutcome(result: ApiResult<RemovalAnswer>): RemovalOutcome
 const NAMES_SHOWN = 3;
 
 const machineCount = (target: RemovalTarget): number => target.members.reduce((n, m) => n + m.machines.length, 0) + loneMachines(target).length;
+
+/** One member's email, machines and last sync; "no machines" for a member who has none, "never synced" for one who never did. */
+function oneDetail(lang: Lang, one: RemovalTarget["members"][number], machines: string, today: string): string {
+  if (one.machines.length === 0) return tt(lang, "removeOneDetailNone", { email: one.email });
+  const days = daysSince(one.lastSyncAt, today);
+  return days === null ? tt(lang, "removeOneDetailNever", { email: one.email, machines }) : tt(lang, "removeOneDetail", { email: one.email, machines, sync: syncText(lang, days) });
+}
+
+/** "A", "A and B", "A, B and C": at most NAMES_SHOWN names. */
+function namesText(lang: Lang, names: string[]): string {
+  const [a = "", b = "", c = ""] = names;
+  if (names.length === 2) return tt(lang, "namesTwo", { a, b });
+  return names.length === 3 ? tt(lang, "namesThree", { a, b, c }) : a;
+}
 
 /** Which words a target takes: one member, one machine, or several (members ticked together, or anything else). */
 export type TargetKind = "one" | "machine" | "several";
@@ -93,12 +111,13 @@ export function removalSummary(target: RemovalTarget, lang: Lang, today: string)
   }
   if (kind === "one") {
     const one = target.members[0]!;
-    const sync = syncText(lang, daysSince(one.lastSyncAt, today));
-    return { title: tt(lang, "removeOneTitle", { name: one.name }), detail: tt(lang, "removeOneDetail", { email: one.email, machines, sync }) };
+    return { title: tt(lang, "removeOneTitle", { name: one.name }), detail: oneDetail(lang, one, machines, today) };
   }
-  const names = target.members.slice(0, NAMES_SHOWN).map((m) => m.name).join(", ");
   const rest = target.members.length - NAMES_SHOWN;
-  const detail = rest > 0 ? tt(lang, "removeSeveralDetailMore", { names, more: countText(lang, "removeMore", rest), machines }) : tt(lang, "removeSeveralDetail", { names, machines });
+  const detail =
+    rest > 0
+      ? tt(lang, "removeSeveralDetailMore", { names: target.members.slice(0, NAMES_SHOWN).map((m) => m.name).join(", "), more: countText(lang, "removeMore", rest), machines })
+      : tt(lang, "removeSeveralDetail", { names: namesText(lang, target.members.map((m) => m.name)), machines });
   return { title: tt(lang, "removeSeveralTitle", { members: countText(lang, "membersAcc", target.members.length) }), detail };
 }
 

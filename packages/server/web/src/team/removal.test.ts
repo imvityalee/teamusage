@@ -52,16 +52,16 @@ describe("removalOutcome", () => {
   test.each<[string, ApiResult<RemovalAnswer>, unknown]>([
     ["200 with a code", ok({ removed: { members: 1, machines: 1 }, code: "c0de" }), { kind: "done", removed: { members: 1, machines: 1 }, code: "c0de" }],
     ["200 without a code", ok({ removed: { members: 0, machines: 1 } }), { kind: "done", removed: { members: 0, machines: 1 }, code: null }],
-    ["200 the page cannot read", ok({} as RemovalAnswer), { kind: "stopped", role: false, codeKept: false }],
+    ["200 the page cannot read", ok({} as RemovalAnswer), { kind: "stopped", lost: null, codeKept: false }],
     ["400", refused(400, "nothing to remove"), { kind: "notSent", error: null }],
     ["401", { kind: "unauthorized" }, { kind: "signedOut" }],
-    ["403 of a role", refused(403, "your role does not allow this"), { kind: "stopped", role: true, codeKept: true }],
+    ["403 of a role", refused(403, "your role does not allow this"), { kind: "stopped", lost: "role", codeKept: true }],
     ["403 of another site", refused(403, "cross-site request refused"), { kind: "notSent", error: "cross-site request refused" }],
     ["413", refused(413, "payload too large"), { kind: "notSent", error: "payload too large" }],
-    ["404", refused(404, "team not found"), { kind: "stopped", role: false, codeKept: true }],
-    ["500", { kind: "failed" }, { kind: "stopped", role: false, codeKept: false }],
-    ["503 of a proxy", refused(503, ""), { kind: "stopped", role: false, codeKept: false }],
-    ["a network error", { kind: "network" }, { kind: "stopped", role: false, codeKept: false }],
+    ["404", refused(404, "team not found"), { kind: "stopped", lost: "access", codeKept: true }],
+    ["500", { kind: "failed" }, { kind: "stopped", lost: null, codeKept: false }],
+    ["503 of a proxy", refused(503, ""), { kind: "stopped", lost: null, codeKept: false }],
+    ["a network error", { kind: "network" }, { kind: "stopped", lost: null, codeKept: false }],
   ])("%s", (_name, result, outcome) => {
     expect(removalOutcome(result)).toEqual(outcome);
   });
@@ -90,11 +90,20 @@ describe("removalSummary", () => {
       title: "Удалить участника Nurlan Asanov?",
       detail: "nurlan.asanov@acme.example, 1 устройство, последняя отправка: 41 день назад",
     });
-    expect(removalSummary({ members: [nurlan([machine(null)])], machines: [] }, "en", TODAY).detail).toBe("nurlan.asanov@acme.example, 1 machine, last sync never");
+    const never = { members: [nurlan([machine(null)])], machines: [] };
+    expect(removalSummary(never, "en", TODAY).detail).toBe("nurlan.asanov@acme.example, 1 machine, never synced");
+    expect(removalSummary(never, "ru", TODAY).detail).toBe("nurlan.asanov@acme.example, 1 устройство, отправок ещё не было");
+  });
+
+  test("a member with no machine: the email and no machines", () => {
+    const none = { members: [nurlan([])], machines: [] };
+    expect(removalSummary(none, "en", TODAY).detail).toBe("nurlan.asanov@acme.example, no machines");
+    expect(removalSummary(none, "ru", TODAY).detail).toBe("nurlan.asanov@acme.example, нет устройств");
   });
 
   test.each([
-    [2, "Remove 2 members?", "Person 1, Person 2. 2 machines."],
+    [2, "Remove 2 members?", "Person 1 and Person 2. 2 machines."],
+    [3, "Remove 3 members?", "Person 1, Person 2 and Person 3. 3 machines."],
     [4, "Remove 4 members?", "Person 1, Person 2, Person 3 and 1 more. 4 machines."],
     [5, "Remove 5 members?", "Person 1, Person 2, Person 3 and 2 more. 5 machines."],
     [21, "Remove 21 members?", "Person 1, Person 2, Person 3 and 18 more. 21 machines."],
@@ -103,7 +112,8 @@ describe("removalSummary", () => {
   });
 
   test.each([
-    [2, "Удалить 2 участников?", "Person 1, Person 2. 2 устройства."],
+    [2, "Удалить 2 участников?", "Person 1 и Person 2. 2 устройства."],
+    [3, "Удалить 3 участников?", "Person 1, Person 2 и Person 3. 3 устройства."],
     [4, "Удалить 4 участников?", "Person 1, Person 2, Person 3 и ещё 1. 4 устройства."],
     [5, "Удалить 5 участников?", "Person 1, Person 2, Person 3 и ещё 2. 5 устройств."],
     [21, "Удалить 21 участника?", "Person 1, Person 2, Person 3 и ещё 18. 21 устройство."],

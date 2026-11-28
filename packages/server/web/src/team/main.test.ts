@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, test } from "vitest";
-import { json, nobody, type Page } from "../site/page.fixture.js";
+import { json, nobody, user, type Page } from "../site/page.fixture.js";
 import { worstCase } from "../site/worst-case.fixture.js";
-import { bootAt, bootTeam, dialogButton, expectNowhereIn, LOGIN, openDialogOf, T, teamInfo, teamReply, typeInto, visible } from "./page.fixture.js";
+import { memberReplies, bootAt, bootTeam, dialogButton, expectNowhereIn, LOGIN, openDialogOf, T, teamInfo, teamReply, typeInto, visible } from "./page.fixture.js";
+import { invitesReply, MY_OWNER, PENDING, rolesReply, TOKEN } from "./roles.fixture.js";
 
 let page: Page;
 afterEach(async () => page?.close());
@@ -167,5 +168,46 @@ describe("a 401 from any card", () => {
     expect(page.shownViews()).toEqual(["signedOut"]);
     expect(page.$("#cards").childElementCount).toBe(0);
     expectNowhereIn(page, CODE);
+  });
+
+  /** A reply the test gives later, to answer while a dialog is open. */
+  const later = () => {
+    let answer: (r: Response) => void = () => {};
+    return { reply: new Promise<Response>((resolve) => (answer = resolve)), answer: (r: Response) => answer(r) };
+  };
+  const owner = teamInfo("owner");
+
+  test("the invite dialog shows its link and the roles list answers 401: the link is nowhere and no dialog is open", async () => {
+    const roles = later();
+    page = await bootAt(`?team=${T}`, user([owner], LOGIN), teamReply(owner), roles.reply, invitesReply([]), ...memberReplies(), json({ invite: PENDING, token: TOKEN }, 201));
+    page.press("#roles-invite");
+    const admin = openDialogOf(page)?.querySelector("input[value=admin]") as HTMLInputElement;
+    admin.click();
+    dialogButton(page, "confirm").click();
+    await page.flush();
+    expect(openDialogOf(page)?.textContent).toContain(TOKEN);
+    roles.answer(nobody());
+    await page.flush();
+    expect(page.shownViews()).toEqual(["signedOut"]);
+    expect(openDialogOf(page)).toBeNull();
+    expectNowhereIn(page, TOKEN);
+  });
+
+  test.each<[string, string, string]>([
+    ["Delete", "#delete-open", "Acme Engineering"],
+    ["Rename", "#rename", "Beta"],
+  ])("a busy %s dialog and a 401 from another card: the dialog closes with the cards", async (_name, opener, typed) => {
+    const members = later();
+    page = await bootAt(`?team=${T}`, user([owner], LOGIN), teamReply(owner), rolesReply([MY_OWNER]), invitesReply([]), members.reply, "pending");
+    page.press(opener);
+    typeInto(page, openDialogOf(page)?.querySelector("input") as HTMLInputElement, typed);
+    dialogButton(page, "confirm").click();
+    await page.flush();
+    expect(openDialogOf(page)?.getAttribute("aria-busy")).toBe("true");
+    members.answer(nobody());
+    await page.flush();
+    expect(page.shownViews()).toEqual(["signedOut"]);
+    expect(openDialogOf(page)).toBeNull();
+    expect(page.doc.querySelector("dialog")).toBeNull();
   });
 });

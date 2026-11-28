@@ -32,6 +32,7 @@ export function mount(replies: Reply[], o: { lang?: Lang; refuseClipboard?: bool
   const onDone = vi.fn<RemovalOptions["onDone"]>();
   const onSignedOut = vi.fn();
   const onRoleLost = vi.fn();
+  const onCodeAsked = vi.fn();
   const dialog = () => doc.querySelector<HTMLDialogElement>("dialog[open]");
   const within = (sel: string) => dialog()?.querySelector<HTMLElement>(sel) ?? null;
   const button = (label: string) => [...(dialog()?.querySelectorAll<HTMLButtonElement>("button") ?? [])].find((b) => b.textContent === label && !b.hidden) ?? null;
@@ -42,13 +43,14 @@ export function mount(replies: Reply[], o: { lang?: Lang; refuseClipboard?: bool
     onDone,
     onSignedOut,
     onRoleLost,
+    onCodeAsked,
     dialog,
     within,
     button,
     box: () => within("input[type=checkbox]") as HTMLInputElement,
     open(target: RemovalTarget = ONE_MEMBER, lang: Lang = o.lang ?? "en") {
       opener.focus();
-      openRemoval(doc, { team: T, target, lang, today: TODAY, opener, refocus, onDone, onSignedOut, onRoleLost });
+      openRemoval(doc, { team: T, target, lang, today: TODAY, opener, refocus, onDone, onSignedOut, onRoleLost, onCodeAsked });
     },
     /** Presses the dialog's button that reads `label` and lets the answer come. */
     async press(label: string) {

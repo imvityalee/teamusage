@@ -88,8 +88,8 @@
 
 /* Removing members and machines: the line above the table, and the dialog of boards 11 to 13 */
 .removal-status { margin: 0; color: var(--muted); overflow-wrap: anywhere; }
-/* Empty, the line stays in the document for the screen reader and takes no room of its own. */
-.cards .card > .removal-status:empty { margin-bottom: -12px; }
+/* Empty, the line stays in the document and in the accessibility tree, but makes no box, so the card adds no gap for it. */
+.removal-status:empty { display: contents; }
 .dialog-body .removal-detail { margin-top: -12px; }
 .dialog-body > .badge { align-self: flex-start; }
 .removal-alert { flex-direction: column; gap: 2px; }

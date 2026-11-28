@@ -99,7 +99,33 @@ describe("after a done removal", () => {
   });
 });
 
+describe("a removal and a sign-out", () => {
+  test("board 12 shows and the list's reload answers 401: the code is nowhere, no dialog is open, the sign-in panel shows", async () => {
+    page = await bootTeam(teamInfo("admin"), removedReply(1, 1, NEW_CODE), nobody());
+    page.press(`tbody button[data-action=remove]`);
+    dialogButton(page, "confirm").click();
+    await page.flush();
+    expect(urls().at(-1)).toBe(`GET /api/teams/${T}/members`);
+    expect(page.shownViews()).toEqual(["signedOut"]);
+    expect(openDialogOf(page)).toBeNull();
+    expectNowhereIn(page, NEW_CODE);
+  });
+});
+
 describe("a removal the page cannot finish", () => {
+  test("a removal that asked for a new code and answers 500: the code card shows the dots and holds no code", async () => {
+    page = await bootTeam(teamInfo("owner"), json({ code: OLD_CODE }), json({}, 500));
+    page.press("#code-show");
+    await page.flush();
+    page.press(`tbody button[data-action=remove]`);
+    dialogButton(page, "confirm").click();
+    await page.flush();
+    expect(dialogText()).toContain("The removal stopped before it finished");
+    expect(page.$("#code-value [aria-hidden=true]").textContent).toBe(HIDDEN_CODE);
+    dialogButton(page, "cancel").click();
+    expectNowhereIn(page, OLD_CODE);
+  });
+
   test("a 403: Close has the page read the session and the team again", async () => {
     await removeTwoTicked(json({ error: "your role does not allow this" }, 403));
     dialogButton(page, "confirm").click();

@@ -2,6 +2,7 @@ import { localIsoDate } from "@teamusage/shared";
 import type { Lang } from "../lang.js";
 import { paintAccount } from "../site/account.js";
 import type { ApiResult } from "../site/http.js";
+import { closeEveryDialog } from "../site/dialog.js";
 import { applyText, languageSwitch } from "../site/i18n.js";
 import { me } from "../site/session.js";
 import { signOutButton } from "../site/sign-out.js";
@@ -85,8 +86,9 @@ function mountCards(githubId: number): void {
   title.element.after(members.summary);
 }
 
-/** Drops the cards, and with them the code they may hold. */
+/** Drops the cards, and with them the code they may hold and every dialog open over them, whatever it shows. */
 function dropCards(): void {
+  closeEveryDialog(document);
   code?.hide();
   code = null;
   removal = members = null;
