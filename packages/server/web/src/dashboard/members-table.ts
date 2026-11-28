@@ -1,21 +1,19 @@
 import type { Stats } from "@teamusage/shared";
 import { locale, type Lang } from "../lang.js";
+import { nextSort as nextOf, type Sort, type SortDir } from "../site/sort-head.js";
 
 /** The order of the members table: which column sorts, which way, and what a press on a header does. */
 
 type Member = Stats["members"][number];
 
-export type MemberSort = { by: "tokens" | "cost" | "name" | "lastSync"; dir: "asc" | "desc" };
+export type MemberSort = Sort<"tokens" | "cost" | "name" | "lastSync">;
 export const DEFAULT_SORT: MemberSort = { by: "tokens", dir: "desc" };
 
 /** The way a column starts when it is pressed: the largest or newest first, and names from A. */
-const FIRST_DIRECTION: Record<MemberSort["by"], MemberSort["dir"]> = { tokens: "desc", cost: "desc", lastSync: "desc", name: "asc" };
+const FIRST_DIRECTION: Record<MemberSort["by"], SortDir> = { tokens: "desc", cost: "desc", lastSync: "desc", name: "asc" };
 
-/** The sort after a press on a column: the same column turns round; a new one starts with the largest or newest first, and a name from A. */
-export function nextSort(current: MemberSort, pressed: MemberSort["by"]): MemberSort {
-  if (current.by !== pressed) return { by: pressed, dir: FIRST_DIRECTION[pressed] };
-  return { by: pressed, dir: current.dir === "asc" ? "desc" : "asc" };
-}
+/** The sort after a press on a column (see `nextSort` of the shared header module). */
+export const nextSort = (current: MemberSort, pressed: MemberSort["by"]): MemberSort => nextOf(current, pressed, FIRST_DIRECTION);
 
 const syncTime = (m: Member): number => (m.lastSyncAt === null ? 0 : Date.parse(m.lastSyncAt));
 

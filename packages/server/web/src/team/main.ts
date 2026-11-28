@@ -1,3 +1,4 @@
+import { localIsoDate } from "@teamusage/shared";
 import type { Lang } from "../lang.js";
 import { paintAccount } from "../site/account.js";
 import type { ApiResult } from "../site/http.js";
@@ -15,6 +16,7 @@ import { deleteCard } from "./delete-card.js";
 import { failureText } from "./failure.js";
 import { inviteMessage } from "./invite-message.js";
 import { startView, type TeamPageView } from "./page-view.js";
+import { membersCard } from "./members-card.js";
 import { rolesCard } from "./roles-card.js";
 import { strings, tt } from "./strings.js";
 import { titleRow } from "./title-row.js";
@@ -68,9 +70,14 @@ const ctx: TeamContext = {
 
 /** The cards of an owner or admin, in the order of board 3. A card is added here with one line. */
 function mountCards(githubId: number): void {
+  const title = titleRow(ctx);
   code = codeCard(ctx);
-  cards = [titleRow(ctx), code, inviteMessage(ctx), accessCard(ctx), rolesCard(ctx, githubId), deleteCard(ctx)];
+  const roles = rolesCard(ctx, githubId);
+  // Task 16 gives the members card's removal buttons their dialog; until then they do nothing visible.
+  const members = membersCard(ctx, { today: () => localIsoDate(new Date()), onRemove: () => {} });
+  cards = [title, code, inviteMessage(ctx), accessCard(ctx), roles, members, deleteCard(ctx)];
   ui.cards.replaceChildren(...cards.map((card) => card.element));
+  title.element.after(members.summary);
 }
 
 /** Drops the cards, and with them the code they may hold. */

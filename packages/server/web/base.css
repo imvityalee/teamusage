@@ -74,6 +74,20 @@ input::placeholder { color: var(--muted); opacity: 1; }
   .pager button:active:not(:disabled), .team-nav a:active { transform: none; opacity: .8; }
 }
 
+/* Tables with a search box and sortable headers (src/site/sort-head.ts, src/site/search-field.ts): the dashboard and the team page. */
+.scroll { overflow-x: auto; position: relative; }
+th .sort { margin-left: 4px; }
+/* A sortable header is a button as tall as a finger; the th gives its padding to the button. */
+th.sortable { padding: 0 4px; }
+.sort-btn { display: inline-flex; align-items: center; min-height: 44px; padding: 0 6px; border: 0; border-radius: 8px; background: none; color: inherit;
+  font: inherit; cursor: pointer; }
+th[aria-sort] .sort-btn { color: var(--text); font-weight: 600; }
+@media (hover: hover) and (pointer: fine) { .sort-btn:hover { color: var(--text); } }
+.search { position: relative; flex: 0 1 320px; min-width: 0; }
+.search input { width: 100%; min-height: 44px; padding: 0 14px 0 38px; border-radius: 12px; }
+.search .search-icon { position: absolute; left: 14px; top: 14px; color: var(--muted); pointer-events: none; }
+.sort-btn:active { opacity: .6; }
+
 /* The phone baseline */
 /* No grey flash on a tap, so each page gives every control its own :active state (style.css, site.css; guarded by
    src/press-states.test.ts), and no font inflation in landscape. */

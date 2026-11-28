@@ -68,3 +68,19 @@ export const removeRole = (team: string, githubId: number): Promise<ApiResult<un
 
 /** Makes the admin `githubId` the owner; the caller becomes an admin. */
 export const handOver = (team: string, githubId: number): Promise<ApiResult<undefined>> => request("POST", teamApi(team, "/owner"), { user: githubId });
+
+/** A machine of a member, as `GET …/members` names it: the 32-hex id, the label the person gave it and its last sync. */
+export type Machine = { id: string; label: string; lastSyncAt: string | null };
+
+/** A member of the team with their machines. */
+export type ApiMember = { id: number; name: string; email: string; joinedAt: string; machines: Machine[] };
+
+export const isMachine = (v: unknown): v is Machine =>
+  isRecord(v) && typeof v.id === "string" && /^[a-f0-9]{32}$/.test(v.id) && typeof v.label === "string" && (v.lastSyncAt === null || isDay(v.lastSyncAt));
+
+export const isApiMember = (v: unknown): v is ApiMember =>
+  isRecord(v) && Number.isSafeInteger(v.id) && (v.id as number) > 0 && typeof v.name === "string" && typeof v.email === "string" && isDay(v.joinedAt) &&
+  Array.isArray(v.machines) && v.machines.every(isMachine);
+
+/** The team's members with their machines, for an owner or an admin. */
+export const getMembers = (team: string): Promise<ApiResult<{ members: ApiMember[] }>> => request("GET", teamApi(team, "/members"));

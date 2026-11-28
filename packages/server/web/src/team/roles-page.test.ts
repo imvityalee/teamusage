@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "vitest";
 import { json, nobody, user, type Page } from "../site/page.fixture.js";
-import { bootTeam, dialogButton, expectNowhereIn, openDialogOf, T, teamInfo, teamReply, visible } from "./page.fixture.js";
+import { bootTeam, dialogButton, expectNowhereIn, memberReplies, openDialogOf, T, teamInfo, teamReply, visible } from "./page.fixture.js";
 import { ADMIN, ME, MY_ADMIN, rolesReply, TOKEN } from "./roles.fixture.js";
 
 let page: Page;
@@ -12,7 +12,7 @@ const rowActions = (id: number) => [...page.doc.querySelectorAll(`[data-github-i
 test("the card sits after the dashboard access and before the deletion", async () => {
   page = await bootTeam(teamInfo("owner"));
   const order = [...page.$("#cards").children].map((el) => el.id || el.className);
-  expect(order.slice(3)).toEqual(["access-card", "roles-card", "delete-card"]);
+  expect(order.slice(4)).toEqual(["access-card", "roles-card", "members-card", "delete-card"]);
 });
 
 test("a handover reads the session and the team again, and the former owner then offers Leave team and no Invite…", async () => {
@@ -22,13 +22,14 @@ test("a handover reads the session and the team again, and the former owner then
     user([teamInfo("admin")]),
     teamReply(teamInfo("admin")),
     rolesReply([{ ...ADMIN, role: "owner" }, MY_ADMIN]),
+    ...memberReplies(),
   );
   expect(visible(page, "#roles-invite")).toBe(true);
   expect(rowActions(ADMIN.githubId)).toEqual(["remove", "makeOwner"]);
   page.$<HTMLButtonElement>(`[data-github-id="${ADMIN.githubId}"] [data-action=makeOwner]`).click();
   dialogButton(page, "confirm").click();
   await page.flush();
-  expect(urls().slice(4)).toEqual([`/api/teams/${T}/owner`, "/api/me", `/api/teams/${T}`, `/api/teams/${T}/roles`]);
+  expect(urls().slice(5)).toEqual([`/api/teams/${T}/owner`, "/api/me", `/api/teams/${T}`, `/api/teams/${T}/roles`, `/api/teams/${T}/members`]);
   expect(openDialogOf(page)).toBeNull();
   expect(visible(page, "#roles-invite")).toBe(false);
   expect(rowActions(ME)).toEqual(["leave"]);
@@ -40,7 +41,7 @@ test("a handover reads the session and the team again, and the former owner then
 
 test("the admin's page asks for no invites", async () => {
   page = await bootTeam(teamInfo("admin"));
-  expect(urls()).toEqual(["/api/me", `/api/teams/${T}`, `/api/teams/${T}/roles`]);
+  expect(urls()).toEqual(["/api/me", `/api/teams/${T}`, `/api/teams/${T}/roles`, `/api/teams/${T}/members`]);
   expect(visible(page, "#roles-invite")).toBe(false);
   expect(page.doc.querySelector("[data-invite-id]")).toBeNull();
 });

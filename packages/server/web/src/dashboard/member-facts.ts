@@ -1,15 +1,15 @@
 import { parseAccountKey, parsePlanKey, type Stats } from "@teamusage/shared";
 import { accountPlanName, planShort } from "../accounts.js";
-import { daysSince } from "../format.js";
 import { count, t, type Lang } from "../i18n.js";
+import { daysSince, STALE_DAYS } from "../site/sync-age.js";
 
 /** What the dashboard reads from a member's numbers: shares, sync age and the checked breakdowns by agent and by account. */
 
 export const pct = (part: number, whole: number): number => (whole > 0 ? Math.round((part / whole) * 100) : 0);
-export const STALE_DAYS = 7;
+export { STALE_DAYS };
 
 export function lastSync(lang: Lang, at: string | null, today: string): { text: string; days: number | null } {
-  const days = at === null ? null : daysSince(at, today);
+  const days = daysSince(at, today);
   if (days === null) return { text: "—", days };
   if (days === 0) return { text: t(lang, "today"), days };
   if (days === 1) return { text: t(lang, "yesterday"), days };

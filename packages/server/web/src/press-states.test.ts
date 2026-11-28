@@ -35,9 +35,10 @@ const has = (text: string, selector: string, declaration: string) =>
   rules(text).some((r) => r.selectors.includes(selector) && r.body.includes(declaration));
 
 const PRESSED = {
-  "style.css": { scale: [".seg button", ".pill", ".chip", ".status button", ".login button"], dim: ["a", ".link", ".pop-row", ".sort-btn"] },
-  "base.css": { scale: [".pager button", ".team-nav a"], dim: [".pager select"] },
+  "style.css": { scale: [".seg button", ".pill", ".chip", ".status button", ".login button"], dim: ["a", ".link", ".pop-row"] },
+  "base.css": { scale: [".pager button", ".team-nav a"], dim: [".pager select", ".sort-btn"] },
   "chrome.css": { scale: [".signed-out .btn"], dim: [".brand-link", ".text-button", ".account a", ".sample a", ".signed-out .aside a"] },
+  "team.css": { scale: [], dim: [".more-btn", ".tick-box"] },
   "site.css": { scale: [".btn", ".site-head .seg button", ".card .seg button"], dim: [".site-head .brand", ".aside a", ".link-button", ".account a", ".option"] },
 };
 

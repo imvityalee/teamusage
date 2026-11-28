@@ -2,6 +2,8 @@ import type { Window } from "happy-dom";
 import { expect } from "vitest";
 import { bootPage, json, user, type Call, type Page, type Reply } from "../site/page.fixture.js";
 import type { TeamInfo } from "./api.js";
+import { membersReply } from "./members-card.fixture.js";
+import { team as someMembers } from "./members.fixture.js";
 import { listReplies } from "./roles.fixture.js";
 
 /** Opens `/team` in happy-dom for the page's tests (tests only). */
@@ -23,15 +25,18 @@ export const teamReply = (team: TeamInfo) => json({ team });
 export const bootAt = (suffix: string, ...replies: Reply[]): Promise<Page> =>
   bootPage({ url: `/team${suffix}`, html: "team.html", load: () => import("./main.js") }, replies);
 
-/** How many requests opening the page sends for someone of `role`: the session, the team, the roles and, for the owner, the invites. */
-export const loadRequests = (role: TeamInfo["role"]): number => 2 + listReplies(role).length;
+/** The answers the members card gets when the page opens: a small team, one member not syncing. */
+export const memberReplies = () => [membersReply(someMembers(3, 1))];
+
+/** How many requests opening the page sends for someone of `role`: the session, the team, the roles, for the owner the invites, and the members. */
+export const loadRequests = (role: TeamInfo["role"]): number => 2 + listReplies(role).length + memberReplies().length;
 
 /**
- * Opens `/team?team=T` for a GitHub user who holds `team`'s role. The roles card's two lists are answered as a small
- * team's; `replies` answer the requests after them.
+ * Opens `/team?team=T` for a GitHub user who holds `team`'s role. The roles card's two lists and the members card's list are
+ * answered as a small team's; `replies` answer the requests after them.
  */
 export const bootTeam = (team: TeamInfo, ...replies: Reply[]): Promise<Page> =>
-  bootAt(`?team=${T}`, user([team], LOGIN), teamReply(team), ...(team.role === "viewer" ? [] : listReplies(team.role)), ...replies);
+  bootAt(`?team=${T}`, user([team], LOGIN), teamReply(team), ...(team.role === "viewer" ? [] : [...listReplies(team.role), ...memberReplies()]), ...replies);
 
 /** The dialog on screen, or null. */
 export const openDialogOf = (page: Page) => page.doc.querySelector<HTMLDialogElement>("dialog[open]");

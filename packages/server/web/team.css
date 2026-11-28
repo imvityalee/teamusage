@@ -49,6 +49,43 @@
 .role-side .badge { padding: 3px 8px; border-radius: 8px; color: var(--text); }
 .role-side .btn { flex-shrink: 0; }
 
+/* Members: the line under the team's name, the filter and search, the bar of ticked rows and the table, which scrolls inside its own box */
+.team-summary { margin: -6px 2px 0; color: var(--muted); overflow-wrap: anywhere; }
+.members-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+.members-tools .search { flex: 0 1 260px; }
+.members-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0 16px; padding: 0 14px;
+  border-radius: 12px; background: var(--sel-bg); color: var(--sel-text); }
+.members-bar .selected { padding: 10px 0; font-weight: 600; overflow-wrap: anywhere; }
+.members-bar .link-button { color: inherit; font-weight: 600; }
+.members-table { width: 100%; min-width: 820px; border-collapse: collapse; }
+.members-table th, .members-table td { padding: 8px 10px; text-align: left; vertical-align: middle; border-bottom: 1px solid var(--hairline); }
+.members-table thead th { color: var(--muted); font-size: 12px; font-weight: 500; }
+.members-table thead th.sortable { padding: 0 4px; }
+.members-table th.tick, .members-table td.tick { width: 44px; padding: 0; }
+.members-table td.action { width: 1%; text-align: right; white-space: nowrap; }
+.members-table .who, .members-table .machines-cell { min-width: 0; overflow-wrap: anywhere; }
+.members-table .who { min-width: 14em; }
+.members-table .machines-cell { color: var(--muted); font-size: 13px; }
+.members-table .joined { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.members-table .sync-cell { white-space: nowrap; }
+.member-name { font-weight: 600; overflow-wrap: anywhere; }
+.member-email { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+.sync-cell .badge { padding: 3px 8px; border-radius: 8px; }
+/* The tick box: a 44 px target around a 20 px box */
+.tick-box { display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; cursor: pointer; -webkit-user-select: none; user-select: none; }
+.tick-box input { flex-shrink: 0; width: 20px; height: 20px; margin: 0; accent-color: var(--text); }
+.tick-box:active { opacity: .6; }
+/* "and 2 more", which opens the row's machines underneath */
+.more-btn { min-height: 44px; padding: 0 6px; border: 0; background: none; color: var(--link); font: inherit; cursor: pointer; }
+.more-btn:active { opacity: .6; }
+@media (hover: hover) and (pointer: fine) { .more-btn:hover { color: var(--link-hover); } }
+.machines-row td { padding: 0 10px 8px 54px; background: var(--soft); }
+.machine-list { list-style: none; margin: 0; padding: 0; }
+.machine-item { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; padding: 4px 0; }
+.machine-label { min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
+.machine-item .machine-label { flex: 1 1 200px; }
+.machine-sync { color: var(--muted); font-size: 13px; }
+
 @media (max-width: 520px) {
   .team-head h1 { font-size: 24px; }
   .code-row .btn { flex: 1 1 auto; }

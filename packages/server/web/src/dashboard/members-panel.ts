@@ -1,9 +1,11 @@
 import type { Stats } from "@teamusage/shared";
-import { counted, h, icon } from "../dom.js";
+import { counted, h } from "../dom.js";
 import { matchCount, t, type Lang } from "../i18n.js";
 import { matchMembers } from "../search.js";
 import { loadPageSize, pageOf, savePageSize, type PageSize } from "../site/paging.js";
-import { renderPager, updatePager } from "../site/pager.js";
+import { refocusStep, renderPager, updatePager, type Step } from "../site/pager.js";
+import { searchField } from "../site/search-field.js";
+import { markSorted, plainHead, pressedColumn, sortHead } from "../site/sort-head.js";
 import { memberRows } from "./member-rows.js";
 import { DEFAULT_SORT, nextSort, sortMembers, type MemberSort } from "./members-table.js";
 
@@ -55,33 +57,6 @@ interface View {
 
 const views = new WeakMap<Element, View>();
 
-type Step = "prev" | "next";
-
-const ARROWS = { asc: "↑", desc: "↓" } as const;
-
-function sortHead(doc: Document, lang: Lang, by: MemberSort["by"], label: string, left: boolean): HTMLElement {
-  const button = h(doc, "button", { type: "button", class: "sort-btn", "data-sort": by }, label);
-  return h(doc, "th", { scope: "col", class: left ? "l sortable" : "sortable" }, button);
-}
-
-function plainHead(doc: Document, label: string): HTMLElement {
-  return h(doc, "th", { scope: "col", class: "l" }, label);
-}
-
-/** `aria-sort` and the arrow go on the sorted column and nowhere else. */
-function markSorted(table: Element, sort: MemberSort, doc: Document): void {
-  for (const button of table.querySelectorAll<HTMLElement>("thead button[data-sort]")) {
-    const th = button.closest("th") as HTMLElement;
-    button.querySelector(".sort")?.remove();
-    if (button.dataset.sort !== sort.by) {
-      th.removeAttribute("aria-sort");
-      continue;
-    }
-    th.setAttribute("aria-sort", sort.dir === "asc" ? "ascending" : "descending");
-    button.append(h(doc, "span", { class: "sort", "aria-hidden": "true" }, ARROWS[sort.dir]));
-  }
-}
-
 function showCount(line: HTMLElement, lang: Lang, query: string, matched: number, all: number): void {
   const filtering = query.trim() !== "";
   line.hidden = !filtering;
@@ -109,7 +84,7 @@ function draw(section: Element, view: View, pressed?: Step): void {
   updatePager(pager, page, view.size, lang);
   if (matched.length === 0) slot.replaceChildren();
   else if (pager.parentElement !== slot) slot.replaceChildren(pager);
-  if (pressed !== undefined) refocus(pager, pressed);
+  if (pressed !== undefined) refocusStep(pager, pressed);
 }
 
 function go(section: Element, view: View, page: number): void {
@@ -123,12 +98,6 @@ function resize(section: Element, view: View, size: PageSize): void {
   view.size = size;
   view.table.page = 1;
   draw(section, view);
-}
-
-/** The step button just pressed is now disabled (the first or the last page): focus goes to the other one. */
-function refocus(pager: Element, pressed: Step): void {
-  const button = (step: Step) => pager.querySelector<HTMLButtonElement>(`button[data-step="${step}"]`);
-  if (button(pressed)?.disabled) button(pressed === "next" ? "prev" : "next")?.focus({ preventScroll: true });
 }
 
 /**
@@ -155,8 +124,7 @@ export function applyMemberSearch(
 }
 
 function pressSort(section: Element, event: Event): void {
-  const button = (event.target as Element | null)?.closest<HTMLElement>("button[data-sort]");
-  const by = button?.dataset.sort as MemberSort["by"] | undefined;
+  const by = pressedColumn(event) as MemberSort["by"] | undefined;
   const view = views.get(section);
   if (by === undefined || !view) return;
   view.table.sort = nextSort(view.table.sort, by);
@@ -173,24 +141,15 @@ function tableHead(doc: Document, lang: Lang): HTMLElement {
       doc,
       "tr",
       {},
-      sortHead(doc, lang, "name", t(lang, "colMember"), true),
-      sortHead(doc, lang, "tokens", t(lang, "colTokens"), false),
-      sortHead(doc, lang, "cost", t(lang, "colCost"), false),
+      sortHead(doc, "name", t(lang, "colMember"), true),
+      sortHead(doc, "tokens", t(lang, "colTokens"), false),
+      sortHead(doc, "cost", t(lang, "colCost"), false),
       plainHead(doc, t(lang, "colAgentMix")),
       plainHead(doc, t(lang, "colAccounts")),
-      sortHead(doc, lang, "lastSync", t(lang, "colLastSync"), false),
+      sortHead(doc, "lastSync", t(lang, "colLastSync"), false),
       h(doc, "td", { class: "chev-cell", "aria-hidden": "true" }),
     ),
   );
-}
-
-function searchBox(doc: Document, lang: Lang, query: string): HTMLElement {
-  const attrs = { type: "search", id: "member-search", autocomplete: "off", spellcheck: "false" };
-  const input = h(doc, "input", attrs) as HTMLInputElement;
-  input.placeholder = t(lang, "searchPlaceholder");
-  input.value = query; // a property, never markup
-  const label = h(doc, "label", { for: "member-search", class: "sr" }, t(lang, "searchMembers"));
-  return h(doc, "div", { class: "search" }, label, icon(doc, "search", "search-icon"), input);
 }
 
 function heading(doc: Document, lang: Lang, members: number): HTMLElement {
@@ -210,7 +169,7 @@ export function membersPanel(
     doc,
     "section",
     { class: "panel", "aria-labelledby": "members-heading" },
-    h(doc, "div", { class: "panel-head" }, heading(doc, lang, stats.members.length), searchBox(doc, lang, opts.query)),
+    h(doc, "div", { class: "panel-head" }, heading(doc, lang, stats.members.length), searchField(doc, { id: "member-search", label: t(lang, "searchMembers"), placeholder: t(lang, "searchPlaceholder"), query: opts.query })),
     h(doc, "p", { id: "members-count", class: "count", "aria-live": "polite" }),
     h(doc, "div", { class: "scroll" }, table),
     h(doc, "div", { class: "pager-slot" }),

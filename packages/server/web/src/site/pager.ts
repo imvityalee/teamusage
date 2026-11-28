@@ -8,7 +8,7 @@ const t = translator(strings);
 
 const asPageSize = (value: string): PageSize | undefined => PAGE_SIZES.find((size) => String(size) === value);
 
-type Step = "prev" | "next";
+export type Step = "prev" | "next";
 
 function stepButton(doc: Document, step: Step, label: string, go: () => void): HTMLButtonElement {
   const button = h(doc, "button", { type: "button", "data-step": step }, label) as HTMLButtonElement;
@@ -66,4 +66,10 @@ export function updatePager(pager: HTMLElement, page: Page<unknown>, size: PageS
   (pager.querySelector(".pager-steps") as HTMLElement).hidden = fits;
   (pager.querySelector('button[data-step="prev"]') as HTMLButtonElement).disabled = page.page <= 1;
   (pager.querySelector('button[data-step="next"]') as HTMLButtonElement).disabled = page.page >= page.pages;
+}
+
+/** The step button just pressed is now disabled (the first or the last page): focus goes to the other one. */
+export function refocusStep(pager: Element, pressed: Step): void {
+  const button = (step: Step) => pager.querySelector<HTMLButtonElement>(`button[data-step="${step}"]`);
+  if (button(pressed)?.disabled) button(pressed === "next" ? "prev" : "next")?.focus({ preventScroll: true });
 }
